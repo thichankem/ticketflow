@@ -1,0 +1,35 @@
+{
+  "name": "ticketflow-backend",
+  "version": "1.0.0",
+  "description": "Hi.Events clone Node.js Express serverless backend",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "migrate": "node database/migrations/run-migrations.js",
+    "seed": "node database/seeders/seed.js",
+    "test": "node --test tests/**/*.test.js",
+    "test:m1": "node tests/m1-database.test.js",
+    "test:concurrency": "node tests/concurrency.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.2.0",
+    "isomorphic-dompurify": "^2.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.5",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "supertest": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
