@@ -1,0 +1,54 @@
+./.idea
+./node_modules
+./.phpunit.result.cache
+.DS_Store
+/.idea/**
+frontend/.env
+backend/.env
+docker/all-in-one/.env
+docker-compose.override.yml
+todo.md
+/prompts/**
+/prompts
+
+.vercel
+prompts/
+
+
+/playground/**
+/playground/
+
+/plans/**
+/plans
+
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+tmp_translate/
+test_results/
+
+/demo-reel/**
+/demo-reel/
+
+/release-notes/**
+/release-notes/
+/release-notes.md
+
+.amp/portals/*
+.cloudflare/
+
+
+# Agent directories & artifacts
+.agents/
+.agents
+agents/
+# Claude & AI Assistant configs
+.claude/
+.claude
+
+# GitHub workflows & templates
+.github/
+.github
+
+# Amp tools
+.amp/
+.amp

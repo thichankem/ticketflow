@@ -1,0 +1,106 @@
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+
+export const RegisterPage = () => {
+  const navigate = useNavigate();
+  const { register } = useAuth();
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('ATTENDEE');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      setError(null);
+      await register(name, email, password, role);
+      navigate('/');
+    } catch (err) {
+      setError(err.message || 'Registration failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <section className="card" style={{ maxWidth: '440px', margin: '3rem auto', padding: '2rem' }}>
+      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, textAlign: 'center', marginBottom: '0.5rem' }}>
+        Create an Account
+      </h1>
+      <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
+        Join Hi.Events to buy tickets or host your own events
+      </p>
+
+      {error && <div className="alert alert-error">{error}</div>}
+
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="regName">Full Name *</label>
+          <input
+            id="regName"
+            type="text"
+            className="input"
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Jane Doe"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="regEmail">Email Address *</label>
+          <input
+            id="regEmail"
+            type="email"
+            className="input"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="jane@example.com"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="regPassword">Password *</label>
+          <input
+            id="regPassword"
+            type="password"
+            className="input"
+            required
+            minLength={8}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Min. 8 characters"
+          />
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="regRole">I want to...</label>
+          <select
+            id="regRole"
+            className="select"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
+            <option value="ATTENDEE">Attend events & buy tickets</option>
+            <option value="ORGANIZER">Organize & sell event tickets</option>
+          </select>
+        </div>
+
+        <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} disabled={loading}>
+          {loading ? 'Creating Account...' : 'Register'}
+        </button>
+      </form>
+
+      <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem' }}>
+        Already have an account? <Link to="/login" style={{ color: 'var(--primary)', fontWeight: 600 }}>Sign in</Link>
+      </div>
+    </section>
+  );
+};
+
+export default RegisterPage;
