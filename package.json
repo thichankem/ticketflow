@@ -4,8 +4,12 @@
   "description": "Hi.Events clone with React frontend and Express serverless backend",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
-    "build": "npm --prefix frontend run build",
+    "build": "npm run build --workspace=frontend",
     "start": "node backend/src/server.js",
     "test": "node tests/run-e2e.js"
   },
