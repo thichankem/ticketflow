@@ -32,12 +32,13 @@ class AuthService {
 
       const passwordHash = await bcrypt.hash(password, 10);
       const insertSql = `
-        INSERT INTO users (name, email, password, role, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, true, NOW(), NOW())
-        RETURNING id, name, email, role, is_active, account_id
+        INSERT INTO users (first_name, last_name, email, password, role, created_at, updated_at)
+        VALUES ($1, '', $2, $3, $4, NOW(), NOW())
+        RETURNING id, first_name, last_name, email, role, account_id
       `;
-      const res = await query(insertSql, [name, normalizedEmail, passwordHash, normalizedRole]);
+      const res = await query(insertSql, [name || normalizedEmail, normalizedEmail, passwordHash, normalizedRole]);
       const user = res.rows[0];
+      user.name = user.first_name || user.email;
 
       const tokenPayload = { id: user.id, email: user.email, role: user.role, account_id: user.account_id };
       const token = generateAccessToken(tokenPayload);
@@ -85,15 +86,16 @@ class AuthService {
 
     // Check PostgreSQL first
     try {
-      const sql = 'SELECT id, name, email, password, role, is_active, account_id FROM users WHERE LOWER(email) = $1 LIMIT 1';
+      const sql = `
+        SELECT id, first_name, last_name, email, password, role, account_id,
+               COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
+        FROM users 
+        WHERE LOWER(email) = $1 
+        LIMIT 1
+      `;
       const res = await query(sql, [normalizedEmail]);
       if (res.rowCount > 0) {
         const user = res.rows[0];
-        if (user.is_active === false) {
-          const error = new Error('Account suspended');
-          error.statusCode = 403;
-          throw error;
-        }
 
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) {
@@ -192,7 +194,13 @@ class AuthService {
 
   async getUserById(id) {
     try {
-      const sql = 'SELECT id, name, email, role, is_active, account_id FROM users WHERE id = $1 LIMIT 1';
+      const sql = `
+        SELECT id, first_name, last_name, email, role, account_id,
+               COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
+        FROM users 
+        WHERE id = $1 
+        LIMIT 1
+      `;
       const res = await query(sql, [id]);
       if (res.rowCount > 0) return res.rows[0];
     } catch {
