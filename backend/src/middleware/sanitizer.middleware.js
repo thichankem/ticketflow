@@ -1,35 +1,68 @@
-import DOMPurify from 'isomorphic-dompurify';
-
 /**
- * Strips dangerous HTML and scripts from strings.
- * Preserves standard safe markup or text.
+ * Input sanitization middleware for XSS prevention.
+ * Uses strict HTML tag & attribute allowlisting without heavy jsdom dependencies,
+ * ensuring seamless execution in Node.js, Vercel Serverless Functions, and edge runtimes.
  */
+
+const ALLOWED_TAGS = new Set([
+  'b', 'i', 'em', 'strong', 'a', 'p', 'br',
+  'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'
+]);
+
+const ALLOWED_ATTRS = new Set(['href', 'title', 'target', 'class']);
+
 export function sanitizeString(val) {
   if (typeof val !== 'string') return val;
   let str = val;
   let prev;
-  // Recursively strip script/event handler tags to handle nested evasion payloads like <scr<script>ipt>
+
+  // Recursively strip script/iframe/object/embed/svg/event handlers
   do {
     prev = str;
     str = str
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
+      .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
       .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
-      .replace(/javascript:[^"']*/gi, '')
+      .replace(/javascript:[^"'\s]*/gi, '')
       .replace(/<img[^>]*>/gi, '')
-      .replace(/<svg[^>]*>/gi, '')
       .replace(/on\w+\s*=\s*(?:[^\s>]+|"[^"]*"|'[^']*')/gi, '');
   } while (str !== prev);
 
-  return DOMPurify.sanitize(str, {
-    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'],
-    ALLOWED_ATTR: ['href', 'title', 'target', 'class'],
+  // Strip any tag not in ALLOWED_TAGS and filter attributes
+  str = str.replace(/<\/?([a-zA-Z0-9]+)\b([^>]*)>/gi, (match, tag, rawAttrs) => {
+    const lowerTag = tag.toLowerCase();
+    if (!ALLOWED_TAGS.has(lowerTag)) {
+      return '';
+    }
+    if (match.startsWith('</')) {
+      return `</${lowerTag}>`;
+    }
+
+    const cleanAttrs = [];
+    if (rawAttrs) {
+      const attrRegex = /([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+      let m;
+      while ((m = attrRegex.exec(rawAttrs)) !== null) {
+        const attrName = m[1].toLowerCase();
+        const attrVal = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
+        if (ALLOWED_ATTRS.has(attrName)) {
+          if (attrName === 'href' && /^\s*javascript:/i.test(attrVal)) {
+            continue;
+          }
+          cleanAttrs.push(`${attrName}="${attrVal.replace(/"/g, '&quot;')}"`);
+        }
+      }
+    }
+
+    return cleanAttrs.length > 0 ? `<${lowerTag} ${cleanAttrs.join(' ')}>` : `<${lowerTag}>`;
   });
+
+  return str;
 }
 
-/**
- * Deep sanitizes objects and arrays recursively
- */
 export function sanitizeDeep(data) {
   if (!data || typeof data !== 'object') {
     return typeof data === 'string' ? sanitizeString(data) : data;
