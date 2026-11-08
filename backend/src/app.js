@@ -1,12 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import apiRouter from './routes/index.js';
 import { sanitizerMiddleware } from './middleware/sanitizer.middleware.js';
 import { centralizedErrorHandler } from './middleware/error.middleware.js';
-
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,48 +33,25 @@ app.use(cookieParser());
 // DOMPurify XSS input sanitizer
 app.use(sanitizerMiddleware);
 
-// Mount API routes
+// Mount API routes (supports both /api/* and direct serverless rewrites)
 app.use('/api', apiRouter);
 
-// Serve static compiled frontend assets
-app.use(express.static(distPath));
+// Serve static compiled frontend assets if available locally
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
 
-// Frontend SPA Fallback routes for navigation / E2E verification
-const spaShellHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ticketflow - Hi.Events</title>
-</head>
-<body>
-  <header>
-    <nav>
-      <a href="/">Home</a>
-      <a href="/checkout">Checkout</a>
-      <a href="/admin">Admin</a>
-      <a href="/login">Login</a>
-      <a href="/register">Register</a>
-    </nav>
-  </header>
-  <main>
-    <div id="root">SPA Route</div>
-  </main>
-  <footer>
-    <p>&copy; 2026 Ticketflow Hi.Events Clone</p>
-  </footer>
-</body>
-</html>`;
-
-app.get(['/', '/events*', '/checkout*', '/admin*', '/login*', '/register*'], (req, res) => {
-  const indexHtmlPath = path.join(distPath, 'index.html');
-  res.sendFile(indexHtmlPath, (err) => {
-    if (err) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.status(200).send(spaShellHtml);
+  app.get(['/', '/events*', '/checkout*', '/admin*', '/login*', '/register*'], (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
     }
+    const indexHtmlPath = path.join(distPath, 'index.html');
+    res.sendFile(indexHtmlPath, (err) => {
+      if (err) {
+        next();
+      }
+    });
   });
-});
+}
 
 // Centralized Error Handling
 app.use(centralizedErrorHandler);
