@@ -5,13 +5,43 @@ import { demoEvents } from '../data/demo-catalog.js';
 const memoryEvents = new Map(demoEvents.map((event) => [event.id, { ...event }]));
 let nextEventId = Math.max(...demoEvents.map((event) => event.id));
 
+const eventCover = (slug, category) => {
+  const bySlug = {
+    'tech-conf-2026': '/images/events/summit.svg',
+    'tech-conference-2026': '/images/events/summit.svg',
+    'saigon-jazz-night': '/images/events/jazz.svg',
+    'dalat-marathon': '/images/events/marathon.svg',
+    'dalat-highland-marathon': '/images/events/marathon.svg',
+    'indie-film-weekend': '/images/events/film.svg',
+    'riverside-meetup': '/images/events/meetup.svg',
+    'riverside-community-meetup': '/images/events/meetup.svg',
+    'midnight-edm': '/images/events/edm.svg',
+    'midnight-edm-flash-sale': '/images/events/edm.svg',
+    'startup-pitch-night': '/images/events/pitch.svg',
+    'ux-studio-workshop': '/images/events/ux.svg',
+  };
+  const byCategory = {
+    TECHNOLOGY: '/images/events/summit.svg',
+    TECH: '/images/events/summit.svg',
+    MUSIC: '/images/events/jazz.svg',
+    SPORTS: '/images/events/marathon.svg',
+    FILM: '/images/events/film.svg',
+    COMMUNITY: '/images/events/meetup.svg',
+    BUSINESS: '/images/events/pitch.svg',
+    DESIGN: '/images/events/ux.svg',
+  };
+  return bySlug[slug] || byCategory[category] || '/images/events/summit.svg';
+};
+
 class EventsService {
   async listEvents() {
     try {
-      // Eliminates N+1 query patterns using PostgreSQL JSON aggregation
+      // Real database fetch eliminating N+1 query patterns using PostgreSQL JSON aggregation
       const sql = `
         SELECT 
           e.*,
+          e.start_date AS starts_at,
+          e.end_date AS ends_at,
           COALESCE(
             json_agg(
               json_build_object(
@@ -19,10 +49,11 @@ class EventsService {
                 'event_id', t.event_id,
                 'name', t.title,
                 'title', t.title,
-                'type', t.tier_type,
-                'tier_type', t.tier_type,
+                'type', t.type,
+                'tier_type', t.type,
                 'price', t.price,
-                'total_quantity', t.total_quantity,
+                'total_quantity', t.initial_quantity,
+                'initial_quantity', t.initial_quantity,
                 'remaining_quantity', t.remaining_quantity,
                 'min_per_order', t.min_per_order,
                 'max_per_order', t.max_per_order,
@@ -37,18 +68,38 @@ class EventsService {
         ORDER BY e.id ASC
       `;
       const res = await query(sql);
-      return res.rows;
-    } catch {
-      // Fallback in-memory. Lowest id first so events[0] remains Global Tech Summit.
-      const { default: ticketsService } = await import('./tickets.service.js');
-      const list = [];
-      for (const ev of memoryEvents.values()) {
-        const tiers = await ticketsService.listByEventId(ev.id, false);
-        list.push({ ...ev, ticket_tiers: tiers });
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map(r => ({
+          ...r,
+          id: Number(r.id),
+          account_id: Number(r.account_id),
+          cover: eventCover(r.slug || r.short_id, r.category),
+          ticket_tiers: (r.ticket_tiers || []).map(t => ({
+            ...t,
+            id: Number(t.id),
+            event_id: Number(t.event_id),
+            price: Number(t.price),
+            total_quantity: Number(t.total_quantity || t.initial_quantity),
+            initial_quantity: Number(t.initial_quantity),
+            remaining_quantity: Number(t.remaining_quantity),
+            min_per_order: Number(t.min_per_order),
+            max_per_order: Number(t.max_per_order),
+          })),
+        }));
       }
-      list.sort((a, b) => Number(a.id) - Number(b.id));
-      return list;
+    } catch (dbErr) {
+      console.warn('[EventsService.listEvents] Database query error, using fallback:', dbErr.message);
     }
+
+    // Fallback in-memory. Lowest id first so events[0] remains Global Tech Summit.
+    const { default: ticketsService } = await import('./tickets.service.js');
+    const list = [];
+    for (const ev of memoryEvents.values()) {
+      const tiers = await ticketsService.listByEventId(ev.id, false);
+      list.push({ ...ev, ticket_tiers: tiers });
+    }
+    list.sort((a, b) => Number(a.id) - Number(b.id));
+    return list;
   }
 
   async getEventById(id) {
@@ -58,6 +109,8 @@ class EventsService {
       const sql = `
         SELECT 
           e.*,
+          e.start_date AS starts_at,
+          e.end_date AS ends_at,
           COALESCE(
             json_agg(
               json_build_object(
@@ -65,10 +118,11 @@ class EventsService {
                 'event_id', t.event_id,
                 'name', t.title,
                 'title', t.title,
-                'type', t.tier_type,
-                'tier_type', t.tier_type,
+                'type', t.type,
+                'tier_type', t.type,
                 'price', t.price,
-                'total_quantity', t.total_quantity,
+                'total_quantity', t.initial_quantity,
+                'initial_quantity', t.initial_quantity,
                 'remaining_quantity', t.remaining_quantity,
                 'min_per_order', t.min_per_order,
                 'max_per_order', t.max_per_order,
@@ -84,10 +138,27 @@ class EventsService {
       `;
       const res = await query(sql, [numId]);
       if (res.rowCount > 0) {
-        return res.rows[0];
+        const row = res.rows[0];
+        return {
+          ...row,
+          id: Number(row.id),
+          account_id: Number(row.account_id),
+          cover: eventCover(row.slug || row.short_id, row.category),
+          ticket_tiers: (row.ticket_tiers || []).map(t => ({
+            ...t,
+            id: Number(t.id),
+            event_id: Number(t.event_id),
+            price: Number(t.price),
+            total_quantity: Number(t.total_quantity || t.initial_quantity),
+            initial_quantity: Number(t.initial_quantity),
+            remaining_quantity: Number(t.remaining_quantity),
+            min_per_order: Number(t.min_per_order),
+            max_per_order: Number(t.max_per_order),
+          })),
+        };
       }
-    } catch {
-      // Fallback
+    } catch (dbErr) {
+      console.warn('[EventsService.getEventById] Database query error, using fallback:', dbErr.message);
     }
 
     const ev = memoryEvents.get(numId);
@@ -107,23 +178,32 @@ class EventsService {
     const accountId = user.account_id || 1;
 
     try {
-      const sql = `
-        INSERT INTO events (account_id, title, description, status, starts_at, ends_at, short_id, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-        RETURNING *
-      `;
+      const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `event-${Date.now()}`;
       const shortId = `ev_${Date.now()}`;
+      const startDate = starts_at || new Date().toISOString();
+      const endDate = ends_at || new Date(Date.now() + 86400000).toISOString();
+      const sql = `
+        INSERT INTO events (account_id, title, slug, description, status, start_date, end_date, short_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+        RETURNING *, start_date AS starts_at, end_date AS ends_at
+      `;
       const res = await query(sql, [
         accountId,
         title,
+        slug,
         description || '',
         status,
-        starts_at || new Date().toISOString(),
-        ends_at || new Date(Date.now() + 86400000).toISOString(),
+        startDate,
+        endDate,
         shortId,
       ]);
-      return res.rows[0];
-    } catch {
+      return {
+        ...res.rows[0],
+        id: Number(res.rows[0].id),
+        account_id: Number(res.rows[0].account_id),
+      };
+    } catch (dbErr) {
+      console.warn('[EventsService.createEvent] Database insert error, using fallback:', dbErr.message);
       // Fallback in-memory
       const id = ++nextEventId;
       const newEvent = {
@@ -149,7 +229,7 @@ class EventsService {
       throw err;
     }
 
-    if (user.role !== 'ADMIN' && existing.account_id !== user.account_id) {
+    if (user.role !== 'ADMIN' && Number(existing.account_id) !== Number(user.account_id)) {
       const err = new Error('Forbidden: Event does not belong to user account');
       err.statusCode = 403;
       throw err;
@@ -166,7 +246,11 @@ class EventsService {
         RETURNING *
       `;
       const res = await query(sql, [updates.title, updates.description, updates.status, numId]);
-      return res.rows[0];
+      return {
+        ...res.rows[0],
+        id: Number(res.rows[0].id),
+        account_id: Number(res.rows[0].account_id),
+      };
     } catch {
       // Fallback
       if (updates.title) existing.title = updates.title;
@@ -186,7 +270,7 @@ class EventsService {
       throw err;
     }
 
-    if (user.role !== 'ADMIN' && existing.account_id !== user.account_id) {
+    if (user.role !== 'ADMIN' && Number(existing.account_id) !== Number(user.account_id)) {
       const err = new Error('Forbidden: Event does not belong to user account');
       err.statusCode = 403;
       throw err;

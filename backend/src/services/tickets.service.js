@@ -14,22 +14,35 @@ class TicketsService {
       }
       sql += ` ORDER BY sort_order ASC, id ASC`;
       const res = await query(sql, [numId]);
-      return res.rows.map(r => ({
-        ...r,
-        name: r.title,
-        type: r.tier_type,
-      }));
-    } catch {
-      const list = [];
-      for (const t of memoryTiers.values()) {
-        if (t.event_id === numId) {
-          if (includeHidden || !t.is_hidden) {
-            list.push(t);
-          }
+      if (res.rows && res.rows.length > 0) {
+        return res.rows.map(r => ({
+          ...r,
+          id: Number(r.id),
+          event_id: Number(r.event_id),
+          price: Number(r.price),
+          initial_quantity: Number(r.initial_quantity),
+          remaining_quantity: Number(r.remaining_quantity),
+          min_per_order: Number(r.min_per_order),
+          max_per_order: Number(r.max_per_order),
+          name: r.title,
+          title: r.title,
+          type: r.type,
+          tier_type: r.type,
+          total_quantity: Number(r.initial_quantity),
+        }));
+      }
+    } catch (dbErr) {
+      console.warn('[TicketsService.listByEventId] DB query error, using fallback:', dbErr.message);
+    }
+    const list = [];
+    for (const t of memoryTiers.values()) {
+      if (t.event_id === numId) {
+        if (includeHidden || !t.is_hidden) {
+          list.push(t);
         }
       }
-      return list;
     }
+    return list;
   }
 
   async getTierById(id) {
@@ -38,10 +51,24 @@ class TicketsService {
       const res = await query('SELECT * FROM ticket_tiers WHERE id = $1 LIMIT 1', [numId]);
       if (res.rowCount > 0) {
         const r = res.rows[0];
-        return { ...r, name: r.title, type: r.tier_type };
+        return {
+          ...r,
+          id: Number(r.id),
+          event_id: Number(r.event_id),
+          price: Number(r.price),
+          initial_quantity: Number(r.initial_quantity),
+          remaining_quantity: Number(r.remaining_quantity),
+          min_per_order: Number(r.min_per_order),
+          max_per_order: Number(r.max_per_order),
+          name: r.title,
+          title: r.title,
+          type: r.type,
+          tier_type: r.type,
+          total_quantity: Number(r.initial_quantity),
+        };
       }
-    } catch {
-      // Fallback
+    } catch (dbErr) {
+      console.warn('[TicketsService.getTierById] DB query error, using fallback:', dbErr.message);
     }
     return memoryTiers.get(numId) || null;
   }
@@ -98,7 +125,7 @@ class TicketsService {
     try {
       const sql = `
         INSERT INTO ticket_tiers (
-          event_id, title, tier_type, price, total_quantity, remaining_quantity,
+          event_id, title, type, price, initial_quantity, remaining_quantity,
           min_per_order, max_per_order, is_hidden, created_at, updated_at
         ) VALUES ($1, $2, $3, $4, $5, $5, $6, $7, $8, NOW(), NOW())
         RETURNING *
@@ -114,8 +141,23 @@ class TicketsService {
         Boolean(is_hidden),
       ]);
       const r = res.rows[0];
-      return { ...r, name: r.title, type: r.tier_type };
-    } catch {
+      return {
+        ...r,
+        id: Number(r.id),
+        event_id: Number(r.event_id),
+        price: Number(r.price),
+        initial_quantity: Number(r.initial_quantity),
+        remaining_quantity: Number(r.remaining_quantity),
+        min_per_order: Number(r.min_per_order),
+        max_per_order: Number(r.max_per_order),
+        name: r.title,
+        title: r.title,
+        type: r.type,
+        tier_type: r.type,
+        total_quantity: Number(r.initial_quantity),
+      };
+    } catch (dbErr) {
+      console.warn('[TicketsService.createTier] DB insert error, using fallback:', dbErr.message);
       // Fallback
       const id = ++nextTierId;
       const tier = {

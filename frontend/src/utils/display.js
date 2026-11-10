@@ -28,9 +28,13 @@ export function formatRange(event) {
 }
 
 export function money(cents) {
-  if (cents === 0) return 'FREE';
-  if (cents == null || Number.isNaN(Number(cents))) return 'N/A';
-  return `$${(Number(cents) / 100).toFixed(2)}`;
+  const num = Number(cents);
+  if (num === 0) return 'FREE';
+  if (cents == null || Number.isNaN(num)) return 'N/A';
+  // If price is stored in minor units / cents (e.g. 2500 for $25.00), scale down.
+  // If already in major units / dollars (e.g. 25.00 or 35), format directly.
+  const dollars = num >= 1000 && Number.isInteger(num) ? num / 100 : num;
+  return `$${dollars.toFixed(2)}`;
 }
 
 export function startingPrice(tiers) {

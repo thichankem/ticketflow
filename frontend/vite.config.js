@@ -9,7 +9,31 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   root: __dirname,
   plugins: [react()],
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-router-dom',
+      'dompurify',
+    ],
+  },
   server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        credentials: true,
+      },
+    },
+  },
+  preview: {
     port: 5173,
     proxy: {
       '/api': {

@@ -116,9 +116,39 @@ class OrdersService {
     }
 
     const total = Math.max(0, subtotal - discount);
-    const orderId = ++nextOrderId;
-    const orderShortId = `ORD-${1000 + orderId}`;
+    let orderId = ++nextOrderId;
+    let orderShortId = `ORD-${1000 + orderId}`;
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+
+    // Persist reservation order to PostgreSQL
+    try {
+      const publicId = `ord_pub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const shortId = `ord_${Date.now().toString().slice(-6)}`;
+      const orderInsertSql = `
+        INSERT INTO orders (
+          short_id, public_id, event_id, user_id, status, subtotal, total_before_additions,
+          discount_amount, total_gross, promo_code, reserved_until, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, 'RESERVED', $5, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING id, short_id, public_id, status
+      `;
+      const orderRes = await query(orderInsertSql, [
+        shortId,
+        publicId,
+        Number(eventId),
+        user ? user.id : null,
+        subtotal,
+        discount,
+        total,
+        appliedPromo ? appliedPromo.code : null,
+        expiresAt,
+      ]);
+      if (orderRes.rowCount > 0) {
+        orderId = Number(orderRes.rows[0].id);
+        orderShortId = orderRes.rows[0].short_id;
+      }
+    } catch (dbOrderErr) {
+      console.warn('[OrdersService.reserveOrder] DB order insert error, using memory order ID:', dbOrderErr.message);
+    }
 
     const orderRecord = {
       id: orderId,
@@ -150,7 +180,29 @@ class OrdersService {
 
   async getOrderById(orderId, user = null) {
     const numId = Number(orderId);
-    const order = memoryOrders.get(numId);
+    let order = memoryOrders.get(numId);
+    if (!order) {
+      try {
+        const res = await query('SELECT * FROM orders WHERE id = $1 LIMIT 1', [numId]);
+        if (res.rowCount > 0) {
+          const row = res.rows[0];
+          order = {
+            id: Number(row.id),
+            orderShortId: row.short_id,
+            event_id: Number(row.event_id),
+            user_id: row.user_id ? Number(row.user_id) : null,
+            subtotal: Number(row.subtotal),
+            discount: Number(row.discount_amount),
+            total: Number(row.total_gross),
+            status: row.status,
+            buyer: { name: row.first_name || '', email: row.email || '' },
+            items: [],
+          };
+          memoryOrders.set(numId, order);
+        }
+      } catch {}
+    }
+
     if (!order) {
       const err = new Error('Order not found');
       err.statusCode = 404;
@@ -202,7 +254,36 @@ class OrdersService {
     const attendeeSource = attendees && attendees.length > 0 ? attendees : [{ name: buyer.name, email: buyer.email }];
 
     for (const att of attendeeSource) {
-      const attId = ++nextAttendeeId;
+      let attId = ++nextAttendeeId;
+      const barcode = `TKT-${order.id}-${attId}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      // Persist attendee to PostgreSQL
+      try {
+        const publicId = `att_pub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        const shortId = `att_${Date.now().toString().slice(-6)}`;
+        const attRes = await query(`
+          INSERT INTO attendees (
+            short_id, public_id, order_id, ticket_tier_id, event_id,
+            first_name, last_name, email, status, barcode, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, '', $7, 'ACTIVE', $8, NOW(), NOW())
+          RETURNING id, short_id, public_id, barcode
+        `, [
+          shortId,
+          publicId,
+          order.id,
+          att.ticket_tier_id || (order.items[0] && order.items[0].ticket_tier_id),
+          order.event_id,
+          att.name || buyer.name,
+          (att.email || buyer.email).toLowerCase().trim(),
+          barcode,
+        ]);
+        if (attRes.rowCount > 0) {
+          attId = Number(attRes.rows[0].id);
+        }
+      } catch (dbAttErr) {
+        // Fallback
+      }
+
       const attendeeRecord = {
         id: attId,
         order_id: order.id,
@@ -210,7 +291,7 @@ class OrdersService {
         name: att.name || buyer.name,
         email: (att.email || buyer.email).toLowerCase().trim(),
         ticket_tier_id: att.ticket_tier_id || (order.items[0] && order.items[0].ticket_tier_id),
-        barcode: `TKT-${order.id}-${attId}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        barcode,
         status: 'ACTIVE',
       };
       memoryAttendees.set(attId, attendeeRecord);
@@ -219,6 +300,14 @@ class OrdersService {
 
     order.attendees = createdAttendees;
     order.status = 'COMPLETED';
+
+    try {
+      await query(`
+        UPDATE orders
+        SET status = 'COMPLETED', first_name = $1, email = $2, updated_at = NOW()
+        WHERE id = $3
+      `, [buyer.name, buyer.email, numId]);
+    } catch {}
 
     return {
       order,
@@ -268,6 +357,9 @@ class OrdersService {
     }
 
     order.status = 'CANCELLED';
+    try {
+      await query(`UPDATE orders SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1`, [numId]);
+    } catch {}
     return {
       message: 'Order cancelled and inventory restored',
       order,
@@ -283,11 +375,33 @@ class OrdersService {
     }
 
     let target = null;
-    for (const att of memoryAttendees.values()) {
-      if (att.event_id === numEventId) {
-        if ((barcode && att.barcode === barcode) || (attendee_id && att.id === Number(attendee_id))) {
-          target = att;
-          break;
+    try {
+      let sql = 'SELECT * FROM attendees WHERE event_id = $1';
+      const params = [numEventId];
+      if (barcode) {
+        sql += ' AND barcode = $2';
+        params.push(barcode);
+      } else {
+        sql += ' AND id = $2';
+        params.push(Number(attendee_id));
+      }
+      sql += ' LIMIT 1';
+      const res = await query(sql, params);
+      if (res.rowCount > 0) {
+        target = res.rows[0];
+        target.name = target.first_name || target.email;
+      }
+    } catch (dbErr) {
+      // Fallback to memory
+    }
+
+    if (!target) {
+      for (const att of memoryAttendees.values()) {
+        if (att.event_id === numEventId) {
+          if ((barcode && att.barcode === barcode) || (attendee_id && att.id === Number(attendee_id))) {
+            target = att;
+            break;
+          }
         }
       }
     }
@@ -307,6 +421,10 @@ class OrdersService {
 
     target.status = 'CHECKED_IN';
     target.checked_in_at = new Date().toISOString();
+
+    try {
+      await query(`UPDATE attendees SET status = 'CHECKED_IN', checked_in_at = NOW() WHERE id = $1`, [target.id]);
+    } catch {}
 
     return {
       message: 'Attendee checked in successfully',

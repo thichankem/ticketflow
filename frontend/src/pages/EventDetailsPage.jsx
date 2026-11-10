@@ -39,7 +39,7 @@ export const EventDetailsPage = () => {
     try {
       setPromoStatus('Validating...');
       const res = await applyPromoCode(id, promoInput.trim());
-      setPromoStatus(`Promo applied! Saved $${(res.discount / 100).toFixed(2)}`);
+      setPromoStatus(`Promo applied! Saved ${money(res.discount)}`);
     } catch (err) {
       setPromoStatus(`Error: ${err.message}`);
     }
@@ -161,11 +161,11 @@ export const EventDetailsPage = () => {
           <div className="total-row">
             <div>
               {discountAmount > 0 && (
-                <div className="note good">Discount ({promoCode}) −${(discountAmount / 100).toFixed(2)}</div>
+                <div className="note good">Discount ({promoCode}) −{money(discountAmount)}</div>
               )}
               <span>Total</span>
             </div>
-            <strong>${(total / 100).toFixed(2)}</strong>
+            <strong>{money(total)}</strong>
           </div>
 
           <button
