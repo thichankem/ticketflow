@@ -3,14 +3,12 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export const OrganizerPage = () => {
-  const { user, isOrganizer } = useAuth();
+  const { isOrganizer } = useAuth();
 
-  // Create Event Form state
   const [eventTitle, setEventTitle] = useState('');
   const [eventDesc, setEventDesc] = useState('');
   const [eventStatus, setEventStatus] = useState(null);
 
-  // Create Tier Form state
   const [tierEventId, setTierEventId] = useState('1');
   const [tierName, setTierName] = useState('');
   const [tierPrice, setTierPrice] = useState('2500');
@@ -18,7 +16,6 @@ export const OrganizerPage = () => {
   const [tierType, setTierType] = useState('PAID');
   const [tierStatus, setTierStatus] = useState(null);
 
-  // Check-in state
   const [checkinEventId, setCheckinEventId] = useState('1');
   const [checkinBarcode, setCheckinBarcode] = useState('');
   const [checkinStatus, setCheckinStatus] = useState(null);
@@ -74,9 +71,9 @@ export const OrganizerPage = () => {
 
   if (!isOrganizer) {
     return (
-      <section className="card" style={{ maxWidth: '500px', margin: '2rem auto', textAlign: 'center' }}>
+      <section className="card empty-state" style={{ maxWidth: '560px', margin: '2rem auto' }}>
         <h2>Organizer Portal</h2>
-        <p style={{ color: 'var(--text-muted)', margin: '1rem 0' }}>
+        <p className="muted">
           You must be logged in as an Organizer or Admin to manage events and check in attendees.
         </p>
       </section>
@@ -85,17 +82,16 @@ export const OrganizerPage = () => {
 
   return (
     <section>
-      <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>Organizer Management Portal</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Create events, configure ticket tiers, and scan tickets at the door</p>
+      <header className="page-head">
+        <h1>Organizer desk</h1>
+        <p>Create events, configure ticket tiers, and scan tickets at the door.</p>
+        <p className="hint">Demo catalogue uses event IDs 1–8. Event 1 is Global Tech Summit. Promo on that event: SAVE20.</p>
       </header>
 
-      <div className="flex flex-responsive gap-xl" style={{ alignItems: 'flex-start' }}>
-        {/* Left Column: Event & Tier Creation */}
-        <div className="flex flex-col gap-lg flex-1">
-          {/* Create Event Card */}
+      <div className="split">
+        <div className="stack flex-1">
           <section className="card">
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '1rem' }}>Create New Event</h2>
+            <h2 className="panel-title">Create New Event</h2>
             <form onSubmit={handleCreateEvent}>
               <div className="form-group">
                 <label>Event Title *</label>
@@ -125,15 +121,14 @@ export const OrganizerPage = () => {
               </button>
             </form>
             {eventStatus && (
-              <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: eventStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>
+              <div className={`inline-status ${eventStatus.startsWith('Error') ? 'note bad' : 'note good'}`}>
                 {eventStatus}
               </div>
             )}
           </section>
 
-          {/* Add Ticket Tier Card */}
           <section className="card">
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '1rem' }}>Add Ticket Tier to Event</h2>
+            <h2 className="panel-title">Add Ticket Tier to Event</h2>
             <form onSubmit={handleCreateTier}>
               <div className="form-group">
                 <label>Event ID</label>
@@ -157,7 +152,7 @@ export const OrganizerPage = () => {
                 />
               </div>
 
-              <div className="flex gap-md">
+              <div className="flex gap-md flex-responsive">
                 <div className="form-group flex-1">
                   <label>Type</label>
                   <select
@@ -199,19 +194,16 @@ export const OrganizerPage = () => {
               </button>
             </form>
             {tierStatus && (
-              <div style={{ marginTop: '0.75rem', fontSize: '0.875rem', color: tierStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>
+              <div className={`inline-status ${tierStatus.startsWith('Error') ? 'note bad' : 'note good'}`}>
                 {tierStatus}
               </div>
             )}
           </section>
         </div>
 
-        {/* Right Column: Door QR / Barcode Check-In Scanner */}
-        <aside className="card" style={{ width: '100%', maxWidth: '400px' }}>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem' }}>Door Check-in Scanner</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-            Scan barcodes or enter attendee codes to check in guests at event entrance
-          </p>
+        <aside className="card ticket-stub">
+          <h2 className="panel-title">Door Check-in Scanner</h2>
+          <p className="hint">Scan barcodes or enter attendee codes to check in guests at event entrance</p>
 
           <form onSubmit={handleCheckIn}>
             <div className="form-group">
@@ -236,7 +228,7 @@ export const OrganizerPage = () => {
               />
             </div>
 
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+            <button type="submit" className="btn btn-primary btn-block">
               Validate & Check In
             </button>
           </form>
@@ -244,7 +236,7 @@ export const OrganizerPage = () => {
           {checkinStatus && (
             <div
               className={`alert ${checkinStatus.startsWith('Check-in Denied') ? 'alert-error' : 'alert-success'}`}
-              style={{ marginTop: '1rem', marginBottom: '0' }}
+              style={{ marginTop: '1rem', marginBottom: 0 }}
             >
               {checkinStatus}
             </div>

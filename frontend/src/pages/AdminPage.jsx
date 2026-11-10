@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import { useAuth } from '../context/AuthContext';
 
 export const AdminPage = () => {
-  const { user, isAdmin } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -41,12 +39,10 @@ export const AdminPage = () => {
 
   return (
     <section>
-      <header className="flex justify-between items-center" style={{ marginBottom: '2rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800 }}>SuperAdmin Dashboard</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Platform overview, operations and account moderation</p>
-        </div>
-        <span className="badge badge-primary">Admin Portal</span>
+      <header className="page-head">
+        <span className="badge badge-primary">Admin</span>
+        <h1>Floor overview</h1>
+        <p>Platform totals and account moderation. Same controls, quieter desk.</p>
       </header>
 
       {error && (
@@ -57,48 +53,35 @@ export const AdminPage = () => {
         </div>
       )}
 
-      {loading && <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>Loading platform statistics...</div>}
+      {loading && <div className="card loading-state">Loading platform statistics...</div>}
 
       {stats && (
         <>
-          {/* KPI Cards */}
-          <div className="flex flex-wrap gap-md" style={{ marginBottom: '2rem' }}>
-            <div className="card flex-1" style={{ minWidth: '200px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Total Gross Sales</span>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--primary)', marginTop: '0.25rem' }}>
-                ${(stats.gross_sales / 100).toFixed(2)}
-              </h2>
-            </div>
-
-            <div className="card flex-1" style={{ minWidth: '200px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Total Orders</span>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '0.25rem' }}>
-                {stats.total_orders}
-              </h2>
-            </div>
-
-            <div className="card flex-1" style={{ minWidth: '200px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Live Events</span>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '0.25rem' }}>
-                {stats.total_events}
-              </h2>
-            </div>
-
-            <div className="card flex-1" style={{ minWidth: '200px' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Registered Users</span>
-              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, marginTop: '0.25rem' }}>
-                {stats.total_users}
-              </h2>
-            </div>
+          <div className="kpi-grid">
+            <article className="card kpi">
+              <span className="muted">Total Gross Sales</span>
+              <strong>${(stats.gross_sales / 100).toFixed(2)}</strong>
+            </article>
+            <article className="card kpi">
+              <span className="muted">Total Orders</span>
+              <strong>{stats.total_orders}</strong>
+            </article>
+            <article className="card kpi">
+              <span className="muted">Live Events</span>
+              <strong>{stats.total_events}</strong>
+            </article>
+            <article className="card kpi">
+              <span className="muted">Registered Users</span>
+              <strong>{stats.total_users}</strong>
+            </article>
           </div>
 
-          {/* User Moderation Tool */}
-          <section className="card" style={{ maxWidth: '550px' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>User Moderation & Suspension</h2>
+          <section className="card" style={{ maxWidth: '560px' }}>
+            <h2 className="panel-title">User Moderation & Suspension</h2>
             <form onSubmit={handleSuspend}>
               <div className="form-group">
                 <label htmlFor="userIdInput">Target User ID</label>
-                <div className="flex gap-sm">
+                <div className="promo-row">
                   <input
                     id="userIdInput"
                     type="number"
@@ -108,13 +91,13 @@ export const AdminPage = () => {
                     value={suspendId}
                     onChange={(e) => setSuspendId(e.target.value)}
                   />
-                  <button type="submit" className="btn btn-danger" style={{ whiteSpace: 'nowrap' }}>
+                  <button type="submit" className="btn btn-danger">
                     Suspend Account
                   </button>
                 </div>
               </div>
               {suspendMsg && (
-                <div style={{ fontSize: '0.9rem', color: suspendMsg.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>
+                <div className={suspendMsg.startsWith('Error') ? 'note bad' : 'note good'}>
                   {suspendMsg}
                 </div>
               )}

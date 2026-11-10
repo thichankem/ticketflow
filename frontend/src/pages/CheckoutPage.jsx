@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { money } from '../utils/display';
 
 export const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -24,7 +25,6 @@ export const CheckoutPage = () => {
   const [error, setError] = useState(null);
   const [completedResult, setCompletedResult] = useState(null);
 
-  // Format countdown mm:ss
   const formatTimer = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -47,7 +47,6 @@ export const CheckoutPage = () => {
       setSubmitting(true);
       setError(null);
 
-      // Construct attendees
       const attendees = [];
       for (const item of cartItems) {
         for (let i = 0; i < item.quantity; i++) {
@@ -81,66 +80,55 @@ export const CheckoutPage = () => {
     }
   };
 
-  // SUCCESS CONFIRMATION VIEW
   if (completedResult) {
     const { order, attendees } = completedResult;
     return (
-      <section className="card" style={{ maxWidth: '680px', margin: '2rem auto', textAlign: 'center', padding: '2.5rem' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
-        <span className="badge badge-success" style={{ marginBottom: '1rem' }}>Order Confirmed</span>
-        <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.5rem' }}>
-          You're going to the event!
-        </h1>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>
-          Order reference: <strong>{order.orderShortId || `ORD-${order.id}`}</strong>
-        </p>
-
-        <div style={{ textAlign: 'left', margin: '2rem 0', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>Your Tickets & Barcodes</h2>
-          <div className="flex flex-col gap-md">
-            {attendees?.map((att, idx) => (
-              <div key={att.id || idx} className="card" style={{ backgroundColor: '#f9fafb' }}>
-                <div className="flex justify-between items-center" style={{ marginBottom: '0.75rem' }}>
-                  <strong>Attendee: {att.name}</strong>
-                  <span className="badge badge-primary">{att.status}</span>
-                </div>
-                <div className="barcode-box">
-                  {att.barcode}
-                </div>
-                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.5rem', textAlign: 'center' }}>
-                  Present this barcode at the door for entry
-                </span>
-              </div>
-            ))}
-          </div>
+      <section className="ticket-pass">
+        <div className="pass-hero">
+          <span className="badge badge-success">Order Confirmed</span>
+          <h1>You're going.</h1>
+          <p className="muted">
+            Order reference: <strong>{order.orderShortId || `ORD-${order.id}`}</strong>
+          </p>
         </div>
-
-        <Link to="/" className="btn btn-primary" style={{ width: '100%' }}>
+        <div className="stub-rule" />
+        <h2 className="panel-title">Your Tickets & Barcodes</h2>
+        <div className="stack">
+          {attendees?.map((att, idx) => (
+            <div key={att.id || idx} className="tier">
+              <div className="tier-top">
+                <strong>Attendee: {att.name}</strong>
+                <span className="badge badge-primary">{att.status}</span>
+              </div>
+              <div className="barcode-box">{att.barcode}</div>
+              <span className="note muted">Present this barcode at the door for entry</span>
+            </div>
+          ))}
+        </div>
+        <Link to="/" className="btn btn-primary btn-block" style={{ marginTop: '1rem' }}>
           Return to Events Catalogue
         </Link>
       </section>
     );
   }
 
-  // NO ACTIVE ORDER
   if (!activeOrder && cartItems.length === 0) {
     return (
-      <section className="card" style={{ maxWidth: '500px', margin: '3rem auto', textAlign: 'center', padding: '2.5rem' }}>
+      <section className="card empty-state" style={{ maxWidth: '520px', margin: '2rem auto' }}>
         <h2>Your Cart is Empty</h2>
-        <p style={{ color: 'var(--text-muted)', margin: '1rem 0' }}>Please select tickets from an event before checking out.</p>
+        <p className="muted">Please select tickets from an event before checking out.</p>
         <Link to="/" className="btn btn-primary">Browse Events</Link>
       </section>
     );
   }
 
   return (
-    <section style={{ maxWidth: '800px', margin: '0 auto' }}>
-      {/* 15-Minute Reservation Hold Alert */}
+    <section>
       {remainingSeconds > 0 && (
-        <div className="alert alert-info flex justify-between items-center">
+        <div className="hold-banner">
           <div>
-            <strong>Tickets Held Exclusively For You:</strong> Your seats are reserved for{' '}
-            <strong style={{ fontSize: '1.1rem' }}>{formatTimer(remainingSeconds)}</strong>
+            <strong>Tickets held for you</strong>
+            <div className="timer">{formatTimer(remainingSeconds)}</div>
           </div>
           <button type="button" className="btn btn-secondary btn-sm" onClick={handleCancel}>
             Cancel Hold
@@ -150,10 +138,9 @@ export const CheckoutPage = () => {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="flex flex-responsive gap-xl" style={{ alignItems: 'flex-start' }}>
-        {/* Checkout Form */}
+      <div className="split">
         <form onSubmit={handleSubmitCheckout} className="card flex-1">
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1.5rem' }}>Checkout & Registration</h1>
+          <h1 className="panel-title">Checkout & Registration</h1>
 
           <div className="form-group">
             <label htmlFor="buyerName">Full Name *</label>
@@ -181,74 +168,59 @@ export const CheckoutPage = () => {
             />
           </div>
 
-          {/* Payment Method */}
-          <div className="form-group" style={{ marginTop: '1.5rem' }}>
+          <div className="form-group">
             <label>Payment Method</label>
-            <div className="flex flex-col gap-sm" style={{ marginTop: '0.5rem' }}>
-              <label className="flex items-center gap-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="OFFLINE"
-                  checked={paymentMethod === 'OFFLINE'}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                />
-                <span>Pay Offline / Pay at the Door</span>
-              </label>
-
-              <label className="flex items-center gap-sm" style={{ cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="paymentMethod"
-                  value="SIMULATED_CARD"
-                  checked={paymentMethod === 'SIMULATED_CARD'}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
-                />
-                <span>Credit / Debit Card (Instant Simulation)</span>
-              </label>
-            </div>
+            <label className="choice">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="OFFLINE"
+                checked={paymentMethod === 'OFFLINE'}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              />
+              <span>Pay Offline / Pay at the Door</span>
+            </label>
+            <label className="choice">
+              <input
+                type="radio"
+                name="paymentMethod"
+                value="SIMULATED_CARD"
+                checked={paymentMethod === 'SIMULATED_CARD'}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+              />
+              <span>Credit / Debit Card (Instant Simulation)</span>
+            </label>
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '0.875rem', marginTop: '1.5rem' }}
-            disabled={submitting}
-          >
+          <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
             {submitting ? 'Processing Order...' : total === 0 ? 'Complete Free Registration' : `Pay & Confirm $${(total / 100).toFixed(2)}`}
           </button>
         </form>
 
-        {/* Order Summary Sidebar */}
-        <aside className="card" style={{ width: '100%', maxWidth: '340px' }}>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1rem' }}>Order Summary</h2>
-
-          <div className="flex flex-col gap-sm" style={{ marginBottom: '1rem' }}>
+        <aside className="ticket-stub">
+          <h2 className="panel-title">Order Summary</h2>
+          <div className="stack">
             {cartItems.map(it => (
-              <div key={it.tier.id} className="flex justify-between items-center" style={{ fontSize: '0.9rem' }}>
-                <span>{it.quantity}x {it.tier.name || it.tier.title}</span>
-                <strong>{it.tier.price === 0 ? 'FREE' : `$${((it.tier.price * it.quantity) / 100).toFixed(2)}`}</strong>
+              <div key={it.tier.id} className="stub-line">
+                <span>{it.quantity}× {it.tier.name || it.tier.title}</span>
+                <strong>{money(it.tier.price * it.quantity)}</strong>
               </div>
             ))}
           </div>
-
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
-            <div className="flex justify-between" style={{ fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Subtotal</span>
-              <span>${(subtotal / 100).toFixed(2)}</span>
+          <div className="stub-rule" />
+          <div className="stub-line">
+            <span className="muted">Subtotal</span>
+            <span>${(subtotal / 100).toFixed(2)}</span>
+          </div>
+          {discountAmount > 0 && (
+            <div className="stub-line note good">
+              <span>Discount</span>
+              <span>−${(discountAmount / 100).toFixed(2)}</span>
             </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between" style={{ color: 'var(--success)', fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-                <span>Discount</span>
-                <span>-${(discountAmount / 100).toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between items-center" style={{ marginTop: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
-              <strong>Total Due</strong>
-              <strong style={{ fontSize: '1.35rem', color: 'var(--primary)' }}>
-                ${(total / 100).toFixed(2)}
-              </strong>
-            </div>
+          )}
+          <div className="total-row">
+            <strong style={{ fontSize: '1rem' }}>Total Due</strong>
+            <strong>${(total / 100).toFixed(2)}</strong>
           </div>
         </aside>
       </div>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Indie Film Weekend">
+  <rect width="1200" height="640" fill="#18181b"/>
+  <g fill="#fafafa">
+    <rect x="70" y="70" width="46" height="34"/><rect x="70" y="140" width="46" height="34"/>
+    <rect x="70" y="210" width="46" height="34"/><rect x="70" y="280" width="46" height="34"/>
+    <rect x="70" y="350" width="46" height="34"/><rect x="70" y="420" width="46" height="34"/>
+    <rect x="70" y="490" width="46" height="34"/>
+    <rect x="1084" y="70" width="46" height="34"/><rect x="1084" y="140" width="46" height="34"/>
+    <rect x="1084" y="210" width="46" height="34"/><rect x="1084" y="280" width="46" height="34"/>
+    <rect x="1084" y="350" width="46" height="34"/><rect x="1084" y="420" width="46" height="34"/>
+    <rect x="1084" y="490" width="46" height="34"/>
+  </g>
+  <text x="180" y="320" fill="#fafafa" font-family="Georgia, serif" font-size="78">Indie Film</text>
+  <text x="180" y="380" fill="#f59e0b" font-family="Georgia, serif" font-size="32">Weekend · Hanoi</text>
+</svg>
