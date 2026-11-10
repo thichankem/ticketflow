@@ -37,14 +37,21 @@ class PromosService {
     try {
       const sql = `
         INSERT INTO promo_codes (
-          event_id, code, discount_type, discount_amount, max_uses, used_count,
-          ticket_tier_id, is_active, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, 0, $6, true, NOW(), NOW())
+          event_id, code, discount_type, discount, max_allowed_usages, order_usage_count,
+          created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, 0, NOW(), NOW())
         RETURNING *
       `;
-      const res = await query(sql, [numEventId, cleanCode, discount_type, discount_amount, max_uses, ticket_tier_id]);
-      return res.rows[0];
-    } catch {
+      const res = await query(sql, [numEventId, cleanCode, discount_type, discount_amount, max_uses]);
+      const row = res.rows[0];
+      return {
+        ...row,
+        discount_amount: Number(row.discount),
+        max_uses: row.max_allowed_usages,
+        used_count: row.order_usage_count,
+      };
+    } catch (dbErr) {
+      console.warn('[PromosService.createPromo] DB insert error, using fallback:', dbErr.message);
       // Fallback
       const id = ++nextPromoId;
       const promo = {
@@ -71,13 +78,22 @@ class PromosService {
     try {
       const sql = `
         SELECT * FROM promo_codes 
-        WHERE event_id = $1 AND UPPER(code) = $2 AND is_active = true 
+        WHERE event_id = $1 AND UPPER(code) = $2 AND deleted_at IS NULL 
         LIMIT 1
       `;
       const res = await query(sql, [numEventId, cleanCode]);
-      if (res.rowCount > 0) promo = res.rows[0];
-    } catch {
-      // Fallback
+      if (res.rowCount > 0) {
+        const row = res.rows[0];
+        promo = {
+          ...row,
+          discount_amount: Number(row.discount),
+          max_uses: row.max_allowed_usages,
+          used_count: row.order_usage_count,
+          is_active: true,
+        };
+      }
+    } catch (dbErr) {
+      console.warn('[PromosService.validatePromo] DB query error, using fallback:', dbErr.message);
     }
 
     if (!promo) {
@@ -95,7 +111,11 @@ class PromosService {
       throw err;
     }
 
-    if (promo.used_count >= promo.max_uses) {
+    const maxUses = promo.max_uses ?? promo.max_allowed_usages ?? 1000;
+    const usedCount = promo.used_count ?? promo.order_usage_count ?? 0;
+    const discountVal = Number(promo.discount_amount ?? promo.discount ?? 0);
+
+    if (usedCount >= maxUses) {
       const err = new Error('Promo code usage limit reached');
       err.statusCode = 422;
       throw err;
@@ -103,9 +123,9 @@ class PromosService {
 
     let discount = 0;
     if (promo.discount_type === 'PERCENTAGE') {
-      discount = Math.floor((subtotal * promo.discount_amount) / 100);
+      discount = Math.floor((subtotal * discountVal) / 100);
     } else {
-      discount = Math.min(subtotal, promo.discount_amount);
+      discount = Math.min(subtotal, discountVal);
     }
 
     return {
@@ -120,7 +140,7 @@ class PromosService {
     const cleanCode = code.toUpperCase().trim();
     try {
       await query(
-        'UPDATE promo_codes SET used_count = used_count + 1 WHERE event_id = $1 AND UPPER(code) = $2',
+        'UPDATE promo_codes SET order_usage_count = order_usage_count + 1 WHERE event_id = $1 AND UPPER(code) = $2',
         [Number(eventId), cleanCode]
       );
     } catch {
@@ -137,7 +157,7 @@ class PromosService {
     const cleanCode = code.toUpperCase().trim();
     try {
       await query(
-        'UPDATE promo_codes SET used_count = GREATEST(0, used_count - 1) WHERE event_id = $1 AND UPPER(code) = $2',
+        'UPDATE promo_codes SET order_usage_count = GREATEST(0, order_usage_count - 1) WHERE event_id = $1 AND UPPER(code) = $2',
         [Number(eventId), cleanCode]
       );
     } catch {

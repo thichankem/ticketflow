@@ -88,6 +88,7 @@ class AuthService {
     try {
       const sql = `
         SELECT id, first_name, last_name, email, password, role, account_id,
+               (deleted_at IS NULL) AS is_active,
                COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
         FROM users 
         WHERE LOWER(email) = $1 
@@ -97,6 +98,12 @@ class AuthService {
       if (res.rowCount > 0) {
         const user = res.rows[0];
 
+        if (user.is_active === false) {
+          const error = new Error('Account suspended');
+          error.statusCode = 403;
+          throw error;
+        }
+
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) {
           const error = new Error('Invalid credentials');
@@ -104,12 +111,12 @@ class AuthService {
           throw error;
         }
 
-        const tokenPayload = { id: user.id, email: user.email, role: user.role, account_id: user.account_id };
+        const tokenPayload = { id: Number(user.id), email: user.email, role: user.role, account_id: Number(user.account_id) };
         const token = generateAccessToken(tokenPayload);
-        const refreshToken = generateRefreshToken({ id: user.id, type: 'refresh' });
+        const refreshToken = generateRefreshToken({ id: Number(user.id), type: 'refresh' });
 
         return {
-          user: { id: user.id, name: user.name, email: user.email, role: user.role, account_id: user.account_id },
+          user: { id: Number(user.id), name: user.name, email: user.email, role: user.role, account_id: Number(user.account_id) },
           token,
           refreshToken,
         };
@@ -196,6 +203,7 @@ class AuthService {
     try {
       const sql = `
         SELECT id, first_name, last_name, email, role, account_id,
+               (deleted_at IS NULL) AS is_active,
                COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
         FROM users 
         WHERE id = $1 
@@ -212,7 +220,7 @@ class AuthService {
   async suspendUser(id) {
     const numId = Number(id);
     try {
-      const sql = 'UPDATE users SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id, is_active';
+      const sql = 'UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id, (deleted_at IS NULL) AS is_active';
       const res = await query(sql, [numId]);
       if (res.rowCount > 0) return res.rows[0];
     } catch {
@@ -233,11 +241,13 @@ class AuthService {
       const usersCount = (await query('SELECT COUNT(*) FROM users')).rows[0].count;
       const eventsCount = (await query('SELECT COUNT(*) FROM events')).rows[0].count;
       const ordersCount = (await query('SELECT COUNT(*) FROM orders')).rows[0].count;
+      const salesRes = await query("SELECT COALESCE(SUM(total_gross), 0) AS gross FROM orders WHERE status = 'COMPLETED'");
+      const grossSales = Number(salesRes.rows[0]?.gross || 0);
       return {
         total_users: parseInt(usersCount, 10),
         total_events: parseInt(eventsCount, 10),
         total_orders: parseInt(ordersCount, 10),
-        gross_sales: 125000,
+        gross_sales: grossSales,
       };
     } catch {
       const { default: eventsService } = await import('./events.service.js');
@@ -245,8 +255,8 @@ class AuthService {
       return {
         total_users: memoryUsers.size,
         total_events: events.length,
-        total_orders: 1,
-        gross_sales: 125000,
+        total_orders: 0,
+        gross_sales: 0,
       };
     }
   }

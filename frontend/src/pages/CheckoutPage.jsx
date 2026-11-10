@@ -193,7 +193,7 @@ export const CheckoutPage = () => {
           </div>
 
           <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
-            {submitting ? 'Processing Order...' : total === 0 ? 'Complete Free Registration' : `Pay & Confirm $${(total / 100).toFixed(2)}`}
+            {submitting ? 'Processing Order...' : total === 0 ? 'Complete Free Registration' : `Pay & Confirm ${money(total)}`}
           </button>
         </form>
 
@@ -210,17 +210,17 @@ export const CheckoutPage = () => {
           <div className="stub-rule" />
           <div className="stub-line">
             <span className="muted">Subtotal</span>
-            <span>${(subtotal / 100).toFixed(2)}</span>
+            <span>{money(subtotal)}</span>
           </div>
           {discountAmount > 0 && (
             <div className="stub-line note good">
               <span>Discount</span>
-              <span>−${(discountAmount / 100).toFixed(2)}</span>
+              <span>−{money(discountAmount)}</span>
             </div>
           )}
           <div className="total-row">
             <strong style={{ fontSize: '1rem' }}>Total Due</strong>
-            <strong>${(total / 100).toFixed(2)}</strong>
+            <strong>{money(total)}</strong>
           </div>
         </aside>
       </div>

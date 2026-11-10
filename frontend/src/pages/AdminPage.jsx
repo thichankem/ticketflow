@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { money } from '../utils/display';
 
 export const AdminPage = () => {
   const [stats, setStats] = useState(null);
@@ -60,7 +61,7 @@ export const AdminPage = () => {
           <div className="kpi-grid">
             <article className="card kpi">
               <span className="muted">Total Gross Sales</span>
-              <strong>${(stats.gross_sales / 100).toFixed(2)}</strong>
+              <strong>{money(stats.gross_sales)}</strong>
             </article>
             <article className="card kpi">
               <span className="muted">Total Orders</span>
