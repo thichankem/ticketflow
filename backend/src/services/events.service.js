@@ -1,19 +1,9 @@
 import { query } from '../config/db.js';
+import { demoEvents } from '../data/demo-catalog.js';
 
-// In-memory fallback
-const memoryEvents = new Map();
-let nextEventId = 10;
-
-// Pre-seed sample live event in memory
-memoryEvents.set(1, {
-  id: 1,
-  account_id: 2,
-  title: 'Global Tech Summit 2026',
-  description: 'Premier developer conference on cloud, AI and distributed systems.',
-  status: 'LIVE',
-  starts_at: '2026-12-01T09:00:00Z',
-  ends_at: '2026-12-03T18:00:00Z',
-});
+// In-memory fallback. Id 1 stays the original summit so list order matches the E2E suite.
+const memoryEvents = new Map(demoEvents.map((event) => [event.id, { ...event }]));
+let nextEventId = Math.max(...demoEvents.map((event) => event.id));
 
 class EventsService {
   async listEvents() {
@@ -44,18 +34,19 @@ class EventsService {
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
         GROUP BY e.id
-        ORDER BY e.created_at DESC
+        ORDER BY e.id ASC
       `;
       const res = await query(sql);
       return res.rows;
     } catch {
-      // Fallback in-memory
+      // Fallback in-memory. Lowest id first so events[0] remains Global Tech Summit.
       const { default: ticketsService } = await import('./tickets.service.js');
       const list = [];
       for (const ev of memoryEvents.values()) {
         const tiers = await ticketsService.listByEventId(ev.id, false);
         list.push({ ...ev, ticket_tiers: tiers });
       }
+      list.sort((a, b) => Number(a.id) - Number(b.id));
       return list;
     }
   }

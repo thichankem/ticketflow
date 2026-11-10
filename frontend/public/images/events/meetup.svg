@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Riverside Community Meetup">
+  <rect width="1200" height="640" fill="#ecfccb"/>
+  <circle cx="180" cy="180" r="70" fill="#65a30d"/>
+  <circle cx="300" cy="200" r="54" fill="#0f766e"/>
+  <circle cx="250" cy="300" r="62" fill="#f59e0b"/>
+  <rect x="460" y="140" width="620" height="360" rx="28" fill="#14532d"/>
+  <text x="500" y="300" fill="#ecfccb" font-family="Georgia, serif" font-size="64">Riverside</text>
+  <text x="500" y="360" fill="#bef264" font-family="Georgia, serif" font-size="32">Free community meetup</text>
+</svg>

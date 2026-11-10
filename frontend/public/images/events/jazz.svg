@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Saigon Jazz Night">
+  <rect width="1200" height="640" fill="#1c1917"/>
+  <circle cx="860" cy="320" r="220" fill="#f59e0b" opacity="0.85"/>
+  <circle cx="860" cy="320" r="90" fill="#1c1917"/>
+  <path d="M120 180c80 40 80 140 0 180" fill="none" stroke="#fde68a" stroke-width="10"/>
+  <path d="M180 140c120 60 120 220 0 280" fill="none" stroke="#f59e0b" stroke-width="8"/>
+  <text x="120" y="460" fill="#fffbeb" font-family="Georgia, serif" font-size="72">Saigon Jazz</text>
+  <text x="120" y="516" fill="#fde68a" font-family="Georgia, serif" font-size="28">Ho Chi Minh City</text>
+</svg>

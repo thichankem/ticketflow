@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { URL } from 'node:url';
+import { demoEvents, demoTiers, demoPromos } from '../../../backend/src/data/demo-catalog.js';
 
 /**
  * In-memory reference oracle server implementing the exact API contracts
@@ -31,58 +32,24 @@ export function createMockServer() {
   users.set(seedOrganizer.id, seedOrganizer);
   users.set(seedAttendee.id, seedAttendee);
 
-  // Pre-seed a sample live event
-  const seedEvent = {
-    id: nextEventId++,
-    account_id: seedOrganizer.account_id,
-    title: 'Global Tech Summit 2026',
-    description: 'Premier developer conference on cloud, AI and distributed systems.',
-    status: 'LIVE',
-    starts_at: '2026-12-01T09:00:00Z',
-    ends_at: '2026-12-03T18:00:00Z',
-  };
-  events.set(seedEvent.id, seedEvent);
+  // Showcase catalog. Insert lowest id first so /events[0] stays Global Tech Summit.
+  const orderedEvents = [...demoEvents].sort((a, b) => a.id - b.id);
+  for (const event of orderedEvents) {
+    events.set(event.id, { ...event });
+  }
+  nextEventId = Math.max(...orderedEvents.map((event) => event.id)) + 1;
 
-  // Pre-seed ticket tiers
-  const tier1 = {
-    id: nextTierId++,
-    event_id: seedEvent.id,
-    name: 'General Admission',
-    type: 'PAID',
-    price: 4900, // minor units ($49.00)
-    total_quantity: 100,
-    remaining_quantity: 100,
-    min_per_order: 1,
-    max_per_order: 5,
-    is_hidden: false,
-  };
-  const tier2 = {
-    id: nextTierId++,
-    event_id: seedEvent.id,
-    name: 'Free Community Pass',
-    type: 'FREE',
-    price: 0,
-    total_quantity: 50,
-    remaining_quantity: 50,
-    min_per_order: 1,
-    max_per_order: 2,
-    is_hidden: false,
-  };
-  ticketTiers.set(tier1.id, tier1);
-  ticketTiers.set(tier2.id, tier2);
+  const orderedTiers = [...demoTiers].sort((a, b) => a.id - b.id);
+  for (const tier of orderedTiers) {
+    ticketTiers.set(tier.id, { ...tier });
+  }
+  nextTierId = Math.max(...orderedTiers.map((tier) => tier.id)) + 1;
 
-  // Pre-seed promo code
-  const promo1 = {
-    id: nextPromoId++,
-    event_id: seedEvent.id,
-    code: 'SAVE20',
-    discount_type: 'PERCENTAGE',
-    discount_amount: 20, // 20%
-    max_uses: 50,
-    used_count: 0,
-    is_active: true,
-  };
-  promos.set(promo1.id, promo1);
+  const orderedPromos = [...demoPromos].sort((a, b) => a.id - b.id);
+  for (const promo of orderedPromos) {
+    promos.set(promo.id, { ...promo });
+  }
+  nextPromoId = Math.max(...orderedPromos.map((promo) => promo.id)) + 1;
 
   function stripHtmlTags(str) {
     if (typeof str !== 'string') return str;
@@ -348,6 +315,7 @@ export function createMockServer() {
         }
         list.push({ ...ev, ticket_tiers: tiers });
       }
+      list.sort((a, b) => a.id - b.id);
       return sendJson(200, { events: list });
     }
 
