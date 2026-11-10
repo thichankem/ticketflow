@@ -27,77 +27,81 @@ export const RegisterPage = () => {
   };
 
   return (
-    <section className="card" style={{ maxWidth: '440px', margin: '3rem auto', padding: '2rem' }}>
-      <h1 style={{ fontSize: '1.5rem', fontWeight: 800, textAlign: 'center', marginBottom: '0.5rem' }}>
-        Create an Account
-      </h1>
-      <p style={{ color: 'var(--text-muted)', textAlign: 'center', marginBottom: '1.5rem', fontSize: '0.9rem' }}>
-        Join Hi.Events to buy tickets or host your own events
-      </p>
+    <section className="auth-shell">
+      <div className="auth-brand brand-workshop">
+        <p className="eyebrow">Ticketflow</p>
+        <h1>Join Ticketflow.</h1>
+        <p>Buy a ticket, or open the door for everyone else.</p>
+      </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      <div className="card auth-card">
+        <h2 className="panel-title">Create an Account</h2>
+        <p className="muted">Join Ticketflow to buy tickets or host your own events</p>
 
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="regName">Full Name *</label>
-          <input
-            id="regName"
-            type="text"
-            className="input"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Jane Doe"
-          />
-        </div>
+        {error && <div className="alert alert-error">{error}</div>}
 
-        <div className="form-group">
-          <label htmlFor="regEmail">Email Address *</label>
-          <input
-            id="regEmail"
-            type="email"
-            className="input"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="jane@example.com"
-          />
-        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="regName">Full Name *</label>
+            <input
+              id="regName"
+              type="text"
+              className="input"
+              required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Doe"
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="regPassword">Password *</label>
-          <input
-            id="regPassword"
-            type="password"
-            className="input"
-            required
-            minLength={8}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Min. 8 characters"
-          />
-        </div>
+          <div className="form-group">
+            <label htmlFor="regEmail">Email Address *</label>
+            <input
+              id="regEmail"
+              type="email"
+              className="input"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="jane@example.com"
+            />
+          </div>
 
-        <div className="form-group">
-          <label htmlFor="regRole">I want to...</label>
-          <select
-            id="regRole"
-            className="select"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="ATTENDEE">Attend events & buy tickets</option>
-            <option value="ORGANIZER">Organize & sell event tickets</option>
-          </select>
-        </div>
+          <div className="form-group">
+            <label htmlFor="regPassword">Password *</label>
+            <input
+              id="regPassword"
+              type="password"
+              className="input"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Min. 8 characters"
+            />
+          </div>
 
-        <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '0.75rem' }} disabled={loading}>
-          {loading ? 'Creating Account...' : 'Register'}
-        </button>
-      </form>
+          <div className="form-group">
+            <label htmlFor="regRole">I want to...</label>
+            <select
+              id="regRole"
+              className="select"
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="ATTENDEE">Attend events & buy tickets</option>
+              <option value="ORGANIZER">Organize & sell event tickets</option>
+            </select>
+          </div>
 
-      <div style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.875rem' }}>
-        Already have an account? <Link to="/login" style={{ color: 'var(--primary)', fontWeight: 600 }}>Sign in</Link>
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+            {loading ? 'Creating Account...' : 'Register'}
+          </button>
+        </form>
+
+        <p className="note" style={{ marginTop: '1.25rem' }}>
+          Already have an account? <Link to="/login">Sign in</Link>
+        </p>
       </div>
     </section>
   );

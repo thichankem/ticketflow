@@ -25,12 +25,11 @@ export function App() {
 
   return (
     <>
-      {/* Semantic HTML5 Header & Navigation */}
-      <header>
+      <header className="site-header">
         <div className="header-container">
           <Link to="/" className="logo">
-            <span>🎟️</span>
-            <span>Hi.Events</span>
+            <img src="/ticketflow-mark.svg" alt="" />
+            <span>Ticketflow</span>
           </Link>
 
           <nav>
@@ -40,7 +39,7 @@ export function App() {
 
             {isOrganizer && (
               <NavLink to="/organizer">
-                Organizer Portal
+                Organizer
               </NavLink>
             )}
 
@@ -53,23 +52,23 @@ export function App() {
             <NavLink to="/checkout" className="flex items-center gap-xs">
               <span>Checkout</span>
               {totalCartCount > 0 && (
-                <span className="badge badge-primary" style={{ padding: '0.15rem 0.45rem', fontSize: '0.7rem' }}>
+                <span className="badge badge-primary">
                   {totalCartCount}
                 </span>
               )}
             </NavLink>
 
             {isAuthenticated ? (
-              <div className="flex items-center gap-sm">
-                <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                  {user.name} ({user.role})
+              <div className="nav-actions">
+                <span className="user-chip">
+                  {user.name} · {user.role}
                 </span>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
                   Sign Out
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-sm">
+              <div className="nav-actions">
                 <Link to="/login" className="btn btn-secondary btn-sm">
                   Log In
                 </Link>
@@ -82,7 +81,6 @@ export function App() {
         </div>
       </header>
 
-      {/* Semantic Main View Container */}
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -95,9 +93,14 @@ export function App() {
         </Routes>
       </main>
 
-      {/* Semantic Footer */}
-      <footer>
-        <p>&copy; 2026 Ticketflow Hi.Events Clone. Built with React SPA & Vanilla CSS.</p>
+      <footer className="site-footer">
+        <div className="footer-inner">
+          <div>
+            <div className="footer-brand">Ticketflow</div>
+            <p>Hold a seat for 15 minutes. One barcode per guest.</p>
+          </div>
+          <p>© 2026 Ticketflow</p>
+        </div>
       </footer>
     </>
   );

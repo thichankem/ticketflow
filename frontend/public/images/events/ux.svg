@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="UX Studio Workshop">
+  <rect width="1200" height="640" fill="#fff7ed"/>
+  <rect x="80" y="80" width="420" height="480" rx="24" fill="#0f172a"/>
+  <rect x="120" y="140" width="220" height="18" rx="9" fill="#2dd4bf"/>
+  <rect x="120" y="180" width="300" height="12" rx="6" fill="#94a3b8"/>
+  <rect x="120" y="210" width="260" height="12" rx="6" fill="#64748b"/>
+  <rect x="120" y="280" width="160" height="160" rx="16" fill="#f59e0b"/>
+  <rect x="300" y="280" width="160" height="72" rx="16" fill="#2dd4bf"/>
+  <rect x="300" y="368" width="160" height="72" rx="16" fill="#e2e8f0"/>
+  <text x="560" y="280" fill="#0f172a" font-family="Georgia, serif" font-size="72">UX Studio</text>
+  <text x="560" y="340" fill="#9a3412" font-family="Georgia, serif" font-size="28">Hands-on workshop</text>
+</svg>
