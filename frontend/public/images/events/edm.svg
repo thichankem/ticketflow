@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Midnight EDM Flash Sale">
+  <rect width="1200" height="640" fill="#020617"/>
+  <path d="M0 480 C200 420 200 560 400 500 C600 440 600 580 800 520 C1000 460 1000 580 1200 500 V640 H0Z" fill="#2dd4bf" opacity="0.35"/>
+  <path d="M0 520 C220 470 220 600 440 540 C660 480 680 620 900 560 C1040 520 1100 590 1200 540 V640 H0Z" fill="#f59e0b" opacity="0.45"/>
+  <text x="80" y="240" fill="#ecfeff" font-family="Georgia, serif" font-size="80">Midnight</text>
+  <text x="80" y="320" fill="#2dd4bf" font-family="Georgia, serif" font-size="64">EDM Flash</text>
+  <text x="80" y="380" fill="#fde68a" font-family="Georgia, serif" font-size="28">Limited floor stock</text>
+</svg>

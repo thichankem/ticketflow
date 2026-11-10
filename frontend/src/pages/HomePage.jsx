@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
+import { eventStart, formatDate, money, plainText, startingPrice, toneClass } from '../utils/display';
 
 export const HomePage = () => {
   const [events, setEvents] = useState([]);
@@ -33,14 +34,13 @@ export const HomePage = () => {
 
   return (
     <section>
-      <header className="card" style={{ marginBottom: '2rem', textAlign: 'center', padding: '2.5rem 1rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '0.75rem', color: 'var(--primary)' }}>
-          Discover & Book Extraordinary Events
-        </h1>
-        <p style={{ color: 'var(--text-muted)', maxWidth: '600px', margin: '0 auto 1.5rem auto' }}>
-          Browse premier tech summits, developer conferences, workshops, and community meetups.
+      <header className="hero">
+        <p className="eyebrow">Ticketflow</p>
+        <h1>Find the night. Hold the seat.</h1>
+        <p>
+          Conferences, concerts, and meetups with a 15-minute hold. Search by title or the words in the listing.
         </p>
-        <div style={{ maxWidth: '480px', margin: '0 auto' }}>
+        <div className="hero-search">
           <input
             type="search"
             className="input"
@@ -52,8 +52,8 @@ export const HomePage = () => {
       </header>
 
       {loading && (
-        <div className="flex justify-center" style={{ padding: '3rem' }}>
-          <p style={{ color: 'var(--text-muted)' }}>Loading events...</p>
+        <div className="card loading-state">
+          <p className="muted">Loading events...</p>
         </div>
       )}
 
@@ -64,45 +64,43 @@ export const HomePage = () => {
       )}
 
       {!loading && filteredEvents.length === 0 && (
-        <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>
+        <div className="card empty-state">
           <h3>No events found</h3>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>Check back soon for new scheduled conferences and meetups.</p>
+          <p className="muted">Check back soon for new scheduled conferences and meetups.</p>
+        </div>
+      )}
+
+      {!loading && filteredEvents.length > 0 && (
+        <div className="section-label">
+          <h2>On sale</h2>
+          <span>{filteredEvents.length} listings</span>
         </div>
       )}
 
       <div className="grid-cards">
         {filteredEvents.map(event => {
-          const startingPrice = event.ticket_tiers && event.ticket_tiers.length > 0
-            ? Math.min(...event.ticket_tiers.map(t => t.price))
-            : null;
-
+          const from = startingPrice(event.ticket_tiers);
           return (
-            <article key={event.id} className="card card-hover flex flex-col justify-between">
-              <div>
-                <div className="flex justify-between items-center" style={{ marginBottom: '0.75rem' }}>
-                  <span className="badge badge-success">{event.status}</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {new Date(event.starts_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                  </span>
+            <article key={event.id} className="event-card">
+              <div className={`event-cover ${toneClass(event.category)}`}>
+                {event.cover && <img src={event.cover} alt="" />}
+                <div className="cover-meta">
+                  <span className="status-pill">{event.category || event.status}</span>
+                  <span className="price-chip">{from === null ? 'N/A' : from === 0 ? 'FREE' : `From ${money(from)}`}</span>
                 </div>
-                <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>
-                  {event.title}
-                </h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.25rem', lineClamp: 3 }}>
-                  {event.description?.replace(/<[^>]*>/g, '').slice(0, 140)}...
-                </p>
               </div>
-
-              <div className="flex justify-between items-center" style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem' }}>
-                <div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Starting from</span>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>
-                    {startingPrice === 0 ? 'FREE' : startingPrice !== null ? `$${(startingPrice / 100).toFixed(2)}` : 'N/A'}
-                  </strong>
+              <div className="event-card-body">
+                <div className="meta-row">
+                  <span>{formatDate(eventStart(event))}</span>
+                  <span>{event.location || event.status}</span>
                 </div>
-                <Link to={`/events/${event.id}`} className="btn btn-primary btn-sm">
-                  View Tickets &rarr;
-                </Link>
+                <h3>{event.title}</h3>
+                <p>{plainText(event.description).slice(0, 140)}</p>
+                <div className="card-actions">
+                  <Link to={`/events/${event.id}`} className="btn btn-primary btn-sm">
+                    View Tickets
+                  </Link>
+                </div>
               </div>
             </article>
           );

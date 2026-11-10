@@ -1,37 +1,8 @@
 import { query } from '../config/db.js';
+import { demoTiers } from '../data/demo-catalog.js';
 
-const memoryTiers = new Map();
-let nextTierId = 10;
-
-// Pre-seed sample tiers in memory
-memoryTiers.set(1, {
-  id: 1,
-  event_id: 1,
-  name: 'General Admission',
-  title: 'General Admission',
-  type: 'PAID',
-  tier_type: 'PAID',
-  price: 4900,
-  total_quantity: 100,
-  remaining_quantity: 100,
-  min_per_order: 1,
-  max_per_order: 5,
-  is_hidden: false,
-});
-memoryTiers.set(2, {
-  id: 2,
-  event_id: 1,
-  name: 'Free Community Pass',
-  title: 'Free Community Pass',
-  type: 'FREE',
-  tier_type: 'FREE',
-  price: 0,
-  total_quantity: 50,
-  remaining_quantity: 50,
-  min_per_order: 1,
-  max_per_order: 2,
-  is_hidden: false,
-});
+const memoryTiers = new Map(demoTiers.map((tier) => [tier.id, { ...tier }]));
+let nextTierId = Math.max(...demoTiers.map((tier) => tier.id));
 
 class TicketsService {
   async listByEventId(eventId, includeHidden = false) {

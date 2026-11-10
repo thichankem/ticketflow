@@ -54,7 +54,16 @@ export async function seedDatabase(options = {}) {
         DELETE FROM promo_codes WHERE code IN ('bootstrap10', 'SAVE5');
         DELETE FROM ticket_tiers WHERE title IN ('Free Ticket', 'General Admission', 'VIP Pass');
         DELETE FROM event_settings WHERE support_email = 'support@ticketflow.test';
-        DELETE FROM events WHERE short_id = 'tech-conf-2026';
+        DELETE FROM promo_codes WHERE code IN ('JAZZ15', 'RUN10', 'REEL15', 'HELLO5', 'FLASH30', 'PITCH20', 'UX15');
+        DELETE FROM ticket_tiers WHERE title IN (
+          'Floor Seat', 'Balcony', '10K Bib', 'Half Marathon', 'Single Screening', 'Weekend Pass',
+          'Community Seat', 'Coffee Supporter', 'Dance Floor', 'Mezzanine', 'Audience', 'Founder Badge',
+          'Studio Seat', 'Student Seat'
+        );
+        DELETE FROM events WHERE short_id IN (
+          'tech-conf-2026', 'saigon-jazz-night', 'dalat-marathon', 'indie-film-weekend',
+          'riverside-meetup', 'midnight-edm', 'startup-pitch-night', 'ux-studio-workshop'
+        );
         DELETE FROM organizers WHERE email = 'organizer@ticketflow.test';
         DELETE FROM account_users WHERE user_id IN (
           SELECT id FROM users WHERE email IN ('admin@ticketflow.test', 'organizer@ticketflow.test', 'attendee@ticketflow.test')
@@ -387,6 +396,12 @@ export async function seedDatabase(options = {}) {
     `, [event.id]);
     console.log(`[SEED] Promo Code: '${promoSave5.code}' ($${promoSave5.discount} off) (ID: ${promoSave5.id})`);
 
+    await seedShowcaseEvents(client, {
+      accountId: account.id,
+      organizerId,
+      userId: organizerUser.id,
+    });
+
     await client.query('COMMIT');
 
     // 10. Summary Verification Table
@@ -424,6 +439,173 @@ export async function seedDatabase(options = {}) {
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * Extra showcase events for the catalogue. Dollar prices match this seeder.
+ * Does not touch Tech Conference 2026 or its tiers.
+ */
+async function seedShowcaseEvents(client, { accountId, organizerId, userId }) {
+  const showcase = [
+    {
+      shortId: 'saigon-jazz-night',
+      title: 'Saigon Jazz Night',
+      slug: 'saigon-jazz-night',
+      category: 'MUSIC',
+      location: 'Riverside Hall, Ho Chi Minh City',
+      description: '<p>A seated evening of quartet sets on the Saigon riverfront.</p>',
+      start: '2026-11-21T19:00:00Z',
+      end: '2026-11-21T23:00:00Z',
+      tiers: [
+        { title: 'Floor Seat', price: 35, type: 'PAID', qty: 80, max: 6 },
+        { title: 'Balcony', price: 75, type: 'PAID', qty: 40, max: 4 },
+      ],
+      promo: { code: 'JAZZ15', type: 'PERCENTAGE', discount: 15, uses: 40 },
+    },
+    {
+      shortId: 'dalat-marathon',
+      title: 'Dalat Highland Marathon',
+      slug: 'dalat-highland-marathon',
+      category: 'SPORTS',
+      location: 'Xuan Huong Lake, Dalat',
+      description: '<p>Pine-ridge start and a finish festival in the old market square.</p>',
+      start: '2026-12-15T06:00:00Z',
+      end: '2026-12-15T15:00:00Z',
+      tiers: [
+        { title: '10K Bib', price: 20, type: 'PAID', qty: 200, max: 4 },
+        { title: 'Half Marathon', price: 45, type: 'PAID', qty: 120, max: 2 },
+      ],
+      promo: { code: 'RUN10', type: 'PERCENTAGE', discount: 10, uses: 40 },
+    },
+    {
+      shortId: 'indie-film-weekend',
+      title: 'Indie Film Weekend',
+      slug: 'indie-film-weekend',
+      category: 'FILM',
+      location: 'National Cinema, Hanoi',
+      description: '<p>Four features, two shorts blocks, and a director Q&amp;A.</p>',
+      start: '2027-01-09T08:00:00Z',
+      end: '2027-01-10T22:00:00Z',
+      tiers: [
+        { title: 'Single Screening', price: 12, type: 'PAID', qty: 90, max: 4 },
+        { title: 'Weekend Pass', price: 28, type: 'PAID', qty: 60, max: 4 },
+      ],
+      promo: { code: 'REEL15', type: 'PERCENTAGE', discount: 15, uses: 40 },
+    },
+    {
+      shortId: 'riverside-meetup',
+      title: 'Riverside Community Meetup',
+      slug: 'riverside-community-meetup',
+      category: 'COMMUNITY',
+      location: 'Bach Dang Wharf, Ho Chi Minh City',
+      description: '<p>A free Saturday meetup for neighborhood organizers and first-time speakers.</p>',
+      start: '2026-11-28T09:00:00Z',
+      end: '2026-11-28T13:00:00Z',
+      tiers: [
+        { title: 'Community Seat', price: 0, type: 'FREE', qty: 80, max: 2 },
+        { title: 'Coffee Supporter', price: 10, type: 'DONATION', qty: 40, max: 3 },
+      ],
+      promo: { code: 'HELLO5', type: 'PERCENTAGE', discount: 5, uses: 100 },
+    },
+    {
+      shortId: 'midnight-edm',
+      title: 'Midnight EDM Flash Sale',
+      slug: 'midnight-edm-flash-sale',
+      category: 'MUSIC',
+      location: 'Warehouse 9, District 4',
+      description: '<p>One warehouse, three rooms, and a deliberately small floor allocation.</p>',
+      start: '2026-12-31T22:00:00Z',
+      end: '2027-01-01T04:00:00Z',
+      tiers: [
+        { title: 'Dance Floor', price: 55, type: 'PAID', qty: 30, max: 4 },
+        { title: 'Mezzanine', price: 120, type: 'PAID', qty: 16, max: 2 },
+      ],
+      promo: { code: 'FLASH30', type: 'PERCENTAGE', discount: 30, uses: 20 },
+    },
+    {
+      shortId: 'startup-pitch-night',
+      title: 'Startup Pitch Night',
+      slug: 'startup-pitch-night',
+      category: 'BUSINESS',
+      location: 'The Hive, Da Nang',
+      description: '<p>Eight founders, five minutes each, and a room that stays for the questions.</p>',
+      start: '2027-02-05T18:00:00Z',
+      end: '2027-02-05T21:30:00Z',
+      tiers: [
+        { title: 'Audience', price: 0, type: 'FREE', qty: 100, max: 2 },
+        { title: 'Founder Badge', price: 25, type: 'PAID', qty: 24, max: 2 },
+      ],
+      promo: { code: 'PITCH20', type: 'PERCENTAGE', discount: 20, uses: 40 },
+    },
+    {
+      shortId: 'ux-studio-workshop',
+      title: 'UX Studio Workshop',
+      slug: 'ux-studio-workshop',
+      category: 'DESIGN',
+      location: 'Design Hall, District 1',
+      description: '<p>A full-day critique studio with research walls and a printed take-home brief.</p>',
+      start: '2027-03-12T08:30:00Z',
+      end: '2027-03-12T17:00:00Z',
+      tiers: [
+        { title: 'Studio Seat', price: 89, type: 'PAID', qty: 28, max: 2 },
+        { title: 'Student Seat', price: 45, type: 'PAID', qty: 12, max: 1 },
+      ],
+      promo: { code: 'UX15', type: 'PERCENTAGE', discount: 15, uses: 40 },
+    },
+  ];
+
+  for (const item of showcase) {
+    const { rows: [event] } = await client.query(`
+      INSERT INTO events (
+        short_id, account_id, organizer_id, user_id, title, slug,
+        description, status, type, category, currency, timezone,
+        location, start_date, end_date, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, 'LIVE', 'SINGLE', $8, 'USD', 'Asia/Ho_Chi_Minh',
+        $9, $10, $11, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )
+      ON CONFLICT (short_id) DO UPDATE SET
+        title = EXCLUDED.title,
+        description = EXCLUDED.description,
+        category = EXCLUDED.category,
+        location = EXCLUDED.location,
+        status = 'LIVE',
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id, title;
+    `, [
+      item.shortId, accountId, organizerId, userId, item.title, item.slug,
+      item.description, item.category, item.location, item.start, item.end,
+    ]);
+
+    for (const [index, tier] of item.tiers.entries()) {
+      const { rows: existing } = await client.query(
+        'SELECT id FROM ticket_tiers WHERE event_id = $1 AND title = $2 LIMIT 1;',
+        [event.id, tier.title]
+      );
+      if (existing.length === 0) {
+        await client.query(`
+          INSERT INTO ticket_tiers (
+            event_id, title, price, type, initial_quantity, remaining_quantity,
+            min_per_order, max_per_order, is_hidden, sort_order, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $5, 1, $6, false, $7, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+        `, [event.id, tier.title, tier.price, tier.type, tier.qty, tier.max, index + 1]);
+      }
+    }
+
+    await client.query(`
+      INSERT INTO promo_codes (
+        event_id, code, discount_type, discount, discount_applies_to,
+        max_allowed_usages, order_usage_count, attendee_usage_count, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, 'ORDER', $5, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT (event_id, code) DO UPDATE SET
+        discount = EXCLUDED.discount,
+        discount_type = EXCLUDED.discount_type,
+        updated_at = CURRENT_TIMESTAMP;
+    `, [event.id, item.promo.code, item.promo.type, item.promo.discount, item.promo.uses]);
+
+    console.log(`[SEED] Showcase event: ${event.title} (ID: ${event.id})`);
   }
 }
 

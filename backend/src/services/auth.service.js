@@ -240,9 +240,11 @@ class AuthService {
         gross_sales: 125000,
       };
     } catch {
+      const { default: eventsService } = await import('./events.service.js');
+      const events = await eventsService.listEvents();
       return {
         total_users: memoryUsers.size,
-        total_events: 1,
+        total_events: events.length,
         total_orders: 1,
         gross_sales: 125000,
       };

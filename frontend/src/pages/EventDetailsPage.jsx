@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import DOMPurify from 'dompurify';
 import { api } from '../services/api';
 import { useCart } from '../context/CartContext';
+import { formatRange, money, toneClass } from '../utils/display';
 
 export const EventDetailsPage = () => {
   const { id } = useParams();
@@ -58,7 +59,7 @@ export const EventDetailsPage = () => {
   };
 
   if (loading) {
-    return <div className="card" style={{ textAlign: 'center', padding: '3rem' }}>Loading event details...</div>;
+    return <div className="card loading-state">Loading event details...</div>;
   }
 
   if (error && !event) {
@@ -74,39 +75,32 @@ export const EventDetailsPage = () => {
 
   return (
     <article>
-      {/* Event Header Banner */}
-      <header className="card" style={{ marginBottom: '2rem' }}>
-        <div className="flex justify-between items-center" style={{ marginBottom: '1rem' }}>
+      <header className={`event-banner ${toneClass(event.category)}`}>
+        {event.cover && <img src={event.cover} alt="" />}
+        <div className="event-banner-copy">
           <span className="badge badge-success">{event.status}</span>
-          <span style={{ color: 'var(--text-muted)' }}>
-            {new Date(event.starts_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} &ndash;{' '}
-            {new Date(event.ends_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-          </span>
+          <h1>{event.title}</h1>
+          <div className="banner-facts">
+            <span>{formatRange(event)}</span>
+            {event.location && <span>{event.location}</span>}
+          </div>
         </div>
-        <h1 style={{ fontSize: '2.25rem', fontWeight: 800, marginBottom: '1rem', color: '#111827' }}>
-          {event.title}
-        </h1>
       </header>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="flex flex-responsive gap-xl" style={{ alignItems: 'flex-start' }}>
-        {/* Left Column: Event Description (Sanitized) */}
-        <section className="card flex-1">
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem' }}>About this Event</h2>
-          <div
-            style={{ color: 'var(--text-main)', lineHeight: '1.7' }}
-            dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
-          />
+      <div className="split">
+        <section className="card flex-1 prose">
+          <h2>About this Event</h2>
+          <div dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
         </section>
 
-        {/* Right Column: Ticket Selector & Checkout Box */}
-        <aside className="card" style={{ width: '100%', maxWidth: '420px', position: 'sticky', top: '5rem' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.25rem' }}>Select Tickets</h2>
+        <aside className="card ticket-panel">
+          <h2 className="panel-title">Select Tickets</h2>
 
-          <div className="flex flex-col gap-md" style={{ marginBottom: '1.5rem' }}>
+          <div className="stack">
             {(!event.ticket_tiers || event.ticket_tiers.length === 0) && (
-              <p style={{ color: 'var(--text-muted)' }}>No tickets currently available for this event.</p>
+              <p className="muted">No tickets currently available for this event.</p>
             )}
 
             {event.ticket_tiers?.map(tier => {
@@ -115,35 +109,22 @@ export const EventDetailsPage = () => {
               const isSoldOut = tier.remaining_quantity <= 0;
 
               return (
-                <div
-                  key={tier.id}
-                  style={{
-                    border: '1px solid var(--border-color)',
-                    borderRadius: 'var(--border-radius)',
-                    padding: '1rem',
-                    backgroundColor: isSoldOut ? '#f9fafb' : '#ffffff',
-                  }}
-                >
-                  <div className="flex justify-between items-start" style={{ marginBottom: '0.5rem' }}>
+                <div key={tier.id} className={`tier ${isSoldOut ? 'is-sold' : ''}`}>
+                  <div className="tier-top">
                     <div>
-                      <strong style={{ display: 'block', fontSize: '1rem' }}>{tier.name || tier.title}</strong>
-                      <span style={{ fontSize: '0.8rem', color: isSoldOut ? 'var(--danger)' : 'var(--text-muted)' }}>
+                      <div className="tier-name">{tier.name || tier.title}</div>
+                      <span className={isSoldOut ? 'sold' : 'muted'}>
                         {isSoldOut ? 'Sold Out' : `${tier.remaining_quantity} remaining`}
                       </span>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <strong style={{ fontSize: '1.1rem', color: 'var(--primary)' }}>
-                        {tier.price === 0 ? 'FREE' : `$${(tier.price / 100).toFixed(2)}`}
-                      </strong>
-                    </div>
+                    <div className="tier-price">{money(tier.price)}</div>
                   </div>
 
                   {!isSoldOut && (
-                    <div className="flex items-center justify-between" style={{ marginTop: '0.75rem' }}>
-                      <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Quantity:</label>
+                    <div className="qty-row">
+                      <label>Quantity</label>
                       <select
-                        className="select"
-                        style={{ width: 'auto', padding: '0.35rem 0.75rem' }}
+                        className="select select-compact"
                         value={currentQty}
                         onChange={(e) => updateQuantity(tier, e.target.value)}
                       >
@@ -159,47 +140,37 @@ export const EventDetailsPage = () => {
             })}
           </div>
 
-          {/* Promo Code Form */}
-          <form onSubmit={handleApplyPromo} style={{ marginBottom: '1.5rem' }}>
-            <div className="flex gap-sm">
-              <input
-                type="text"
-                className="input"
-                placeholder="Promo Code (e.g. SAVE20)"
-                value={promoInput}
-                onChange={(e) => setPromoInput(e.target.value)}
-              />
-              <button type="submit" className="btn btn-secondary btn-sm" style={{ whiteSpace: 'nowrap' }}>
-                Apply
-              </button>
-            </div>
-            {promoStatus && (
-              <span style={{ fontSize: '0.8rem', display: 'block', marginTop: '0.35rem', color: promoStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)' }}>
-                {promoStatus}
-              </span>
-            )}
+          <form onSubmit={handleApplyPromo} className="promo-row" style={{ marginTop: '1rem' }}>
+            <input
+              type="text"
+              className="input"
+              placeholder="Promo Code (e.g. SAVE20)"
+              value={promoInput}
+              onChange={(e) => setPromoInput(e.target.value)}
+            />
+            <button type="submit" className="btn btn-secondary btn-sm">
+              Apply
+            </button>
           </form>
+          {promoStatus && (
+            <span className={`note ${promoStatus.startsWith('Error') ? 'bad' : 'good'}`}>
+              {promoStatus}
+            </span>
+          )}
 
-          {/* Order Summary Calculations */}
-          <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginBottom: '1.5rem' }}>
-            {discountAmount > 0 && (
-              <div className="flex justify-between" style={{ color: 'var(--success)', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
-                <span>Discount ({promoCode})</span>
-                <span>-${(discountAmount / 100).toFixed(2)}</span>
-              </div>
-            )}
-            <div className="flex justify-between items-center">
-              <span style={{ fontSize: '1rem', fontWeight: 600 }}>Total</span>
-              <strong style={{ fontSize: '1.5rem', color: 'var(--primary)' }}>
-                ${(total / 100).toFixed(2)}
-              </strong>
+          <div className="total-row">
+            <div>
+              {discountAmount > 0 && (
+                <div className="note good">Discount ({promoCode}) −${(discountAmount / 100).toFixed(2)}</div>
+              )}
+              <span>Total</span>
             </div>
+            <strong>${(total / 100).toFixed(2)}</strong>
           </div>
 
           <button
             type="button"
-            className="btn btn-primary"
-            style={{ width: '100%', padding: '0.875rem' }}
+            className="btn btn-primary btn-block"
             disabled={totalTicketsSelected === 0 || reserving}
             onClick={handleReserve}
           >

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Global Tech Summit">
+  <rect width="1200" height="640" fill="#042f2e"/>
+  <circle cx="860" cy="320" r="260" fill="#0f766e"/>
+  <circle cx="980" cy="180" r="140" fill="#2dd4bf"/>
+  <circle cx="1040" cy="420" r="90" fill="#f59e0b"/>
+  <rect x="90" y="150" width="36" height="340" rx="8" fill="#99f6e4"/>
+  <rect x="150" y="230" width="36" height="260" rx="8" fill="#fde68a"/>
+  <rect x="210" y="120" width="36" height="370" rx="8" fill="#2dd4bf"/>
+  <rect x="270" y="200" width="36" height="290" rx="8" fill="#fff"/>
+  <text x="360" y="300" fill="#ecfeff" font-family="Georgia, serif" font-size="78">Summit</text>
+  <text x="360" y="360" fill="#99f6e4" font-family="Georgia, serif" font-size="28">San Francisco 2026</text>
+</svg>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Startup Pitch Night">
+  <rect width="1200" height="640" fill="#1e1b4b"/>
+  <polygon points="760,120 1080,520 440,520" fill="#2dd4bf" opacity="0.9"/>
+  <polygon points="760,200 980,480 540,480" fill="#0f172a"/>
+  <text x="72" y="220" fill="#e0e7ff" font-family="Georgia, serif" font-size="68">Pitch Night</text>
+  <text x="72" y="280" fill="#a5b4fc" font-family="Georgia, serif" font-size="28">Founders · Da Nang</text>
+</svg>

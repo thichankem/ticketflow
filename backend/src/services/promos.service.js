@@ -1,19 +1,8 @@
 import { query } from '../config/db.js';
+import { demoPromos } from '../data/demo-catalog.js';
 
-const memoryPromos = new Map();
-let nextPromoId = 10;
-
-// Pre-seed sample promo
-memoryPromos.set(1, {
-  id: 1,
-  event_id: 1,
-  code: 'SAVE20',
-  discount_type: 'PERCENTAGE',
-  discount_amount: 20,
-  max_uses: 50,
-  used_count: 0,
-  is_active: true,
-});
+const memoryPromos = new Map(demoPromos.map((promo) => [promo.id, { ...promo }]));
+let nextPromoId = Math.max(...demoPromos.map((promo) => promo.id));
 
 function stripHtml(str) {
   if (typeof str !== 'string') return str;
