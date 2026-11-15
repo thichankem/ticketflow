@@ -1,0 +1,421 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { api } from '../services/api';
+import { eventStart, formatDate, money, plainText, startingPrice, toneClass, EVENT_CATEGORIES } from '../utils/display';
+import { VIETNAM_PROVINCES } from '../utils/location';
+
+const CATEGORIES = EVENT_CATEGORIES;
+
+export const EventsPage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Initial state from URL params
+  const initialCategory = searchParams.get('category') || 'ALL';
+  const initialSearch = searchParams.get('search') || searchParams.get('q') || '';
+  const initialProvince = searchParams.get('province') || 'ALL';
+
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Filters & Sorting
+  const [search, setSearch] = useState(initialSearch);
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [selectedProvinceFilter, setSelectedProvinceFilter] = useState(initialProvince);
+  const [sortBy, setSortBy] = useState('date_asc'); // 'date_asc' | 'date_desc' | 'price_asc' | 'price_desc' | 'title_asc'
+  const [visibleCount, setVisibleCount] = useState(12);
+
+  // Toast feedback
+  const [notificationState, setNotificationState] = useState(null);
+
+  // Favorites from localStorage
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('tf_favorites') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const showToast = (message) => {
+    setNotificationState(message);
+    setTimeout(() => {
+      setNotificationState(null);
+    }, 3500);
+  };
+
+  // Toggle favorite / Thả tim
+  const toggleFavorite = (eventId, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFavorites((prev) => {
+      const isFav = prev.includes(eventId);
+      const next = isFav ? prev.filter((id) => id !== eventId) : [...prev, eventId];
+      localStorage.setItem('tf_favorites', JSON.stringify(next));
+      showToast(isFav ? 'Đã xóa sự kiện khỏi danh sách quan tâm' : '❤️ Đã lưu sự kiện! Hệ thống sẽ thông báo khi vé mở bán.');
+      return next;
+    });
+  };
+
+  // Sync params with URL when filter changes
+  const updateUrlParam = (key, value) => {
+    const nextParams = new URLSearchParams(searchParams);
+    if (!value || value === 'ALL') {
+      nextParams.delete(key);
+    } else {
+      nextParams.set(key, value);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleCategoryChange = (catId) => {
+    setSelectedCategory(catId);
+    setVisibleCount(12);
+    updateUrlParam('category', catId);
+  };
+
+  const handleSearchChange = (val) => {
+    setSearch(val);
+    setVisibleCount(12);
+    updateUrlParam('search', val);
+  };
+
+  const handleProvinceChange = (prov) => {
+    setSelectedProvinceFilter(prov);
+    setVisibleCount(12);
+    updateUrlParam('province', prov);
+  };
+
+  const handleResetFilters = () => {
+    setSearch('');
+    setSelectedCategory('ALL');
+    setSelectedProvinceFilter('ALL');
+    setSortBy('date_asc');
+    setVisibleCount(12);
+    setSearchParams({}, { replace: true });
+  };
+
+  // Fetch events
+  useEffect(() => {
+    let isMounted = true;
+    const fetchEvents = async () => {
+      try {
+        setLoading(true);
+        const res = await api.events.list();
+        if (isMounted) {
+          const list = Array.isArray(res) ? res : res?.events || [];
+          setEvents(list);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message || 'Không thể tải danh sách sự kiện.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchEvents();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Filter & Sort Logic
+  const filteredEvents = useMemo(() => {
+    let list = events.filter((ev) => {
+      const query = search.trim().toLowerCase();
+      const matchesSearch =
+        !query ||
+        (ev.title && ev.title.toLowerCase().includes(query)) ||
+        (ev.description && ev.description.toLowerCase().includes(query)) ||
+        (ev.location && ev.location.toLowerCase().includes(query));
+
+      const matchesCategory =
+        selectedCategory === 'ALL' ||
+        (ev.category && ev.category.toLowerCase() === selectedCategory.toLowerCase());
+
+      const matchesProvince =
+        selectedProvinceFilter === 'ALL' ||
+        (ev.location && ev.location.toLowerCase().includes(selectedProvinceFilter.toLowerCase()));
+
+      return matchesSearch && matchesCategory && matchesProvince;
+    });
+
+    // Sorting
+    list = [...list].sort((a, b) => {
+      if (sortBy === 'date_asc') {
+        const da = new Date(eventStart(a) || 0).getTime();
+        const db = new Date(eventStart(b) || 0).getTime();
+        return da - db;
+      }
+      if (sortBy === 'date_desc') {
+        const da = new Date(eventStart(a) || 0).getTime();
+        const db = new Date(eventStart(b) || 0).getTime();
+        return db - da;
+      }
+      if (sortBy === 'price_asc') {
+        const pa = startingPrice(a.ticket_tiers || a.tiers) ?? 999999999;
+        const pb = startingPrice(b.ticket_tiers || b.tiers) ?? 999999999;
+        return pa - pb;
+      }
+      if (sortBy === 'price_desc') {
+        const pa = startingPrice(a.ticket_tiers || a.tiers) ?? -1;
+        const pb = startingPrice(b.ticket_tiers || b.tiers) ?? -1;
+        return pb - pa;
+      }
+      if (sortBy === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      return 0;
+    });
+
+    return list;
+  }, [events, search, selectedCategory, selectedProvinceFilter, sortBy]);
+
+  const displayedEvents = filteredEvents.slice(0, visibleCount);
+
+  return (
+    <div className="home-container pt-lg pb-4xl">
+      /* Toast Notification */
+      {notificationState && (
+        <div className="toast-floating flex items-center gap-sm">
+          <span>{notificationState}</span>
+        </div>
+      )}
+
+      {/* Breadcrumb Navigation */}
+      <nav className="breadcrumb-nav">
+        <Link to="/" className="text-muted no-underline">Trang chủ</Link>
+        <span>/</span>
+        <span className="text-ink font-semibold">Tất cả sự kiện</span>
+      </nav>
+
+      {/* Search Bar & Quick Filters */}
+      <div className="hero-search-wrapper mb-175">
+        <div className="hero-search-field">
+          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="search"
+            className="hero-search-input"
+            placeholder="Tìm theo tên sự kiện, nghệ sĩ, ca sĩ, ban nhạc hoặc địa điểm..."
+            value={search}
+            onChange={(e) => handleSearchChange(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="btn-clear-search"
+              title="Xóa tìm kiếm"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="hero-location-picker">
+          <svg className="pin-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          <select
+            value={selectedProvinceFilter}
+            onChange={(e) => handleProvinceChange(e.target.value)}
+            className="location-select"
+            title="Lọc sự kiện theo tỉnh/thành"
+          >
+            <option value="ALL">Toàn quốc (Tất cả tỉnh/thành)</option>
+            {VIETNAM_PROVINCES.map((prov) => (
+              <option key={prov.code} value={prov.name}>
+                {prov.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Category Pills Navigation */}
+      <nav className="category-scroll-nav mb-xl" aria-label="Lọc theo thể loại sự kiện">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            className={`category-pill ${selectedCategory === cat.id ? 'active' : ''}`}
+            onClick={() => handleCategoryChange(cat.id)}
+          >
+            <span>{cat.icon}</span> {cat.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Catalog Header Section Matching Screenshot */}
+      <div className="section-header-row section-header-flex">
+        <div>
+          <h1
+            className="section-title catalog-title"
+          >
+            {selectedCategory === 'ALL'
+              ? 'Tất cả sự kiện đang mở bán'
+              : `Sự kiện: ${CATEGORIES.find((c) => c.id === selectedCategory)?.label || selectedCategory}`}
+          </h1>
+          <p
+            className="results-count results-count-text"
+          >
+            Tìm thấy {filteredEvents.length} sự kiện
+          </p>
+        </div>
+
+        <div className="flex items-center gap-md flex-wrap">
+          {/* Sorting Dropdown */}
+          <div className="flex items-center gap-xs">
+            <span className="muted text-sm font-semibold">Sắp xếp:</span>
+            <select
+              className="select select-compact"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+            >
+              <option value="date_asc">Sắp diễn ra</option>
+              <option value="date_desc">Mới cập nhật</option>
+              <option value="price_asc">Giá vé: Thấp đến Cao</option>
+              <option value="price_desc">Giá vé: Cao đến Thấp</option>
+              <option value="title_asc">Tên A-Z</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Loading state */}
+      {loading && (
+        <div className="card loading-state">
+          <div className="spinner" />
+          <p className="muted">Đang tải danh sách sự kiện...</p>
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div className="alert alert-error">
+          Không thể tải danh mục sự kiện: {error}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !error && filteredEvents.length === 0 && (
+        <div className="card empty-state empty-state-dashed">
+          <div className="empty-icon empty-state-card-icon">🎪</div>
+          <h3 className="empty-state-card-heading">
+            {events.length === 0 ? 'Chưa có sự kiện nào được đăng tải' : 'Không tìm thấy sự kiện phù hợp'}
+          </h3>
+          <p className="muted empty-state-card-desc">
+            {events.length === 0
+              ? 'Hệ thống hiện tại chưa có sự kiện nào đang mở bán. Hãy trở thành Nhà tổ chức để khởi tạo sự kiện đầu tiên của bạn!'
+              : 'Hãy thử thay đổi từ khóa tìm kiếm, chọn thể loại khác hoặc chuyển khu vực sang Toàn quốc.'}
+          </p>
+          <div className="flex gap-sm justify-center flex-wrap">
+            {events.length === 0 ? (
+              <Link to="/organizer" className="btn btn-primary btn-pill">
+                + Tạo sự kiện ngay
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm btn-pill-sm"
+                onClick={handleResetFilters}
+              >
+                Xóa bộ lọc
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Grid of Event Cards Matching User's Image */}
+      {!loading && displayedEvents.length > 0 && (
+        <div className="grid-cards">
+          {displayedEvents.map((event) => {
+            const from = startingPrice(event.ticket_tiers || event.tiers);
+            const isFav = favorites.includes(event.id);
+
+            return (
+              <article key={event.id} className="event-card">
+                <div className={`event-cover ${toneClass(event.category)}`}>
+                  {event.cover && <img src={event.cover} alt={event.title} loading="lazy" />}
+                  <div className="cover-meta">
+                    <span className="status-pill">{event.category || event.status}</span>
+                    <span className="price-chip">
+                      {from === null ? 'Đang cập nhật' : from === 0 ? 'MIỄN PHÍ' : `Từ ${money(from)}`}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className={`btn-favorite ${isFav ? 'active' : ''}`}
+                    onClick={(e) => toggleFavorite(event.id, e)}
+                    title={isFav ? 'Bỏ thích' : 'Thả tim để nhận thông báo'}
+                    aria-label="Thả tim sự kiện"
+                  >
+                    ♥
+                  </button>
+                </div>
+
+                <div className="event-card-body">
+                  <div className="meta-row">
+                    <span className="event-date-chip">📅 {formatDate(eventStart(event))}</span>
+                    <span className="location-chip">📍 {event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
+                  </div>
+
+                  <h3 className="event-title">
+                    <Link to={`/events/${event.id}`}>{event.title}</Link>
+                  </h3>
+
+                  <p className="event-excerpt">
+                    {plainText(event.description).slice(0, 130)}...
+                  </p>
+
+                  <div className="card-actions">
+                    <Link to={`/events/${event.id}`} className="btn btn-primary btn-sm btn-block">
+                      <span>Xem vé & Chi tiết</span>
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Pagination & Load More */}
+      {!loading && visibleCount < filteredEvents.length && (
+        <div className="pagination-bar text-center mt-2xl">
+          <p className="muted text-sm mb-085">
+            Đang hiển thị {displayedEvents.length} trên tổng số {filteredEvents.length} sự kiện
+          </p>
+          <div className="flex justify-center gap-sm flex-wrap">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setVisibleCount((prev) => prev + 12)}
+            >
+              + Xem thêm 12 sự kiện
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setVisibleCount(filteredEvents.length)}
+            >
+              Xem tất cả ({filteredEvents.length})
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default EventsPage;

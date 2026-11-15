@@ -1,8 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="vi">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        const theme = localStorage.getItem('tf_theme') || 'system';
+        const metaEl = document.querySelector('meta[name="color-scheme"]');
+        if (theme === 'dark') {
+          if (metaEl) metaEl.content = 'dark';
+          document.documentElement.setAttribute('data-theme', 'dark');
+        } else if (theme === 'light') {
+          if (metaEl) metaEl.content = 'light';
+          document.documentElement.setAttribute('data-theme', 'light');
+        } else {
+          if (metaEl) metaEl.content = 'light dark';
+          document.documentElement.removeAttribute('data-theme');
+        }
+        const lang = localStorage.getItem('tf_lang') || 'vi';
+        document.documentElement.lang = lang;
+      } catch {}
+    </script>
     <title>Ticketflow</title>
     <link rel="icon" type="image/svg+xml" href="/ticketflow-mark.svg" />
   </head>

@@ -40,8 +40,8 @@ app.use('/api', apiRouter);
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
 
-  app.get(['/', '/events*', '/checkout*', '/admin*', '/login*', '/register*'], (req, res, next) => {
-    if (req.path.startsWith('/api')) {
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || path.extname(req.path)) {
       return next();
     }
     const indexHtmlPath = path.join(distPath, 'index.html');

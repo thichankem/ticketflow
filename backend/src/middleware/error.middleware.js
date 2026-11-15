@@ -7,6 +7,7 @@ export const centralizedErrorHandler = (err, req, res, next) => {
   res.status(statusCode).json({
     error: err.name || 'Error',
     message,
+    ...(err.code && { code: err.code }),
     ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
   });
 };

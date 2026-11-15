@@ -1,6 +1,6 @@
 {
-  "name": "Hi.Events",
-  "short_name": "Hi.Events",
+  "name": "TicketFlow",
+  "short_name": "TicketFlow",
   "icons": [
     {
       "src": "/manifest-icons/favicon-48x48.png",

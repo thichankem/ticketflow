@@ -30,22 +30,37 @@ export const CartProvider = ({ children }) => {
       setRemainingSeconds(remaining);
       if (remaining <= 0) {
         clearInterval(interval);
+        // Automatically release backend inventory when timer expires
+        if (activeOrder?.id) {
+          api.post(`/orders/${activeOrder.id}/cancel`, {}).catch(() => {});
+        }
         setActiveOrder(null);
         setExpiresAt(null);
       }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [expiresAt]);
+  }, [expiresAt, activeOrder]);
 
   const updateQuantity = (tier, quantity) => {
     const qty = parseInt(quantity, 10);
     setCartItems(prev => {
       const filtered = prev.filter(item => item.tier.id !== tier.id);
+      let updated = filtered;
       if (qty > 0) {
-        return [...filtered, { tier, quantity: qty }];
+        updated = [...filtered, { tier, quantity: qty }];
       }
-      return filtered;
+      // Recalculate promo discount against updated subtotal
+      if (appliedPromo) {
+        const newSub = updated.reduce((sum, item) => sum + (item.tier.price * item.quantity), 0);
+        const discountVal = Number(appliedPromo.discount ?? appliedPromo.discount_amount ?? 0);
+        if (appliedPromo.discount_type === 'PERCENTAGE') {
+          setDiscountAmount(Math.floor((newSub * discountVal) / 100));
+        } else {
+          setDiscountAmount(Math.min(newSub, discountVal));
+        }
+      }
+      return updated;
     });
   };
 
@@ -92,7 +107,7 @@ export const CartProvider = ({ children }) => {
     return res;
   };
 
-  const finalizeCheckout = async (orderId, buyer, attendees, paymentMethod = 'OFFLINE') => {
+  const finalizeCheckout = async (orderId, buyer, attendees, paymentMethod = 'CARD') => {
     const res = await api.post(`/orders/${orderId}/checkout`, {
       buyer,
       attendees,

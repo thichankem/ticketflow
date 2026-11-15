@@ -74,6 +74,15 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const switchDemoRole = async (targetRole) => {
+    let email = 'attendee@ticketflow.local';
+    if (targetRole === 'ADMIN') email = 'admin@ticketflow.local';
+    else if (targetRole === 'ORGANIZER') email = 'organizer@ticketflow.local';
+    else email = 'attendee@ticketflow.local';
+
+    return await login(email, 'password123');
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -83,10 +92,12 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: !!user,
         isAdmin: user?.role === 'ADMIN',
         isOrganizer: user?.role === 'ORGANIZER' || user?.role === 'ADMIN',
+        isAttendee: !user || user?.role === 'ATTENDEE',
         loading,
         login,
         register,
         logout,
+        switchDemoRole,
       }}
     >
       {children}

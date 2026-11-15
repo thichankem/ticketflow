@@ -1,7 +1,23 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Startup Pitch Night">
-  <rect width="1200" height="640" fill="#1e1b4b"/>
-  <polygon points="760,120 1080,520 440,520" fill="#2dd4bf" opacity="0.9"/>
-  <polygon points="760,200 980,480 540,480" fill="#0f172a"/>
-  <text x="72" y="220" fill="#e0e7ff" font-family="Georgia, serif" font-size="68">Pitch Night</text>
-  <text x="72" y="280" fill="#a5b4fc" font-family="Georgia, serif" font-size="28">Founders · Da Nang</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Business & Startup Pitch Abstract Cover">
+  <defs>
+    <linearGradient id="pitch-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="60%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="growth-arrow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#c084fc"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="640" fill="url(#pitch-bg)"/>
+  <!-- Upward Trend Chart Polygons -->
+  <polygon points="0,640 200,520 440,560 680,380 940,420 1200,210 1200,640" fill="url(#growth-arrow)" opacity="0.15"/>
+  <path d="M0,520 L200,420 L440,460 L680,280 L940,320 L1200,110" fill="none" stroke="url(#growth-arrow)" stroke-width="6" opacity="0.8"/>
+  <circle cx="200" cy="420" r="10" fill="#38bdf8"/>
+  <circle cx="440" cy="460" r="10" fill="#818cf8"/>
+  <circle cx="680" cy="280" r="12" fill="#a855f7"/>
+  <circle cx="940" cy="320" r="12" fill="#c084fc"/>
+  <circle cx="1200" cy="110" r="16" fill="#e0e7ff"/>
 </svg>

@@ -6,10 +6,11 @@
 
 const ALLOWED_TAGS = new Set([
   'b', 'i', 'em', 'strong', 'a', 'p', 'br',
-  'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span'
+  'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span',
+  'img', 'blockquote', 'code', 'pre', 'div', 'hr'
 ]);
 
-const ALLOWED_ATTRS = new Set(['href', 'title', 'target', 'class']);
+const ALLOWED_ATTRS = new Set(['href', 'src', 'alt', 'title', 'target', 'class', 'width', 'height', 'loading']);
 
 export function sanitizeString(val) {
   if (typeof val !== 'string') return val;
@@ -27,7 +28,6 @@ export function sanitizeString(val) {
       .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
       .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
       .replace(/javascript:[^"'\s]*/gi, '')
-      .replace(/<img[^>]*>/gi, '')
       .replace(/on\w+\s*=\s*(?:[^\s>]+|"[^"]*"|'[^']*')/gi, '');
   } while (str !== prev);
 
@@ -49,7 +49,7 @@ export function sanitizeString(val) {
         const attrName = m[1].toLowerCase();
         const attrVal = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
         if (ALLOWED_ATTRS.has(attrName)) {
-          if (attrName === 'href' && /^\s*javascript:/i.test(attrVal)) {
+          if ((attrName === 'href' || attrName === 'src') && /^\s*(javascript:|data:\s*text\/html)/i.test(attrVal)) {
             continue;
           }
           cleanAttrs.push(`${attrName}="${attrVal.replace(/"/g, '&quot;')}"`);

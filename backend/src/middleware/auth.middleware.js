@@ -1,71 +1,65 @@
-import jwt from 'jsonwebtoken';
+import authService from '../services/auth.service.js';
+import {
+  JWT_ACCESS_SECRET,
+  JWT_REFRESH_SECRET,
+  generateAccessToken,
+  generateRefreshToken,
+  decodeToken,
+  verifyRefreshToken,
+} from '../utils/token.js';
 
-export const JWT_ACCESS_SECRET = process.env.JWT_SECRET || 'ticketflow-access-secret-key-2026';
-export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'ticketflow-refresh-secret-key-2026';
-
-export const generateAccessToken = (payload) => {
-  return jwt.sign(payload, JWT_ACCESS_SECRET, { expiresIn: '15m' });
-};
-
-export const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: '7d' });
-};
-
-/**
- * Extracts and decodes token from Authorization header.
- * Supports both standard JWT and base64 JSON tokens (for testing suite compatibility).
- */
-export const decodeToken = (token) => {
-  if (!token) return null;
-  // Try JWT verify with access secret
-  try {
-    return jwt.verify(token, JWT_ACCESS_SECRET);
-  } catch {
-    try {
-      return jwt.verify(token, JWT_REFRESH_SECRET);
-    } catch {
-      // Fallback: try base64 JSON
-      try {
-        const jsonStr = Buffer.from(token, 'base64').toString('utf8');
-        const parsed = JSON.parse(jsonStr);
-        if (parsed && (parsed.id || parsed.email)) {
-          return parsed;
-        }
-      } catch {
-        return null;
-      }
-    }
-  }
-  return null;
+// Re-export token utilities for backward compatibility
+export {
+  JWT_ACCESS_SECRET,
+  JWT_REFRESH_SECRET,
+  generateAccessToken,
+  generateRefreshToken,
+  decodeToken,
+  verifyRefreshToken,
 };
 
 export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+    return res.status(401).json({
+      error: 'Unauthorized: Missing or invalid token',
+      code: 'AUTH_TOKEN_INVALID',
+      details: null,
+    });
   }
 
   const token = authHeader.substring(7);
   const decoded = decodeToken(token);
 
-  if (!decoded || !decoded.id) {
-    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+  if (!decoded || !decoded.id || decoded.type === 'refresh' || (decoded.type && decoded.type !== 'access')) {
+    return res.status(401).json({
+      error: 'Unauthorized: Invalid or expired access token',
+      code: 'AUTH_TOKEN_INVALID',
+      details: null,
+    });
   }
 
   try {
-    const { default: authService } = await import('../services/auth.service.js');
     const user = await authService.getUserById(decoded.id);
     if (!user || user.is_active === false) {
-      return res.status(401).json({ error: 'Unauthorized: Account suspended or non-existent' });
+      return res.status(401).json({
+        error: 'Unauthorized: Account suspended or non-existent',
+        code: 'AUTH_TOKEN_INVALID',
+        details: null,
+      });
     }
 
     req.user = {
       ...user,
-      role: decoded.role || user.role,
+      role: user.role,
     };
     next();
-  } catch (err) {
-    return res.status(401).json({ error: 'Unauthorized: User lookup failed' });
+  } catch {
+    return res.status(401).json({
+      error: 'Unauthorized: User lookup failed',
+      code: 'AUTH_TOKEN_INVALID',
+      details: null,
+    });
   }
 };
 
@@ -74,12 +68,11 @@ export const optionalAuthenticateToken = async (req, res, next) => {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.substring(7);
     const decoded = decodeToken(token);
-    if (decoded && decoded.id) {
+    if (decoded && decoded.id && decoded.type === 'access') {
       try {
-        const { default: authService } = await import('../services/auth.service.js');
         const user = await authService.getUserById(decoded.id);
         if (user && user.is_active !== false) {
-          req.user = { ...user, role: decoded.role || user.role };
+          req.user = { ...user, role: user.role };
         }
       } catch {
         // ignore
@@ -95,6 +88,7 @@ export default {
   generateAccessToken,
   generateRefreshToken,
   decodeToken,
+  verifyRefreshToken,
   authenticateToken,
   optionalAuthenticateToken,
 };

@@ -10,18 +10,10 @@ export default defineConfig({
   root: __dirname,
   plugins: [react()],
   resolve: {
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['react', 'react-dom', 'react-router-dom'],
   },
   optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react-dom/client',
-      'react/jsx-runtime',
-      'react/jsx-dev-runtime',
-      'react-router-dom',
-      'dompurify',
-    ],
+    include: ['react', 'react-dom', 'react-router-dom', 'dompurify', 'qrcode'],
   },
   server: {
     port: 5173,

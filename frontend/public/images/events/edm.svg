@@ -1,8 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Midnight EDM Flash Sale">
-  <rect width="1200" height="640" fill="#020617"/>
-  <path d="M0 480 C200 420 200 560 400 500 C600 440 600 580 800 520 C1000 460 1000 580 1200 500 V640 H0Z" fill="#2dd4bf" opacity="0.35"/>
-  <path d="M0 520 C220 470 220 600 440 540 C660 480 680 620 900 560 C1040 520 1100 590 1200 540 V640 H0Z" fill="#f59e0b" opacity="0.45"/>
-  <text x="80" y="240" fill="#ecfeff" font-family="Georgia, serif" font-size="80">Midnight</text>
-  <text x="80" y="320" fill="#2dd4bf" font-family="Georgia, serif" font-size="64">EDM Flash</text>
-  <text x="80" y="380" fill="#fde68a" font-family="Georgia, serif" font-size="28">Limited floor stock</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Electronic Music & Festival Abstract Cover">
+  <defs>
+    <linearGradient id="edm-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e053a"/>
+      <stop offset="50%" stop-color="#3b0764"/>
+      <stop offset="100%" stop-color="#0b0217"/>
+    </linearGradient>
+    <linearGradient id="laser" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="50%" stop-color="#d946ef"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="640" fill="url(#edm-bg)"/>
+  <!-- Laser Arrays & Dynamic Beams -->
+  <g stroke="url(#laser)" stroke-width="3" opacity="0.8">
+    <line x1="600" y1="640" x2="80" y2="0"/>
+    <line x1="600" y1="640" x2="260" y2="0"/>
+    <line x1="600" y1="640" x2="480" y2="0"/>
+    <line x1="600" y1="640" x2="720" y2="0"/>
+    <line x1="600" y1="640" x2="940" y2="0"/>
+    <line x1="600" y1="640" x2="1120" y2="0"/>
+  </g>
+  <circle cx="600" cy="640" r="140" fill="#d946ef" opacity="0.5"/>
+  <circle cx="600" cy="640" r="70" fill="#ffffff"/>
 </svg>

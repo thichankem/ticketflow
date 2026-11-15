@@ -1,12 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="UX Studio Workshop">
-  <rect width="1200" height="640" fill="#fff7ed"/>
-  <rect x="80" y="80" width="420" height="480" rx="24" fill="#0f172a"/>
-  <rect x="120" y="140" width="220" height="18" rx="9" fill="#2dd4bf"/>
-  <rect x="120" y="180" width="300" height="12" rx="6" fill="#94a3b8"/>
-  <rect x="120" y="210" width="260" height="12" rx="6" fill="#64748b"/>
-  <rect x="120" y="280" width="160" height="160" rx="16" fill="#f59e0b"/>
-  <rect x="300" y="280" width="160" height="72" rx="16" fill="#2dd4bf"/>
-  <rect x="300" y="368" width="160" height="72" rx="16" fill="#e2e8f0"/>
-  <text x="560" y="280" fill="#0f172a" font-family="Georgia, serif" font-size="72">UX Studio</text>
-  <text x="560" y="340" fill="#9a3412" font-family="Georgia, serif" font-size="28">Hands-on workshop</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Design and UX Workshop Abstract Cover">
+  <defs>
+    <linearGradient id="ux-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a0820"/>
+      <stop offset="50%" stop-color="#4c0519"/>
+      <stop offset="100%" stop-color="#180410"/>
+    </linearGradient>
+    <linearGradient id="fluid-rose" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fb7185"/>
+      <stop offset="50%" stop-color="#f43f5e"/>
+      <stop offset="100%" stop-color="#be123c"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="640" fill="url(#ux-bg)"/>
+  <!-- Morphing Glass Blobs -->
+  <path d="M800 120 C 1050 90, 1150 260, 1100 420 C 1050 580, 880 600, 750 510 C 620 420, 550 150, 800 120 Z" fill="url(#fluid-rose)" opacity="0.65"/>
+  <path d="M600 240 C 780 180, 850 320, 820 460 C 790 600, 640 590, 520 510 C 400 430, 420 300, 600 240 Z" fill="#fda4af" opacity="0.35"/>
+  <rect x="220" y="180" width="280" height="340" rx="20" fill="rgba(255,255,255,0.08)" stroke="#f43f5e" stroke-width="2"/>
+  <rect x="260" y="220" width="200" height="20" rx="6" fill="#fda4af" opacity="0.5"/>
+  <rect x="260" y="260" width="140" height="12" rx="4" fill="#fda4af" opacity="0.3"/>
+  <rect x="260" y="290" width="170" height="12" rx="4" fill="#fda4af" opacity="0.3"/>
 </svg>

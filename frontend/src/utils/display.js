@@ -27,13 +27,25 @@ export function formatRange(event) {
   return start || end || 'Schedule TBA';
 }
 
-export function money(cents) {
-  const num = Number(cents);
+export function money(amount, currency = null) {
+  const num = Number(amount);
   if (num === 0) return 'FREE';
-  if (cents == null || Number.isNaN(num)) return 'N/A';
-  // If price is stored in minor units / cents (e.g. 2500 for $25.00), scale down.
-  // If already in major units / dollars (e.g. 25.00 or 35), format directly.
-  const dollars = num >= 1000 && Number.isInteger(num) ? num / 100 : num;
+  if (amount == null || Number.isNaN(num)) return 'N/A';
+
+  const curr = String(currency || '').toUpperCase();
+  if (curr === 'USD') {
+    const dollars = num >= 100 && Number.isInteger(num) ? num / 100 : num;
+    return `$${dollars.toFixed(2)}`;
+  }
+  if (curr === 'VND') {
+    return new Intl.NumberFormat('vi-VN').format(num) + ' ₫';
+  }
+
+  // Smart fallback when currency is omitted
+  if (num >= 1000) {
+    return new Intl.NumberFormat('vi-VN').format(num) + ' ₫';
+  }
+  const dollars = num >= 100 && Number.isInteger(num) ? num / 100 : num;
   return `$${dollars.toFixed(2)}`;
 }
 
@@ -57,3 +69,13 @@ export function plainText(value) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+export const EVENT_CATEGORIES = [
+  { id: 'ALL', label: 'Tất cả sự kiện', icon: '🎟️' },
+  { id: 'Music', label: 'Nhạc sống & Concert', icon: '🎵' },
+  { id: 'Design', label: 'Sân khấu & Nghệ thuật', icon: '🎭' },
+  { id: 'Tech', label: 'Công nghệ & Triển lãm', icon: '💻' },
+  { id: 'Business', label: 'Hội thảo & Workshop', icon: '📈' },
+  { id: 'Sports', label: 'Thể thao & Giải trí', icon: '⚽' },
+  { id: 'Community', label: 'Tham quan & Trải nghiệm', icon: '🎡' },
+];

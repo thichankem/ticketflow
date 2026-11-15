@@ -1,8 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ticketflow">
-  <rect width="64" height="64" rx="16" fill="#0f172a"/>
-  <rect x="8" y="18" width="48" height="28" rx="6" fill="#2dd4bf"/>
-  <circle cx="8" cy="32" r="5" fill="#0f172a"/>
-  <circle cx="56" cy="32" r="5" fill="#0f172a"/>
-  <path d="M16 32h32" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="3 3"/>
-  <text x="32" y="37" text-anchor="middle" font-family="Georgia, serif" font-size="13" font-weight="700" fill="#0f172a">TF</text>
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Ticketflow Brand Mark">
+  <defs>
+    <linearGradient id="tf-icon-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="tf-ticket-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2dd4bf"/>
+      <stop offset="60%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="tf-accent-glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+  </defs>
+  <!-- Base Rounded Container with subtle border -->
+  <rect width="64" height="64" rx="18" fill="url(#tf-icon-bg)"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" rx="17.25" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5"/>
+  <!-- Ticket Body with Smooth Semicircular Notches -->
+  <path d="M 12 20 Q 12 17 15 17 L 49 17 Q 52 17 52 20 L 52 28 A 4 4 0 0 0 52 36 L 52 44 Q 52 47 49 47 L 15 47 Q 12 47 12 44 L 12 36 A 4 4 0 0 0 12 28 Z" fill="url(#tf-ticket-grad)"/>
+  <!-- Perforated Tear Line -->
+  <line x1="26" y1="18" x2="26" y2="46" stroke="#042f2e" stroke-width="2" stroke-linecap="round" stroke-dasharray="1.5 3.5"/>
+  <!-- Minimalist Geometric TF Symbol -->
+  <path d="M 33 26 L 45 26 M 39 26 L 39 38 M 35 32 L 43 32" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+  <!-- Security Verification Hologram Dot -->
+  <circle cx="19" cy="32" r="3" fill="url(#tf-accent-glow)"/>
 </svg>

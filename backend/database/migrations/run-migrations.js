@@ -1,5 +1,5 @@
 /**
- * TicketFlow / Hi.Events - Database Migration Runner
+ * TicketFlow - Database Migration Runner
  * File: backend/database/migrations/run-migrations.js
  *
  * Discovers and applies version-controlled .sql migrations idempotently

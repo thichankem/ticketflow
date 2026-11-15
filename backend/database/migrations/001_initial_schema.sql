@@ -1,5 +1,5 @@
 -- ============================================================================
--- Ticketflow / Hi.Events Initial Relational Schema
+-- Ticketflow Initial Relational Schema
 -- Migration: 001_initial_schema.sql
 -- Compatible with PostgreSQL 14+, Supabase PgBouncer Transaction Pooling
 -- ============================================================================

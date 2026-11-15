@@ -17,7 +17,13 @@ class AuthController {
         secure: process.env.NODE_ENV === 'production',
       });
 
-      return res.status(201).json({ user, token });
+      return res.status(201).json({
+        success: true,
+        message: 'Đăng ký tài khoản thành công',
+        user,
+        token,
+        accessToken: token,
+      });
     } catch (err) {
       next(err);
     }
@@ -39,7 +45,12 @@ class AuthController {
         secure: process.env.NODE_ENV === 'production',
       });
 
-      return res.status(200).json({ user, token });
+      return res.status(200).json({
+        success: true,
+        user,
+        token,
+        accessToken: token,
+      });
     } catch (err) {
       next(err);
     }
@@ -49,7 +60,11 @@ class AuthController {
     try {
       const refreshToken = req.cookies?.refreshToken;
       const { token } = await authService.refreshToken(refreshToken);
-      return res.status(200).json({ token });
+      return res.status(200).json({
+        success: true,
+        token,
+        accessToken: token,
+      });
     } catch (err) {
       next(err);
     }
@@ -80,7 +95,10 @@ class AuthController {
   async logout(req, res, next) {
     try {
       res.clearCookie('refreshToken', { path: '/api/auth' });
-      return res.status(200).json({ message: 'Logged out successfully' });
+      return res.status(200).json({
+        success: true,
+        message: 'Đăng xuất thành công',
+      });
     } catch (err) {
       next(err);
     }

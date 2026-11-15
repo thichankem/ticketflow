@@ -94,7 +94,7 @@ export const query = async (text, params) => {
   // Strictly avoid named prepared statements for PgBouncer transaction mode
   delete queryConfig.name;
 
-  return pool.query(queryConfig);
+  return await pool.query(queryConfig);
 };
 
 /**
@@ -236,7 +236,6 @@ export const reserveTickets = async (client, items) => {
  * @returns {Promise<Array<{ id: number|string, remaining_quantity: number }>>}
  */
 export const releaseTickets = async (client, items) => {
-  const dbClient = client || pool;
   if (!items || !Array.isArray(items) || items.length === 0) {
     return [];
   }
@@ -258,7 +257,10 @@ export const releaseTickets = async (client, items) => {
       RETURNING id, remaining_quantity;
     `;
 
-    const result = await dbClient.query(restoreSql, [quantity, tierId]);
+    const result = client
+      ? await client.query(restoreSql, [quantity, tierId])
+      : await query(restoreSql, [quantity, tierId]);
+
     if (result.rowCount > 0) {
       releasedTiers.push(result.rows[0]);
     }

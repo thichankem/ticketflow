@@ -10,8 +10,20 @@ function stripHtml(str) {
 }
 
 class PromosService {
-  async createPromo(eventId, data) {
+  async createPromo(eventId, data, user = null) {
     const numEventId = Number(eventId);
+    const { default: eventsService } = await import('./events.service.js');
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
     const {
       code,
       discount_type = 'PERCENTAGE',
@@ -46,6 +58,8 @@ class PromosService {
       const row = res.rows[0];
       return {
         ...row,
+        id: Number(row.id),
+        event_id: Number(row.event_id),
         discount_amount: Number(row.discount),
         max_uses: row.max_allowed_usages,
         used_count: row.order_usage_count,
@@ -115,6 +129,13 @@ class PromosService {
     const usedCount = promo.used_count ?? promo.order_usage_count ?? 0;
     const discountVal = Number(promo.discount_amount ?? promo.discount ?? 0);
 
+    const expiry = promo.expiry_date || promo.expiry;
+    if (expiry && new Date(expiry).getTime() < Date.now()) {
+      const err = new Error('Promo code has expired');
+      err.statusCode = 422;
+      throw err;
+    }
+
     if (usedCount >= maxUses) {
       const err = new Error('Promo code usage limit reached');
       err.statusCode = 422;
@@ -168,6 +189,113 @@ class PromosService {
         }
       }
     }
+  }
+
+  getMemoryPromos() {
+    return Array.from(memoryPromos.values());
+  }
+
+  async listPromos(eventId, user = null) {
+    const numEventId = Number(eventId);
+    const { default: eventsService } = await import('./events.service.js');
+    const ev = await eventsService.getEventById(numEventId);
+    if (user && user.role !== 'ADMIN' && ev && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+    try {
+      const sql = `
+        SELECT 
+          id,
+          event_id,
+          code,
+          discount_type,
+          discount,
+          order_usage_count AS usages,
+          order_usage_count AS used_count,
+          max_allowed_usages AS max_uses,
+          expiry_date AS expiry,
+          created_at
+        FROM promo_codes
+        WHERE event_id = $1 AND deleted_at IS NULL
+        ORDER BY id ASC
+      `;
+      const res = await query(sql, [numEventId]);
+      return (res.rows || []).map(r => ({
+        id: Number(r.id),
+        event_id: Number(r.event_id),
+        code: r.code,
+        discount_type: r.discount_type,
+        discount: Number(r.discount),
+        usages: Number(r.usages),
+        used_count: Number(r.used_count),
+        max_uses: r.max_uses ? Number(r.max_uses) : null,
+        expiry: r.expiry,
+        created_at: r.created_at,
+      }));
+    } catch (dbErr) {
+      console.warn('[PromosService.listPromos] DB error, using fallback:', dbErr.message);
+    }
+
+    const list = [];
+    for (const p of memoryPromos.values()) {
+      if (p.event_id === numEventId && p.is_active !== false) {
+        list.push({
+          id: p.id,
+          event_id: p.event_id,
+          code: p.code,
+          discount_type: p.discount_type,
+          discount: Number(p.discount_amount ?? p.discount ?? 0),
+          usages: p.used_count ?? p.order_usage_count ?? 0,
+          used_count: p.used_count ?? p.order_usage_count ?? 0,
+          max_uses: p.max_uses ?? p.max_allowed_usages ?? null,
+          expiry: p.expiry ?? p.expiry_date ?? null,
+          created_at: p.created_at || new Date().toISOString(),
+        });
+      }
+    }
+    list.sort((a, b) => a.id - b.id);
+    return list;
+  }
+
+  async deletePromo(eventId, promoId, user = null) {
+    const numEventId = Number(eventId);
+    const numPromoId = Number(promoId);
+    const { default: eventsService } = await import('./events.service.js');
+    const ev = await eventsService.getEventById(numEventId);
+    if (user && user.role !== 'ADMIN' && ev && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+    let found = false;
+
+    try {
+      const res = await query(
+        'UPDATE promo_codes SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND event_id = $2 RETURNING id',
+        [numPromoId, numEventId]
+      );
+      if (res.rowCount > 0) found = true;
+    } catch (dbErr) {
+      try {
+        const resDel = await query('DELETE FROM promo_codes WHERE id = $1 AND event_id = $2 RETURNING id', [numPromoId, numEventId]);
+        if (resDel.rowCount > 0) found = true;
+      } catch {}
+    }
+
+    const memPromo = memoryPromos.get(numPromoId);
+    if (memPromo && memPromo.event_id === numEventId) {
+      memoryPromos.delete(numPromoId);
+      found = true;
+    }
+
+    if (!found) {
+      const err = new Error('Promo code not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return true;
   }
 }
 
