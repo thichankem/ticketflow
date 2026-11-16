@@ -45,6 +45,10 @@ class WaitingRoomService {
     return this.highTrafficConfigs.has(numEventId);
   }
 
+  isQueueActive(eventId) {
+    return this.isWaitingRoomActive(eventId);
+  }
+
   /**
    * Join or check status in the virtual queue
    */

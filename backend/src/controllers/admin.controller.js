@@ -184,31 +184,6 @@ class AdminController {
     }
   }
 
-  async disputeRefund(req, res, next) {
-    try {
-      const { id } = req.params;
-      const { reason } = req.body || {};
-      const { default: helpdeskService } = await import('../services/helpdesk.service.js');
-      const ticket = await helpdeskService.getTicket(id, req.user);
-      if (!ticket) {
-        return res.status(404).json({ error: 'Ticket not found' });
-      }
-      let refundResult = null;
-      if (ticket.order_id) {
-        refundResult = await ordersService.refundOrder(ticket.order_id, req.user);
-      }
-      await helpdeskService.updateTicketStatus(id, 'RESOLVED', req.user, reason || 'Admin dispute refund override approved');
-      return res.status(200).json({
-        success: true,
-        message: 'Admin dispute refund processed successfully',
-        ticket_id: id,
-        refund: refundResult,
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-
   // ----------------------------------------------------
   // Broadcast Announcements (REQ-ADM-09: Thông Báo Chung)
   // ----------------------------------------------------

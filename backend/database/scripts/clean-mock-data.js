@@ -10,8 +10,6 @@ async function cleanMockData() {
     'seat_reservations',
     'announcements',
     'notifications',
-    'support_messages',
-    'support_tickets',
     'event_favorites',
     'escrow_payouts',
     'escrow_accounts',
@@ -67,8 +65,6 @@ async function cleanMockData() {
     { table: 'attendees', start: 1 },
     { table: 'promo_codes', start: 1 },
     { table: 'notifications', start: 1 },
-    { table: 'support_tickets', start: 1 },
-    { table: 'support_messages', start: 1 },
     { table: 'payouts', start: 1 },
     { table: 'seat_reservations', start: 1 },
     { table: 'users', start: 8 },
@@ -106,8 +102,6 @@ async function cleanMockData() {
     'attendees',
     'notifications',
     'payouts',
-    'support_tickets',
-    'support_messages',
     'event_favorites',
     'seat_reservations'
   ];

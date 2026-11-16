@@ -1,38 +1,34 @@
 import React, { useState, useMemo } from 'react';
 
-// Color palette for subscription packages and charts
-const PACKAGE_CONFIG = {
-  ENTERPRISE: {
-    name: 'Gói Doanh Nghiệp (Enterprise)',
-    shortName: 'Enterprise',
-    color: '#8b5cf6', // Violet
-    price: 499000,
-    badgeClass: 'badge-purple',
-    desc: 'Tổ chức sự kiện quy mô lớn, API riêng, hỗ trợ 24/7',
+// Color palette for order status fulfillment and charts (SPEC-ISSUE-002)
+const STATUS_CONFIG = {
+  COMPLETED: {
+    name: 'Đơn Đã Thanh Toán (Completed)',
+    shortName: 'Hoàn tất',
+    color: '#10b981', // Emerald
+    badgeClass: 'badge-emerald',
+    desc: 'Đơn hàng thanh toán trực tuyến thành công, vé đã phát hành',
   },
-  PRO_ORGANIZER: {
-    name: 'Gói BTC Pro (Organizer VIP)',
-    shortName: 'Pro Organizer',
-    color: '#0d9488', // Teal
-    price: 199000,
-    badgeClass: 'badge-teal',
-    desc: 'Đăng sự kiện không giới hạn, chiết khấu phí sàn 2%',
+  PENDING: {
+    name: 'Đang Giữ Chỗ / Chờ Xử Lý (Pending)',
+    shortName: 'Chờ thanh toán',
+    color: '#3b82f6', // Blue
+    badgeClass: 'badge-blue',
+    desc: 'Đang trong thời hạn giữ chỗ 15 phút',
   },
-  VIP_MEMBER: {
-    name: 'Gói Khán Giả VIP (Member Pass)',
-    shortName: 'VIP Member',
+  REFUNDED: {
+    name: 'Đã Hoàn Tiền (Refunded)',
+    shortName: 'Hoàn tiền',
     color: '#f59e0b', // Amber
-    price: 49000,
     badgeClass: 'badge-amber',
-    desc: 'Ưu tiên giữ chỗ sớm, miễn phí dịch vụ thanh toán',
+    desc: 'Đơn hàng đã được hoàn tiền đầy đủ cho người mua',
   },
-  FREE: {
-    name: 'Gói Miễn Phí (Standard Free)',
-    shortName: 'Miễn phí',
-    color: '#64748b', // Slate
-    price: 0,
-    badgeClass: 'badge-slate',
-    desc: 'Tài khoản tiêu chuẩn trải nghiệm nền tảng',
+  CANCELLED: {
+    name: 'Đã Hủy / Quá Hạn (Cancelled/Expired)',
+    shortName: 'Đã hủy',
+    color: '#ef4444', // Red
+    badgeClass: 'badge-red',
+    desc: 'Đơn quá hạn giữ chỗ 15 phút hoặc bị hủy',
   },
 };
 
@@ -171,67 +167,66 @@ export const AdminAnalyticsDashboard = ({
     return buckets;
   }, [events, users, timeRange]);
 
-  // 4. Aggregate Premium Subscription Packages
+  // 4. Aggregate Order Status Fulfillment & Real Platform Metrics (SPEC-ISSUE-002)
   const premiumAnalytics = useMemo(() => {
     const counts = {
-      ENTERPRISE: 0,
-      PRO_ORGANIZER: 0,
-      VIP_MEMBER: 0,
-      FREE: 0,
+      COMPLETED: 0,
+      PENDING: 0,
+      REFUNDED: 0,
+      CANCELLED: 0,
     };
 
-    users.forEach((u) => {
-      const plan = (u.subscription_plan || '').toUpperCase();
-      if (plan && counts[plan] !== undefined) {
-        counts[plan] += 1;
-      } else if (u.is_premium) {
-        if (u.role === 'ORGANIZER') counts.PRO_ORGANIZER += 1;
-        else if (u.role === 'ADMIN') counts.ENTERPRISE += 1;
-        else counts.VIP_MEMBER += 1;
+    let totalGrossRevenue = 0;
+    let completedRevenue = 0;
+
+    orders.forEach((o) => {
+      const st = (o.status || '').toUpperCase();
+      const val = Number(o.total || o.total_gross || 0);
+      totalGrossRevenue += val;
+
+      if (st === 'COMPLETED') {
+        counts.COMPLETED += 1;
+        completedRevenue += val;
+      } else if (st === 'REFUNDED') {
+        counts.REFUNDED += 1;
+      } else if (st === 'CANCELLED' || st === 'EXPIRED') {
+        counts.CANCELLED += 1;
       } else {
-        if (u.role === 'ORGANIZER') counts.PRO_ORGANIZER += 1;
-        else if (u.role === 'ADMIN') counts.ENTERPRISE += 1;
-        else counts.FREE += 1;
+        counts.PENDING += 1;
       }
     });
 
-    const totalCount = Math.max(users.length, 1);
-    const premiumCount = counts.ENTERPRISE + counts.PRO_ORGANIZER + counts.VIP_MEMBER;
-    const adoptionRate = Math.round((premiumCount / totalCount) * 100);
-
-    const monthlyMRR =
-      counts.ENTERPRISE * PACKAGE_CONFIG.ENTERPRISE.price +
-      counts.PRO_ORGANIZER * PACKAGE_CONFIG.PRO_ORGANIZER.price +
-      counts.VIP_MEMBER * PACKAGE_CONFIG.VIP_MEMBER.price;
+    const totalCount = Math.max(orders.length, 1);
+    const completionRate = Math.round((counts.COMPLETED / totalCount) * 100);
 
     const packagesList = [
       {
-        key: 'ENTERPRISE',
-        ...PACKAGE_CONFIG.ENTERPRISE,
-        count: counts.ENTERPRISE,
-        percentage: Math.round((counts.ENTERPRISE / totalCount) * 100),
-        mrr: counts.ENTERPRISE * PACKAGE_CONFIG.ENTERPRISE.price,
+        key: 'COMPLETED',
+        ...STATUS_CONFIG.COMPLETED,
+        count: counts.COMPLETED,
+        percentage: Math.round((counts.COMPLETED / totalCount) * 100),
+        amount: completedRevenue,
       },
       {
-        key: 'PRO_ORGANIZER',
-        ...PACKAGE_CONFIG.PRO_ORGANIZER,
-        count: counts.PRO_ORGANIZER,
-        percentage: Math.round((counts.PRO_ORGANIZER / totalCount) * 100),
-        mrr: counts.PRO_ORGANIZER * PACKAGE_CONFIG.PRO_ORGANIZER.price,
+        key: 'PENDING',
+        ...STATUS_CONFIG.PENDING,
+        count: counts.PENDING,
+        percentage: Math.round((counts.PENDING / totalCount) * 100),
+        amount: 0,
       },
       {
-        key: 'VIP_MEMBER',
-        ...PACKAGE_CONFIG.VIP_MEMBER,
-        count: counts.VIP_MEMBER,
-        percentage: Math.round((counts.VIP_MEMBER / totalCount) * 100),
-        mrr: counts.VIP_MEMBER * PACKAGE_CONFIG.VIP_MEMBER.price,
+        key: 'REFUNDED',
+        ...STATUS_CONFIG.REFUNDED,
+        count: counts.REFUNDED,
+        percentage: Math.round((counts.REFUNDED / totalCount) * 100),
+        amount: 0,
       },
       {
-        key: 'FREE',
-        ...PACKAGE_CONFIG.FREE,
-        count: counts.FREE,
-        percentage: Math.round((counts.FREE / totalCount) * 100),
-        mrr: 0,
+        key: 'CANCELLED',
+        ...STATUS_CONFIG.CANCELLED,
+        count: counts.CANCELLED,
+        percentage: Math.round((counts.CANCELLED / totalCount) * 100),
+        amount: 0,
       },
     ];
 
@@ -250,15 +245,16 @@ export const AdminAnalyticsDashboard = ({
     });
 
     return {
-      counts,
-      totalCount,
-      premiumCount,
-      adoptionRate,
-      monthlyMRR,
       packagesList,
       slices,
+      totalCount: orders.length,
+      premiumCount: counts.COMPLETED,
+      adoptionRate: completionRate,
+      completionRate,
+      completedRevenue,
+      totalGrossRevenue,
     };
-  }, [users]);
+  }, [orders]);
 
   // 5. Aggregate Purchases and Orders per Individual Event
   const eventPurchasesList = useMemo(() => {
@@ -914,23 +910,23 @@ export const AdminAnalyticsDashboard = ({
 
           {/* BOTTOM ROW: 2 Additional Charts (Premium Donut Chart & Event Purchases Horizontal Bar Chart) */}
           <div className="grid-2-cols gap-md">
-            {/* CHART 3: Số người mua gói premium của ứng dụng (Donut / Pie Chart) */}
+            {/* CHART 3: Cơ cấu đơn hàng & Thực thu sàn (SPEC-ISSUE-002) */}
             <article className="card chart-container-card" style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 340px' }}>
               <div className="flex justify-between items-center mb-sm">
                 <div>
                   <div className="flex items-center gap-xs">
-                    <span className="chart-badge" style={{ background: 'rgba(245, 158, 11, 0.12)', color: '#d97706', border: '1px solid rgba(245, 158, 11, 0.25)' }}>
+                    <span className="chart-badge" style={{ background: 'rgba(16, 185, 129, 0.12)', color: '#059669', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
                       Biểu Đồ Tròn / Donut
                     </span>
-                    <h3 className="panel-title mb-0">3. Phân Khúc Người Mua Gói Premium</h3>
+                    <h3 className="panel-title mb-0">3. Cơ Cấu Đơn Hàng & Doanh Thu Sàn</h3>
                   </div>
                   <p className="muted text-xs mt-01 mb-0">
-                    Cơ cấu người dùng theo các gói đăng ký VIP, Hội viên & Gói Tiêu chuẩn
+                    Phân bổ đơn hàng theo trạng thái hoàn thành, chờ xử lý, hoàn tiền và hủy đơn
                   </p>
                 </div>
                 <div className="text-right">
-                  <span className="text-xs muted d-block">Tỷ lệ nâng cấp VIP</span>
-                  <strong className="text-sm text-amber">{premiumAnalytics.adoptionRate}% người dùng</strong>
+                  <span className="text-xs muted d-block">Tỷ lệ hoàn thành</span>
+                  <strong className="text-sm text-good">{premiumAnalytics.adoptionRate}% đơn hàng</strong>
                 </div>
               </div>
 
@@ -942,7 +938,7 @@ export const AdminAnalyticsDashboard = ({
                     width="220"
                     height="220"
                     role="img"
-                    aria-label="Biểu đồ tròn cơ cấu gói Premium"
+                    aria-label="Biểu đồ tròn cơ cấu đơn hàng và trạng thái thanh toán"
                   >
                     <defs>
                       <filter id="donutShadow" x="-10%" y="-10%" width="120%" height="120%">
@@ -969,7 +965,7 @@ export const AdminAnalyticsDashboard = ({
                           strokeWidth="2"
                           tabIndex={0}
                           role="graphics-symbol"
-                          aria-label={`${slice.name}: ${slice.count} người (${slice.percentage}%)`}
+                          aria-label={`${slice.name}: ${slice.count} đơn (${slice.percentage}%)`}
                           onMouseEnter={() => setActivePackageKey(slice.key)}
                           onMouseLeave={() => setActivePackageKey(null)}
                           onFocus={() => setActivePackageKey(slice.key)}
@@ -996,12 +992,12 @@ export const AdminAnalyticsDashboard = ({
                       justifyContent: 'center',
                     }}
                   >
-                    <span className="text-xs muted font-semibold">TỔNG VIP</span>
-                    <strong className="text-xl text-amber leading-none mt-01">
-                      {premiumAnalytics.premiumCount}
+                    <span className="text-xs muted font-semibold">TỔNG ĐƠN</span>
+                    <strong className="text-xl text-primary leading-none mt-01">
+                      {premiumAnalytics.totalCount}
                     </strong>
                     <span className="text-2xs text-good font-bold mt-01">
-                      {premiumAnalytics.adoptionRate}% User
+                      {premiumAnalytics.adoptionRate}% Thành công
                     </span>
                   </div>
                 </div>
@@ -1022,7 +1018,7 @@ export const AdminAnalyticsDashboard = ({
                           <div className="flex items-center gap-xs">
                             <span
                               className="legend-color-dot"
-                              style={{ background: pkg.color, width: '12px', height: '12px' }}
+                              style={{ background: pkg.color, width: '12px', height: '12px', borderRadius: '50%' }}
                             ></span>
                             <strong className="text-xs">{pkg.shortName}</strong>
                           </div>
@@ -1030,15 +1026,15 @@ export const AdminAnalyticsDashboard = ({
                             <span className="badge text-xs" style={{ background: `${pkg.color}20`, color: pkg.color }}>
                               {pkg.percentage}%
                             </span>
-                            <span className="font-mono text-xs font-bold">{pkg.count} user</span>
+                            <span className="font-mono text-xs font-bold">{pkg.count} đơn</span>
                           </div>
                         </div>
 
                         <div className="flex justify-between items-center text-xs muted mt-01">
-                          <span>{pkg.price > 0 ? `${formatVND(pkg.price)}/tháng` : 'Miễn phí'}</span>
-                          {pkg.mrr > 0 && (
+                          <span>{pkg.desc}</span>
+                          {pkg.amount > 0 && (
                             <span className="text-good font-mono font-semibold">
-                              MRR: {formatVND(pkg.mrr)}
+                              {formatVND(pkg.amount)}
                             </span>
                           )}
                         </div>

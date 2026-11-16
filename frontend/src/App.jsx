@@ -129,11 +129,7 @@ export function App() {
         />
         <Route
           path="/orders"
-          element={
-            <AttendeeLayout>
-              <MyTicketsPage />
-            </AttendeeLayout>
-          }
+          element={<Navigate to="/my-tickets" replace />}
         />
         <Route
           path="/receipt/:id"
@@ -205,13 +201,7 @@ export function App() {
         />
         <Route
           path="/organizer/create"
-          element={
-            <OrganizerLayout>
-              <RoleGate allowedRoles={['ORGANIZER']} title="Ban Tổ Chức Sự Kiện">
-                <CreateEventPage />
-              </RoleGate>
-            </OrganizerLayout>
-          }
+          element={<Navigate to="/organizer/events/new" replace />}
         />
 
         {/* ============================================================== */}

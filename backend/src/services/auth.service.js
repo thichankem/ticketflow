@@ -1,9 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { query } from '../config/db.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.js';
+import adminService, { memoryUsers } from './admin.service.js';
 
-// In-memory store fallback when PostgreSQL is offline
-const memoryUsers = new Map();
 let nextUserId = 100;
 
 // Initialize memory seed users
@@ -24,6 +23,11 @@ const initSeedUsers = async () => {
 };
 initSeedUsers();
 
+/**
+ * Cohesive AuthService
+ * Manages user registration (strictly ATTENDEE self-registration), login,
+ * dual-token generation, user profile updates, and password changes.
+ */
 class AuthService {
   async register({ name, email, password, phone, role = 'ATTENDEE' }) {
     if (!email || typeof email !== 'string') {
@@ -42,7 +46,6 @@ class AuthService {
       throw error;
     }
 
-    // Check duplicate email first per SPEC.md Subsystem 1 & Boundary 01
     try {
       const checkSql = 'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1';
       const existing = await query(checkSql, [normalizedEmail]);
@@ -67,25 +70,11 @@ class AuthService {
       error.code = 'VALIDATION_FAILED';
       throw error;
     }
-    
-    let normalizedRole = 'ATTENDEE';
-    if (role) {
-      const r = String(role).toUpperCase().trim();
-      if (r === 'ADMIN') {
-        const error = new Error('Tài khoản Quản trị viên không được phép tự đăng ký công khai');
-        error.statusCode = 403;
-        throw error;
-      }
-      if (r === 'ORGANIZER') {
-        normalizedRole = 'ORGANIZER';
-      } else {
-        normalizedRole = 'ATTENDEE';
-      }
-    }
 
+    // Strict Attendee-Only Public Self-Registration (Principle 6 & REQ-SEC-02)
+    const normalizedRole = 'ATTENDEE';
     const sanitizedPhone = phone ? String(phone).trim() : '';
 
-    // Check PostgreSQL first
     try {
       const checkSql = 'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1';
       const existing = await query(checkSql, [normalizedEmail]);
@@ -127,9 +116,8 @@ class AuthService {
       return { user, token, refreshToken };
     } catch (err) {
       if (err.statusCode === 409) throw err;
-      // Fallback to in-memory store
       for (const u of memoryUsers.values()) {
-        if (u.email.toLowerCase() === normalizedEmail) {
+        if (u.email?.toLowerCase() === normalizedEmail) {
           const error = new Error('Email already registered');
           error.statusCode = 409;
           throw error;
@@ -165,11 +153,12 @@ class AuthService {
   async login({ email, password }) {
     const normalizedEmail = email.toLowerCase().trim();
 
-    // Check PostgreSQL first
     try {
       const sql = `
         SELECT id, first_name, last_name, email, password, role, account_id, phone,
-               (deleted_at IS NULL) AS is_active,
+               COALESCE(is_suspended, false) AS is_suspended,
+               deleted_at,
+               (deleted_at IS NULL AND COALESCE(is_suspended, false) = false) AS is_active,
                COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
         FROM users 
         WHERE LOWER(email) = $1 
@@ -179,480 +168,146 @@ class AuthService {
       if (res.rowCount > 0) {
         const user = res.rows[0];
 
-        if (user.is_active === false) {
-          const error = new Error('Account suspended');
-          error.statusCode = 403;
+        if (user.is_suspended || user.is_active === false || user.deleted_at) {
+          const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
+          error.statusCode = 401;
+          error.code = 'AUTH_TOKEN_INVALID';
           throw error;
         }
 
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) {
-          const error = new Error('Invalid credentials');
+          const error = new Error('Mật khẩu không chính xác');
           error.statusCode = 401;
+          error.code = 'AUTH_TOKEN_INVALID';
           throw error;
         }
 
-        const tokenPayload = { id: Number(user.id), email: user.email, role: user.role, account_id: Number(user.account_id), type: 'access' };
+        const tokenPayload = { id: user.id, email: user.email, role: user.role, account_id: user.account_id, type: 'access' };
         const token = generateAccessToken(tokenPayload);
-        const refreshToken = generateRefreshToken({ id: Number(user.id), type: 'refresh' });
+        const refreshToken = generateRefreshToken({ id: user.id, type: 'refresh' });
 
         return {
-          user: { id: Number(user.id), name: user.name, email: user.email, phone: user.phone || '', role: user.role, account_id: Number(user.account_id) },
+          user: { id: user.id, name: user.name, email: user.email, phone: user.phone || '', role: user.role, account_id: user.account_id },
           token,
           refreshToken,
         };
       }
     } catch (err) {
-      if (err.statusCode === 401 || err.statusCode === 403) throw err;
+      if (err.statusCode === 401) throw err;
     }
 
-    // Fallback to in-memory store
-    let found = null;
     for (const u of memoryUsers.values()) {
       if (u.email.toLowerCase() === normalizedEmail) {
-        found = u;
-        break;
+        if (u.is_suspended || u.is_active === false || u.status === 'SUSPENDED') {
+          const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
+          error.statusCode = 401;
+          error.code = 'AUTH_TOKEN_INVALID';
+          throw error;
+        }
+
+        const valid = await bcrypt.compare(password, u.password_hash || u.password);
+        if (!valid) {
+          const error = new Error('Mật khẩu không chính xác');
+          error.statusCode = 401;
+          error.code = 'AUTH_TOKEN_INVALID';
+          throw error;
+        }
+
+        const tokenPayload = { id: u.id, email: u.email, role: u.role, account_id: u.account_id, type: 'access' };
+        const token = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken({ id: u.id, type: 'refresh' });
+
+        return {
+          user: { id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role, account_id: u.account_id },
+          token,
+          refreshToken,
+        };
       }
     }
 
-    if (!found) {
-      const error = new Error('Invalid credentials');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    if (found.is_active === false) {
-      const error = new Error('Account suspended');
-      error.statusCode = 403;
-      throw error;
-    }
-
-    const valid = await bcrypt.compare(password, found.password_hash);
-    if (!valid && found.password_hash !== password) {
-      const error = new Error('Invalid credentials');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    const tokenPayload = { id: found.id, email: found.email, role: found.role, account_id: found.account_id, type: 'access' };
-    const token = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken({ id: found.id, type: 'refresh' });
-
-    return {
-      user: { id: found.id, name: found.name, email: found.email, phone: found.phone || '', role: found.role, account_id: found.account_id },
-      token,
-      refreshToken,
-    };
+    const error = new Error('Tài khoản không tồn tại trong hệ thống');
+    error.statusCode = 401;
+    error.code = 'AUTH_TOKEN_INVALID';
+    throw error;
   }
 
-  async refreshToken(refreshToken) {
-    if (!refreshToken) {
-      const error = new Error('Missing refresh token cookie');
+  async refreshToken(token) {
+    if (!token) {
+      const error = new Error('Refresh token is required');
       error.statusCode = 401;
+      error.code = 'AUTH_TOKEN_INVALID';
       throw error;
     }
 
-    let decoded;
     try {
-      decoded = verifyRefreshToken(refreshToken);
+      const decoded = verifyRefreshToken(token);
+      const user = await this.getUserById(decoded.id);
+
+      if (user.is_suspended || user.is_active === false) {
+        const error = new Error('Tài khoản đã bị tạm ngưng');
+        error.statusCode = 401;
+        error.code = 'AUTH_TOKEN_INVALID';
+        throw error;
+      }
+
+      const tokenPayload = { id: user.id, email: user.email, role: user.role, account_id: user.account_id, type: 'access' };
+      const newAccessToken = generateAccessToken(tokenPayload);
+      const newRefreshToken = generateRefreshToken({ id: user.id, type: 'refresh' });
+
+      return {
+        token: newAccessToken,
+        refreshToken: newRefreshToken,
+        user,
+      };
     } catch {
-      const error = new Error('Malformed refresh token');
+      const error = new Error('Invalid or expired refresh token');
       error.statusCode = 401;
+      error.code = 'AUTH_TOKEN_INVALID';
       throw error;
     }
-
-    if (!decoded || !decoded.id) {
-      const error = new Error('Invalid refresh token');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    const user = await this.getUserById(decoded.id);
-    if (!user || user.is_active === false) {
-      const error = new Error('Invalid refresh token');
-      error.statusCode = 401;
-      throw error;
-    }
-
-    const tokenPayload = { id: user.id, email: user.email, role: user.role, account_id: user.account_id };
-    const token = generateAccessToken(tokenPayload);
-    return { token };
   }
 
   async getUserById(id) {
+    const numId = Number(id);
+
     try {
       const sql = `
         SELECT id, first_name, last_name, email, role, account_id, phone,
-               (deleted_at IS NULL) AS is_active,
+               COALESCE(is_suspended, false) AS is_suspended,
+               (deleted_at IS NULL AND COALESCE(is_suspended, false) = false) AS is_active,
                COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
         FROM users 
         WHERE id = $1 
         LIMIT 1
       `;
-      const res = await query(sql, [id]);
-      if (res.rowCount > 0) return res.rows[0];
-    } catch {
-      // Fallback
-    }
-    return memoryUsers.get(Number(id)) || null;
-  }
-
-  async suspendUser(id) {
-    const numId = Number(id);
-    try {
-      const sql = 'UPDATE users SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING id, (deleted_at IS NULL) AS is_active';
       const res = await query(sql, [numId]);
-      if (res.rowCount > 0) return res.rows[0];
-    } catch {
-      // Fallback
-    }
-    const memUser = memoryUsers.get(numId);
-    if (!memUser) {
-      const error = new Error('User not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    memUser.is_active = false;
-    return { id: memUser.id, is_active: false };
-  }
-
-  async getAllUsers() {
-    try {
-      const sql = `
-        SELECT id,
-               COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name,
-               email,
-               phone,
-               role,
-               (deleted_at IS NULL) AS is_active,
-               created_at
-        FROM users
-        ORDER BY id ASC
-      `;
-      const res = await query(sql);
-      if (res.rows && res.rows.length > 0) {
-        return res.rows.map(r => {
-          const plan = r.subscription_plan || (r.role === 'ORGANIZER' ? 'PRO_ORGANIZER' : r.role === 'ADMIN' ? 'ENTERPRISE' : (Number(r.id) % 3 === 0 ? 'VIP_MEMBER' : 'FREE'));
-          const isPrem = plan !== 'FREE';
-          return {
-            id: Number(r.id),
-            name: r.name,
-            email: r.email,
-            phone: r.phone || '',
-            role: r.role,
-            is_active: Boolean(r.is_active),
-            created_at: r.created_at,
-            subscription_plan: plan,
-            is_premium: isPrem,
-          };
-        });
-      }
-    } catch {
-      // Fallback
-    }
-
-    const list = [];
-    for (const u of memoryUsers.values()) {
-      const plan = u.subscription_plan || (u.role === 'ORGANIZER' ? 'PRO_ORGANIZER' : u.role === 'ADMIN' ? 'ENTERPRISE' : 'FREE');
-      const isPrem = Boolean(u.is_premium !== undefined ? u.is_premium : plan !== 'FREE');
-      list.push({
-        id: u.id,
-        name: u.name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email,
-        email: u.email,
-        phone: u.phone || '',
-        role: u.role,
-        is_active: u.is_active !== false,
-        created_at: u.created_at || new Date().toISOString(),
-        subscription_plan: plan,
-        is_premium: isPrem,
-      });
-    }
-    list.sort((a, b) => a.id - b.id);
-    return list;
-  }
-
-  async updateUserRole(id, role) {
-    const numId = Number(id);
-    const normalizedRole = (role || '').toUpperCase().trim();
-    if (!['ADMIN', 'ORGANIZER', 'ATTENDEE'].includes(normalizedRole)) {
-      const error = new Error('Invalid role. Role must be ADMIN, ORGANIZER, or ATTENDEE');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    try {
-      const sql = `
-        UPDATE users
-        SET role = $1, updated_at = NOW()
-        WHERE id = $2
-        RETURNING id, COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name, email, role, (deleted_at IS NULL) AS is_active, created_at
-      `;
-      const res = await query(sql, [normalizedRole, numId]);
       if (res.rowCount > 0) {
-        const r = res.rows[0];
+        const u = res.rows[0];
         return {
-          id: Number(r.id),
-          name: r.name,
-          email: r.email,
-          role: r.role,
-          is_active: Boolean(r.is_active),
-          created_at: r.created_at,
+          id: Number(u.id),
+          name: u.name,
+          email: u.email,
+          phone: u.phone || '',
+          role: u.role,
+          account_id: u.account_id ? Number(u.account_id) : null,
+          is_suspended: Boolean(u.is_suspended),
+          is_active: Boolean(u.is_active),
         };
       }
-    } catch (err) {
-      if (err.statusCode) throw err;
-    }
+    } catch {}
 
     const memUser = memoryUsers.get(numId);
-    if (!memUser) {
-      const error = new Error('User not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    memUser.role = normalizedRole;
-    return {
-      id: memUser.id,
-      name: memUser.name,
-      email: memUser.email,
-      role: memUser.role,
-      is_active: memUser.is_active !== false,
-      created_at: memUser.created_at || new Date().toISOString(),
-    };
-  }
-
-  async toggleUserStatus(id) {
-    const numId = Number(id);
-    try {
-      const checkSql = 'SELECT id, (deleted_at IS NULL) AS is_active FROM users WHERE id = $1';
-      const checkRes = await query(checkSql, [numId]);
-      if (checkRes.rowCount > 0) {
-        const currentActive = checkRes.rows[0].is_active;
-        const updateSql = `
-          UPDATE users
-          SET deleted_at = CASE WHEN deleted_at IS NULL THEN NOW() ELSE NULL END,
-              updated_at = NOW()
-          WHERE id = $1
-          RETURNING id, COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name, email, role, (deleted_at IS NULL) AS is_active, created_at
-        `;
-        const res = await query(updateSql, [numId]);
-        const r = res.rows[0];
-        return {
-          id: Number(r.id),
-          name: r.name,
-          email: r.email,
-          role: r.role,
-          is_active: Boolean(r.is_active),
-          created_at: r.created_at,
-        };
-      }
-    } catch {
-      // Fallback
-    }
-
-    const memUser = memoryUsers.get(numId);
-    if (!memUser) {
-      const error = new Error('User not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    memUser.is_active = !(memUser.is_active !== false);
-    return {
-      id: memUser.id,
-      name: memUser.name,
-      email: memUser.email,
-      role: memUser.role,
-      is_active: memUser.is_active,
-      created_at: memUser.created_at || new Date().toISOString(),
-    };
-  }
-
-  async deleteUser(id) {
-    const numId = Number(id);
-    let found = false;
-    try {
-      const res = await query('DELETE FROM users WHERE id = $1 RETURNING id', [numId]);
-      if (res.rowCount > 0) {
-        found = true;
-      } else {
-        const resSoft = await query('UPDATE users SET deleted_at = NOW() WHERE id = $1 RETURNING id', [numId]);
-        if (resSoft.rowCount > 0) found = true;
-      }
-    } catch {
-      try {
-        const resSoft = await query('UPDATE users SET deleted_at = NOW() WHERE id = $1 RETURNING id', [numId]);
-        if (resSoft.rowCount > 0) found = true;
-      } catch {}
-    }
-
-    if (memoryUsers.has(numId)) {
-      memoryUsers.delete(numId);
-      found = true;
-    }
-
-    if (!found) {
-      const error = new Error('User not found');
-      error.statusCode = 404;
-      throw error;
-    }
-    return true;
-  }
-
-  /**
-   * Admin Create User (directly without logging in)
-   */
-  async adminCreateUser({ name, email, password, phone, role = 'ATTENDEE', is_active = true }) {
-    if (!email || typeof email !== 'string') {
-      const error = new Error('Valid email address is required');
-      error.statusCode = 400;
-      throw error;
-    }
-    const normalizedEmail = email.toLowerCase().trim();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      const error = new Error('Định dạng email không hợp lệ');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    try {
-      const checkSql = 'SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1';
-      const existing = await query(checkSql, [normalizedEmail]);
-      if (existing.rowCount > 0) {
-        const error = new Error('Email already registered');
-        error.statusCode = 409;
-        throw error;
-      }
-    } catch (checkErr) {
-      if (checkErr.statusCode === 409) throw checkErr;
-    }
-
-    for (const u of memoryUsers.values()) {
-      if (u.email?.toLowerCase() === normalizedEmail) {
-        const error = new Error('Email already registered');
-        error.statusCode = 409;
-        throw error;
-      }
-    }
-
-    const rawPassword = password || 'Ticketflow@123';
-    const password_hash = await bcrypt.hash(rawPassword, 10);
-    const validRole = ['ADMIN', 'ORGANIZER', 'ATTENDEE'].includes(role?.toUpperCase())
-      ? role.toUpperCase()
-      : 'ATTENDEE';
-
-    try {
-      const sql = `
-        INSERT INTO users (name, email, password_hash, phone, role, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-        RETURNING id, name, email, phone, role, is_active, created_at, updated_at
-      `;
-      const res = await query(sql, [
-        name || normalizedEmail.split('@')[0],
-        normalizedEmail,
-        password_hash,
-        phone || null,
-        validRole,
-        is_active !== false,
-      ]);
-      if (res.rowCount > 0) {
-        return res.rows[0];
-      }
-    } catch {
-      // Fallback
-    }
-
-    const nextId =
-      Math.max(
-        ...Array.from(memoryUsers.keys()).filter((k) => typeof k === 'number'),
-        100
-      ) + 1;
-    const newUser = {
-      id: nextId,
-      name: name || normalizedEmail.split('@')[0],
-      email: normalizedEmail,
-      phone: phone || null,
-      role: validRole,
-      is_active: is_active !== false,
-      password: rawPassword,
-      password_hash,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    memoryUsers.set(nextId, newUser);
-    return {
-      id: newUser.id,
-      name: newUser.name,
-      email: newUser.email,
-      phone: newUser.phone,
-      role: newUser.role,
-      is_active: newUser.is_active,
-      created_at: newUser.created_at,
-    };
-  }
-
-  /**
-   * Admin Update User (name, email, phone, role, is_active)
-   */
-  async adminUpdateUser(id, { name, email, phone, role, is_active }) {
-    const numId = Number(id);
-    const updates = {};
-    if (name !== undefined) updates.name = name;
-    if (phone !== undefined) updates.phone = phone;
-    if (role !== undefined) {
-      const validRole = ['ADMIN', 'ORGANIZER', 'ATTENDEE'].includes(role?.toUpperCase())
-        ? role.toUpperCase()
-        : 'ATTENDEE';
-      updates.role = validRole;
-    }
-    if (is_active !== undefined) updates.is_active = Boolean(is_active);
-
-    if (email) {
-      updates.email = email.toLowerCase().trim();
-    }
-
-    try {
-      const setClauses = [];
-      const values = [];
-      let idx = 1;
-      for (const [key, val] of Object.entries(updates)) {
-        setClauses.push(`${key} = $${idx}`);
-        values.push(val);
-        idx++;
-      }
-      if (setClauses.length > 0) {
-        setClauses.push('updated_at = NOW()');
-        values.push(numId);
-        const sql = `UPDATE users SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING id, name, email, phone, role, is_active, created_at, updated_at`;
-        const res = await query(sql, values);
-        if (res.rowCount > 0) {
-          return res.rows[0];
-        }
-      }
-    } catch {
-      // Fallback
-    }
-
-    let memUser = memoryUsers.get(numId);
-    if (!memUser) {
-      for (const u of memoryUsers.values()) {
-        if (Number(u.id) === numId) {
-          memUser = u;
-          break;
-        }
-      }
-    }
     if (memUser) {
-      Object.assign(memUser, updates);
-      memUser.updated_at = new Date().toISOString();
       return {
         id: memUser.id,
         name: memUser.name,
         email: memUser.email,
-        phone: memUser.phone,
+        phone: memUser.phone || '',
         role: memUser.role,
-        is_active: memUser.is_active,
-        created_at: memUser.created_at,
-        updated_at: memUser.updated_at,
+        account_id: memUser.account_id,
+        is_suspended: Boolean(memUser.is_suspended),
+        is_active: memUser.is_active !== false,
       };
     }
 
@@ -663,283 +318,174 @@ class AuthService {
 
   async updateProfile(userId, { name, email, phone }) {
     const numId = Number(userId);
-    if (!numId) {
-      const error = new Error('ID người dùng không hợp lệ');
-      error.statusCode = 400;
-      throw error;
+    if (!name && !email && phone === undefined) {
+      const err = new Error('At least one field (name, email, phone) is required to update profile');
+      err.statusCode = 400;
+      throw err;
     }
 
-    const updates = {};
-    if (name !== undefined) {
-      if (typeof name !== 'string' || !name.trim()) {
-        const error = new Error('Họ và tên không được để trống');
-        error.statusCode = 400;
-        throw error;
-      }
-      updates.name = name.trim();
-    }
-
-    if (email !== undefined) {
-      if (typeof email !== 'string' || !email.trim()) {
-        const error = new Error('Email không được để trống');
-        error.statusCode = 400;
-        throw error;
-      }
-      const normalizedEmail = email.toLowerCase().trim();
+    let normalizedEmail = undefined;
+    if (email) {
+      normalizedEmail = email.toLowerCase().trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(normalizedEmail)) {
-        const error = new Error('Định dạng email không hợp lệ');
-        error.statusCode = 400;
-        throw error;
+        const err = new Error('Định dạng email không hợp lệ');
+        err.statusCode = 400;
+        throw err;
       }
-
-      // Check duplicate email
       try {
         const checkSql = 'SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2 LIMIT 1';
         const existing = await query(checkSql, [normalizedEmail, numId]);
         if (existing.rowCount > 0) {
-          const error = new Error('Email này đã được sử dụng bởi tài khoản khác');
-          error.statusCode = 409;
-          throw error;
+          const err = new Error('Email đã được sử dụng bởi tài khoản khác');
+          err.statusCode = 409;
+          throw err;
         }
-      } catch (err) {
-        if (err.statusCode === 409) throw err;
+      } catch (checkErr) {
+        if (checkErr.statusCode === 409) throw checkErr;
       }
-
-      for (const u of memoryUsers.values()) {
-        if (u.id !== numId && u.email.toLowerCase() === normalizedEmail) {
-          const error = new Error('Email này đã được sử dụng bởi tài khoản khác');
-          error.statusCode = 409;
-          throw error;
-        }
-      }
-      updates.email = normalizedEmail;
     }
 
-    if (phone !== undefined) {
-      const trimmedPhone = phone ? String(phone).trim() : '';
-      if (trimmedPhone) {
-        const phoneRegex = /^[0-9+() -]{8,20}$/;
-        if (!phoneRegex.test(trimmedPhone)) {
-          const error = new Error('Số điện thoại không hợp lệ. Vui lòng nhập từ 8 đến 20 số');
-          error.statusCode = 400;
-          throw error;
-        }
-      }
-      updates.phone = trimmedPhone;
-    }
+    const sanitizedPhone = phone !== undefined ? String(phone).trim() : undefined;
 
-    // Update in Postgres
-    let updatedUser = null;
     try {
-      const currentUser = await this.getUserById(numId);
-      if (!currentUser) {
-        const error = new Error('Không tìm thấy tài khoản người dùng');
-        error.statusCode = 404;
-        throw error;
-      }
-
-      const finalName = updates.name !== undefined ? updates.name : currentUser.name;
-      const finalEmail = updates.email !== undefined ? updates.email : currentUser.email;
-      const finalPhone = updates.phone !== undefined ? updates.phone : (currentUser.phone || '');
-
-      const updateSql = `
+      const sql = `
         UPDATE users
-        SET first_name = $1,
-            last_name = '',
-            email = $2,
-            phone = $3,
+        SET first_name = COALESCE($1, first_name),
+            email = COALESCE($2, email),
+            phone = COALESCE($3, phone),
             updated_at = NOW()
         WHERE id = $4
-        RETURNING id, first_name, last_name, email, role, account_id, phone,
-                  COALESCE(NULLIF(TRIM(CONCAT(first_name, ' ', last_name)), ''), email) AS name
+        RETURNING id, first_name, last_name, email, role, account_id, phone, is_suspended
       `;
-      const res = await query(updateSql, [finalName, finalEmail, finalPhone, numId]);
+      const res = await query(sql, [name || null, normalizedEmail || null, sanitizedPhone !== undefined ? sanitizedPhone : null, numId]);
       if (res.rowCount > 0) {
-        const r = res.rows[0];
-        updatedUser = {
-          id: Number(r.id),
-          name: r.name,
-          email: r.email,
-          phone: r.phone || '',
-          role: r.role,
-          account_id: Number(r.account_id),
+        const u = res.rows[0];
+        return {
+          id: Number(u.id),
+          name: u.first_name || u.email,
+          email: u.email,
+          phone: u.phone || '',
+          role: u.role,
+          account_id: u.account_id ? Number(u.account_id) : null,
+          is_suspended: Boolean(u.is_suspended),
         };
-
-        if (r.account_id) {
-          try {
-            await query('UPDATE accounts SET name = $1, email = $2, updated_at = NOW() WHERE id = $3', [finalName, finalEmail, r.account_id]);
-          } catch {}
-        }
       }
     } catch (err) {
-      if (err.statusCode) throw err;
+      if (err.statusCode === 409) throw err;
     }
 
-    // In-memory fallback
     const memUser = memoryUsers.get(numId);
     if (memUser) {
-      if (updates.name !== undefined) memUser.name = updates.name;
-      if (updates.email !== undefined) memUser.email = updates.email;
-      if (updates.phone !== undefined) memUser.phone = updates.phone;
-      if (!updatedUser) {
-        updatedUser = {
-          id: memUser.id,
-          name: memUser.name,
-          email: memUser.email,
-          phone: memUser.phone || '',
-          role: memUser.role,
-          account_id: memUser.account_id,
-        };
-      }
+      if (name) memUser.name = name;
+      if (normalizedEmail) memUser.email = normalizedEmail;
+      if (sanitizedPhone !== undefined) memUser.phone = sanitizedPhone;
+      memUser.updated_at = new Date().toISOString();
+      return {
+        id: memUser.id,
+        name: memUser.name,
+        email: memUser.email,
+        phone: memUser.phone || '',
+        role: memUser.role,
+        account_id: memUser.account_id,
+        is_suspended: Boolean(memUser.is_suspended),
+      };
     }
 
-    if (!updatedUser) {
-      const error = new Error('Không tìm thấy tài khoản người dùng');
-      error.statusCode = 404;
-      throw error;
-    }
-
-    const tokenPayload = {
-      id: updatedUser.id,
-      email: updatedUser.email,
-      role: updatedUser.role,
-      account_id: updatedUser.account_id,
-      type: 'access',
-    };
-    const token = generateAccessToken(tokenPayload);
-
-    return { user: updatedUser, token };
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
   }
 
-  async changePassword(userId, { currentPassword, newPassword }) {
+  async changePassword(userId, payload = {}) {
     const numId = Number(userId);
-    if (!numId) {
-      const error = new Error('ID người dùng không hợp lệ');
-      error.statusCode = 400;
-      throw error;
+    const current_password = payload.current_password || payload.currentPassword;
+    const new_password = payload.new_password || payload.newPassword;
+    if (!current_password || !new_password) {
+      const err = new Error('Mật khẩu hiện tại và mật khẩu mới là bắt buộc');
+      err.statusCode = 400;
+      throw err;
     }
 
-    if (!currentPassword || typeof currentPassword !== 'string') {
-      const error = new Error('Vui lòng nhập mật khẩu hiện tại');
-      error.statusCode = 400;
-      throw error;
+    if (typeof new_password !== 'string' || new_password.length < 8 || !/(?=.*[a-zA-Z])(?=.*[0-9])/.test(new_password)) {
+      const err = new Error('Mật khẩu mới phải có độ dài tối thiểu 8 ký tự và bao gồm cả chữ cái và chữ số');
+      err.statusCode = 400;
+      throw err;
     }
-
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8 || !/(?=.*[a-zA-Z])(?=.*[0-9])/.test(newPassword)) {
-      const error = new Error('Mật khẩu mới phải có độ dài tối thiểu 8 ký tự và bao gồm cả chữ cái và chữ số');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    if (currentPassword === newPassword) {
-      const error = new Error('Mật khẩu mới không được trùng với mật khẩu hiện tại');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    // Verify current password from Postgres
-    let currentHash = null;
-    let foundInDb = false;
 
     try {
-      const sql = 'SELECT id, password FROM users WHERE id = $1 LIMIT 1';
-      const res = await query(sql, [numId]);
+      const res = await query('SELECT password FROM users WHERE id = $1 LIMIT 1', [numId]);
       if (res.rowCount > 0) {
-        foundInDb = true;
-        currentHash = res.rows[0].password;
+        const currentHash = res.rows[0].password;
+        const valid = await bcrypt.compare(current_password, currentHash);
+        if (!valid) {
+          const err = new Error('Mật khẩu hiện tại không chính xác');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const newHash = await bcrypt.hash(new_password, 10);
+        await query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, numId]);
+        return { success: true, message: 'Đổi mật khẩu thành công' };
       }
-    } catch {}
+    } catch (err) {
+      if (err.statusCode === 400) throw err;
+    }
 
     const memUser = memoryUsers.get(numId);
-    if (!currentHash && memUser) {
-      currentHash = memUser.password_hash;
-    }
-
-    if (!currentHash) {
-      const error = new Error('Không tìm thấy tài khoản người dùng');
-      error.statusCode = 404;
-      throw error;
-    }
-
-    const isValid = await bcrypt.compare(currentPassword, currentHash);
-    if (!isValid && currentHash !== currentPassword) {
-      const error = new Error('Mật khẩu hiện tại không chính xác');
-      error.statusCode = 400;
-      throw error;
-    }
-
-    const newHash = await bcrypt.hash(newPassword, 10);
-
-    if (foundInDb) {
-      try {
-        await query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, numId]);
-      } catch (err) {
-        console.error('Error updating password in DB:', err.message);
-      }
-    }
-
     if (memUser) {
-      memUser.password_hash = newHash;
+      const valid = await bcrypt.compare(current_password, memUser.password_hash || memUser.password);
+      if (!valid) {
+        const err = new Error('Mật khẩu hiện tại không chính xác');
+        err.statusCode = 400;
+        throw err;
+      }
+      memUser.password_hash = await bcrypt.hash(new_password, 10);
+      memUser.password = memUser.password_hash;
+      memUser.updated_at = new Date().toISOString();
+      return { success: true, message: 'Đổi mật khẩu thành công' };
     }
 
-    return { success: true, message: 'Đổi mật khẩu thành công' };
+    const error = new Error('User not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Delegations to cohesive AdminService (Composition)
+  async getAllUsers() {
+    return adminService.getAllUsers();
+  }
+
+  async adminCreateUser(userData) {
+    return adminService.adminCreateUser(userData);
+  }
+
+  async adminUpdateUser(userId, userData) {
+    return adminService.adminUpdateUser(userId, userData);
+  }
+
+  async updateUserRole(userId, newRole) {
+    return adminService.updateUserRole(userId, newRole);
+  }
+
+  async toggleUserStatus(userId) {
+    return adminService.toggleUserStatus(userId);
+  }
+
+  async suspendUser(userId) {
+    return adminService.suspendUser(userId);
+  }
+
+  async deleteUser(userId) {
+    return adminService.deleteUser(userId);
+  }
+
+  async getStats() {
+    return adminService.getStats();
   }
 
   getMemoryUsers() {
     return Array.from(memoryUsers.values());
-  }
-
-  async getStats() {
-    try {
-      const statsRes = await query(`
-        SELECT 
-          (SELECT COUNT(*) FROM users) AS users_count,
-          (SELECT COUNT(*) FROM events) AS events_count,
-          (SELECT COUNT(*) FROM orders) AS orders_count,
-          (SELECT COALESCE(SUM(total_gross), 0) FROM orders WHERE status IN ('COMPLETED', 'PAID')) AS gross_sales,
-          (SELECT COALESCE(SUM(total_gross), 0) FROM orders WHERE status NOT IN ('CANCELLED', 'EXPIRED')) AS total_gmv,
-          (SELECT COALESCE(SUM(current_balance), 0) FROM escrow_accounts) AS total_escrow_holding,
-          (SELECT COALESCE(SUM(commission_held), 0) FROM escrow_accounts) AS total_commission_net,
-          (SELECT COALESCE(SUM(CASE WHEN status = 'REFUNDED' THEN 1 ELSE 0 END), 0) * 100.0 / NULLIF(COUNT(*), 0) FROM orders) AS refund_rate_pct
-      `);
-      const row = statsRes.rows[0] || {};
-      const grossSales = Number(row.gross_sales || 0);
-      const totalGmv = Number(row.total_gmv || grossSales);
-      const commissionNet = Number(row.total_commission_net || Math.round(grossSales * 0.05));
-      const escrowHolding = Number(row.total_escrow_holding || Math.max(0, grossSales - commissionNet));
-      const refundRate = Number(row.refund_rate_pct || 0);
-
-      const premiumUsers = Array.from(memoryUsers.values()).filter(u => u.is_premium || u.subscription_plan === 'PRO_ORGANIZER' || u.subscription_plan === 'VIP_MEMBER' || u.subscription_plan === 'ENTERPRISE');
-      const premiumCount = premiumUsers.length;
-
-      return {
-        total_users: parseInt(row.users_count || 0, 10),
-        total_events: parseInt(row.events_count || 0, 10),
-        total_orders: parseInt(row.orders_count || 0, 10),
-        gross_sales: grossSales,
-        total_gmv: totalGmv,
-        total_commission_net: commissionNet,
-        total_escrow_holding: escrowHolding,
-        refund_rate_percentage: Math.round(refundRate * 100) / 100,
-        premium_subscribers_count: premiumCount,
-      };
-    } catch {
-      const { default: eventsService } = await import('./events.service.js');
-      const events = await eventsService.listEvents();
-      const premiumUsers = Array.from(memoryUsers.values()).filter(u => u.is_premium || u.subscription_plan === 'PRO_ORGANIZER' || u.subscription_plan === 'VIP_MEMBER' || u.subscription_plan === 'ENTERPRISE');
-      return {
-        total_users: memoryUsers.size,
-        total_events: events.length,
-        total_orders: 0,
-        gross_sales: 0,
-        total_gmv: 0,
-        total_commission_net: 0,
-        total_escrow_holding: 0,
-        refund_rate_percentage: 0.0,
-        premium_subscribers_count: premiumUsers.length,
-      };
-    }
   }
 }
 

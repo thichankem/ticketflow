@@ -152,55 +152,57 @@ class EventsController {
 
   async uploadImage(req, res, next) {
     try {
-      const { fileData, mimeType, fileName } = req.body;
+      const fileData = req.file ? req.file.buffer : req.body.fileData;
+      const fileName = req.file?.originalname || req.body.fileName || 'image.webp';
+      const mimeType = req.file?.mimetype || req.body.mimeType || 'image/webp';
+      const eventId = req.params?.id || req.body?.eventId;
+      const mediaType = req.body?.mediaType || req.params?.type || 'cover';
+
       if (!fileData) {
-        return res.status(400).json({ error: 'Dữ liệu hình ảnh (fileData) là bắt buộc.' });
+        return res.status(400).json({ error: 'Dữ liệu hình ảnh (tệp tải lên hoặc fileData) là bắt buộc.' });
       }
 
-      const cleanMime = (mimeType || 'image/webp').toLowerCase();
-
-      // Prohibit videos explicitly
-      if (cleanMime.startsWith('video/') || (fileName && /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(fileName))) {
-        return res.status(400).json({ error: 'Không cho phép tải video lên. Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPEG, WebP).' });
-      }
-
-      // Prohibit PDFs explicitly
-      if (cleanMime === 'application/pdf' || (fileName && /\.pdf$/i.test(fileName))) {
-        return res.status(400).json({ error: 'Không hỗ trợ tệp PDF nữa. Vui lòng chỉ tải lên hình ảnh (PNG, JPEG, WebP).' });
-      }
-
-      const allowedImages = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
-      if (!allowedImages.includes(cleanMime)) {
-        return res.status(400).json({ error: `Định dạng ${cleanMime} không hợp lệ. Chỉ chấp nhận tệp hình ảnh (PNG, JPEG, WebP).` });
-      }
-
-      const cleanBase64 = fileData.includes(';base64,') ? fileData.split(';base64,')[1] : fileData;
-      const buffer = Buffer.from(cleanBase64, 'base64');
-
-      // Max file size: 10MB
-      if (buffer.length > 10 * 1024 * 1024) {
-        return res.status(400).json({ error: 'Kích thước tệp vượt quá giới hạn tối đa cho phép (10MB).' });
-      }
-
-      const safeName = (fileName || 'image')
-        .toLowerCase()
-        .replace(/[^a-z0-9.]+/g, '-')
-        .replace(/(^-|-$)/g, '');
-      const uniquePath = `events/${Date.now()}-${safeName}`;
-
-      let resultUrl;
-      try {
-        const uploadRes = await storageService.uploadFile('event-images', uniquePath, buffer, cleanMime);
-        resultUrl = uploadRes.publicUrl;
-      } catch (storageErr) {
-        resultUrl = fileData.startsWith('data:') ? fileData : `data:${cleanMime};base64,${cleanBase64}`;
-      }
+      const result = await storageService.uploadEventImage({
+        fileData,
+        fileName,
+        mimeType,
+        eventId,
+        mediaType,
+        user: req.user,
+      });
 
       return res.status(200).json({
+        success: true,
         message: 'Tải ảnh lên và tự động tối ưu hóa thành công',
-        url: resultUrl,
-        size: buffer.length,
-        mimeType: cleanMime,
+        url: result.url,
+        path: result.path,
+        key: result.key,
+        size: result.metadata.size,
+        mimeType: result.metadata.mimeType,
+        metadata: result.metadata,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async deleteImage(req, res, next) {
+    try {
+      const eventId = req.params?.id || req.body?.eventId;
+      const mediaType = req.params?.type || req.body?.mediaType || 'cover';
+      const storagePath = req.body?.storagePath || req.body?.path || req.query?.path;
+
+      const result = await storageService.deleteEventImage({
+        eventId,
+        mediaType,
+        storagePath,
+        user: req.user,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Xóa hình ảnh thành công',
+        ...result,
       });
     } catch (err) {
       next(err);
@@ -208,9 +210,53 @@ class EventsController {
   }
 
   async uploadAttachment(req, res, next) {
-    return res.status(400).json({
-      error: 'Chức năng tải lên tệp PDF đã bị vô hiệu hóa. Hệ thống không cho phép tải lên tệp PDF nữa.',
-    });
+    try {
+      const { id } = req.params;
+      const { default: storageService } = await import('../services/storage.service.js');
+      let attachmentData = null;
+
+      if (req.file) {
+        const uploadResult = await storageService.uploadFile(
+          'event-docs',
+          req.file.buffer,
+          req.file.originalname,
+          req.file.mimetype,
+          req.user
+        );
+        attachmentData = {
+          filename: req.file.originalname,
+          url: uploadResult.url,
+          size: req.file.size,
+        };
+      } else if (req.body.filename || req.body.url) {
+        attachmentData = {
+          filename: req.body.filename || 'document.pdf',
+          url: req.body.url || `/api/events/${id}/attachments/${Date.now()}`,
+          size: req.body.size || 0,
+        };
+      } else {
+        return res.status(400).json({ error: 'Tệp tải lên hoặc thông tin đính kèm là bắt buộc' });
+      }
+
+      const attachment = await eventsService.addAttachment(id, attachmentData, req.user);
+      return res.status(201).json({
+        message: 'Tải lên tài liệu PDF sự kiện thành công',
+        attachment,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async checkinAttendee(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { barcode, ticket_code } = req.body || {};
+      const result = await eventsService.checkinAttendee(id, barcode || ticket_code, req.user);
+      return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
   }
 
   async getAttachment(req, res, next) {
@@ -347,17 +393,17 @@ class EventsController {
       const { default: ordersService } = await import('../services/orders.service.js');
       const attendees = await ordersService.getAttendeesByEvent(id, req.user);
 
-      // Generate UTF-8 CSV with BOM for proper Excel compatibility (Phân hệ 2.14)
-      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Vị Trí Ghế,Trạng Thái\n';
+      // Generate UTF-8 CSV with BOM for proper Excel compatibility (Phân hệ 2.14 & Open Seating)
+      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Trạng Thái,Thời Gian Soát Vé\n';
       (attendees || []).forEach((att, idx) => {
         const row = [
           idx + 1,
           sanitizeCsvCell(att.ticket_code || att.barcode || att.short_id || att.id || ''),
           sanitizeCsvCell(att.name || ''),
           sanitizeCsvCell(att.email || ''),
-          sanitizeCsvCell(att.tier_name || att.ticket_tier_id || ''),
-          sanitizeCsvCell(att.seat || 'Tự do'),
+          sanitizeCsvCell(att.tier_name || att.ticket_tier_id || 'Vé Tiêu Chuẩn'),
           sanitizeCsvCell(att.status || 'ACTIVE'),
+          sanitizeCsvCell(att.checked_in_at ? new Date(att.checked_in_at).toLocaleString('vi-VN') : 'Chưa vào cửa'),
         ];
         csv += row.join(',') + '\n';
       });

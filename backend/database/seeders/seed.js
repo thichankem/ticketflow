@@ -63,8 +63,8 @@ export async function seedDatabase() {
     console.log('[CLEAN] Clearing existing database tables...');
     await client.query(`
       TRUNCATE TABLE 
-        seat_reservations, event_favorites, announcements, notifications, support_messages, 
-        support_tickets, payouts, attendees, order_items, orders, 
+        seat_reservations, event_favorites, announcements, notifications, 
+        payouts, attendees, order_items, orders, 
         promo_codes, ticket_tiers, event_settings, events, 
         account_users, organizers, users, accounts 
       CASCADE;
@@ -594,25 +594,6 @@ export async function seedDatabase() {
       }
     }
 
-    // 14. Populate Support Tickets & Messages (Disputes & Helpdesk)
-    console.log('[SEED] Populating helpdesk support tickets and dispute threads...');
-    await client.query(`
-      INSERT INTO support_tickets (id, short_id, user_id, order_id, event_id, contact_email, contact_name, subject, category, priority, status, description, evidence_url, resolution_notes, assigned_to, resolved_at, created_at, updated_at)
-      VALUES
-        (1, 'TCK-202601', 3, 1, 1, 'attendee@ticketflow.local', 'John Attendee', 'Hỗ trợ thay đổi thông tin vé sự kiện Tech Summit', 'TICKET_ISSUE', 'MEDIUM', 'RESOLVED', 'Tôi muốn đính chính lại thông tin người tham dự trên vé số 1 do điền nhầm tên.', NULL, 'Đã cập nhật tên vé chính xác theo yêu cầu khách hàng.', 1, NOW() - INTERVAL '1 day', NOW() - INTERVAL '3 days', NOW()),
-        (2, 'TCK-202602', 3, 2, 2, 'attendee@ticketflow.local', 'John Attendee', 'Yêu cầu kiểm tra hoàn tiền do sự kiện đổi lịch', 'REFUND_REQUEST', 'HIGH', 'IN_PROGRESS', 'Sự kiện âm nhạc đã thông báo lùi lịch 1 tuần, tôi không thể tham gia nên đề nghị hoàn lại tiền vào tài khoản.', NULL, NULL, 1, NULL, NOW() - INTERVAL '1 day', NOW()),
-        (3, 'TCK-202603', 3, NULL, 3, 'attendee@ticketflow.local', 'John Attendee', 'Hỏi về tính năng thanh toán Napas QR', 'PAYMENT', 'LOW', 'OPEN', 'Tôi quét mã Napas QR từ app ngân hàng ACB có được tự động xác nhận ngay không?', NULL, NULL, NULL, NULL, NOW() - INTERVAL '3 hours', NOW());
-
-      INSERT INTO support_messages (id, ticket_id, sender_id, sender_name, sender_role, message, created_at)
-      VALUES
-        (1, 1, 3, 'John Attendee', 'ATTENDEE', 'Tôi muốn đính chính lại thông tin người tham dự trên vé số 1 do điền nhầm họ tên khi đặt nhanh.', NOW() - INTERVAL '3 days'),
-        (2, 1, 2, 'Demo Organizer', 'ORGANIZER', 'Chào bạn, BTC đã tiếp nhận và cập nhật lại tên trên hệ thống vé cho bạn rồi nhé. Bạn có thể tải lại vé.', NOW() - INTERVAL '2 days'),
-        (3, 1, 1, 'Super Admin', 'ADMIN', 'Bộ phận Ticketflow CS đã xác nhận thay đổi thành công và đóng yêu cầu hỗ trợ.', NOW() - INTERVAL '1 day'),
-        (4, 2, 3, 'John Attendee', 'ATTENDEE', 'Sự kiện âm nhạc đã thông báo lùi lịch 1 tuần, tôi không thể tham gia nên đề nghị hoàn lại tiền.', NOW() - INTERVAL '1 day'),
-        (5, 2, 2, 'Demo Organizer', 'ORGANIZER', 'BTC đã nhận thông tin và đồng ý chính sách hoàn tiền 100% cho các bạn bị trùng lịch. Nhờ Admin xử lý hoàn tiền ví/thẻ.', NOW() - INTERVAL '12 hours'),
-        (6, 2, 1, 'Super Admin', 'ADMIN', 'Admin đã tiếp nhận và đang tiến hành hoàn tiền qua cổng thanh toán.', NOW() - INTERVAL '2 hours');
-    `);
-
     // 15. Populate In-App Notifications
     console.log('[SEED] Populating in-app notifications...');
     await client.query(`
@@ -675,8 +656,6 @@ export async function seedDatabase() {
       SELECT setval('order_items_id_seq', (SELECT COALESCE(MAX(id), 1) FROM order_items));
       SELECT setval('attendees_id_seq', (SELECT COALESCE(MAX(id), 1) FROM attendees));
       SELECT setval('payouts_id_seq', (SELECT COALESCE(MAX(id), 1) FROM payouts));
-      SELECT setval('support_tickets_id_seq', (SELECT COALESCE(MAX(id), 1) FROM support_tickets));
-      SELECT setval('support_messages_id_seq', (SELECT COALESCE(MAX(id), 1) FROM support_messages));
       SELECT setval('announcements_id_seq', (SELECT COALESCE(MAX(id), 1) FROM announcements));
       SELECT setval('notifications_id_seq', (SELECT COALESCE(MAX(id), 1) FROM notifications));
       SELECT setval('event_favorites_id_seq', (SELECT COALESCE(MAX(id), 1) FROM event_favorites));

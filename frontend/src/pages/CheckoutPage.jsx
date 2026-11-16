@@ -186,9 +186,9 @@ export const CheckoutPage = () => {
                         <span className="field-value">{att.name || buyerName}</span>
                       </div>
                       <div className="ticket-field">
-                        <span className="field-label">VỊ TRÍ CHỖ NGỒI</span>
+                        <span className="field-label">QUY CHẾ CHỖ NGỒI</span>
                         <span className="field-value font-bold text-primary">
-                          {att.seat || (activeOrder?.seats && activeOrder.seats[idx]) || 'Khu vực tự do'}
+                          Ghế tự do theo hạng vé (Open Seating)
                         </span>
                       </div>
                       <div className="ticket-field">
@@ -341,11 +341,9 @@ export const CheckoutPage = () => {
                   <div className="attendee-subcard-header">
                     <span className="attendee-index-badge">Người tham dự #{idx + 1}</span>
                     <span className="attendee-tier-name">{att.tier_name}</span>
-                    {(activeOrder?.seats && activeOrder.seats[idx]) && (
-                      <span className="badge badge-primary seat-highlight-badge">
-                        Ghế: {activeOrder.seats[idx]}
-                      </span>
-                    )}
+                    <span className="badge badge-info seat-highlight-badge">
+                      Open Seating
+                    </span>
                   </div>
 
                   <div className="form-row-2">

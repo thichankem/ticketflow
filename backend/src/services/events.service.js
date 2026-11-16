@@ -1,9 +1,18 @@
 import { query } from '../config/db.js';
 import { demoEvents } from '../data/demo-catalog.js';
+import storageService from './storage.service.js';
 
 // In-memory fallback. Id 1 stays the original summit so list order matches the E2E suite.
 const memoryEvents = new Map(demoEvents.map((event) => [event.id, { ...event }]));
 let nextEventId = Math.max(...demoEvents.map((event) => event.id));
+
+export function resolveImageUrl(pathOrUrl) {
+  if (!pathOrUrl || typeof pathOrUrl !== 'string') return null;
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://') || pathOrUrl.startsWith('/')) {
+    return pathOrUrl;
+  }
+  return storageService.getPublicUrl('event-images', pathOrUrl);
+}
 
 const eventCover = (slug, category) => {
   const bySlug = {
@@ -52,8 +61,10 @@ function parseLocationDetails(details) {
 
 function formatEvent(r) {
   const locDetails = parseLocationDetails(r.location_details);
-  const coverImg = r.cover || r.image_url || locDetails.cover || locDetails.image_url || eventCover(r.slug || r.short_id, r.category);
-  const bannerImg = r.banner || r.banner_url || locDetails.banner || locDetails.banner_url || coverImg;
+  const rawCover = r.cover || r.image_url || locDetails.cover || locDetails.image_url;
+  const coverImg = resolveImageUrl(rawCover) || eventCover(r.slug || r.short_id, r.category);
+  const rawBanner = r.banner || r.banner_url || locDetails.banner || locDetails.banner_url;
+  const bannerImg = resolveImageUrl(rawBanner) || coverImg;
   return {
     ...r,
     id: Number(r.id),
@@ -275,6 +286,20 @@ class EventsService {
         finalBanner,
       ]);
       const created = res.rows[0];
+
+      // Link any draft media assets in event_media_assets
+      try {
+        await query(
+          `UPDATE event_media_assets
+           SET event_id = $1
+           WHERE event_id IS NULL AND account_id = $2
+             AND (public_url = $3 OR public_url = $4 OR storage_path = $3 OR storage_path = $4)`,
+          [created.id, accountId, finalCover, finalBanner]
+        );
+      } catch (linkErr) {
+        console.warn('[EventsService.createEvent] Error linking media assets:', linkErr.message);
+      }
+
       // Seed escrow account for the newly created event
       try {
         await query(`
@@ -396,6 +421,33 @@ class EventsService {
         updatedBanner,
         numId,
       ]);
+
+      // If cover or banner was replaced, retire old storage objects safely
+      if (existing.cover && existing.cover !== updatedCover) {
+        const oldPath = storageService.extractStoragePath(existing.cover);
+        if (oldPath && oldPath.startsWith('events/')) {
+          storageService.deleteFile('event-images', oldPath).catch(() => {});
+          query('DELETE FROM event_media_assets WHERE storage_path = $1', [oldPath]).catch(() => {});
+        }
+      }
+      if (existing.banner && existing.banner !== updatedBanner) {
+        const oldPath = storageService.extractStoragePath(existing.banner);
+        if (oldPath && oldPath.startsWith('events/')) {
+          storageService.deleteFile('event-images', oldPath).catch(() => {});
+          query('DELETE FROM event_media_assets WHERE storage_path = $1', [oldPath]).catch(() => {});
+        }
+      }
+
+      // Link any new media assets
+      try {
+        await query(
+          `UPDATE event_media_assets
+           SET event_id = $1
+           WHERE event_id IS NULL AND (public_url = $2 OR public_url = $3 OR storage_path = $2 OR storage_path = $3)`,
+          [numId, updatedCover, updatedBanner]
+        );
+      } catch {}
+
       return formatEvent(res.rows[0]);
     } catch {
       // Fallback
@@ -414,10 +466,147 @@ class EventsService {
     }
   }
 
-  async addAttachment(eventId, attachment) {
-    const err = new Error('Chức năng tải lên tệp PDF đã bị vô hiệu hóa. Hệ thống không cho phép tải tệp PDF nữa.');
-    err.statusCode = 400;
-    throw err;
+  async addAttachment(eventId, attachment, user = null) {
+    const numId = Number(eventId);
+    const existing = await this.getEventById(numId, user);
+    if (!existing) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(existing.account_id) !== Number(user.account_id) && Number(existing.organizer_id) !== Number(user.id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const newAtt = {
+      id: `att-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      filename: attachment.filename || attachment.name || 'document.pdf',
+      url: attachment.url || `/api/events/${numId}/attachments/${Date.now()}`,
+      size: attachment.size || 0,
+      uploaded_at: new Date().toISOString(),
+    };
+
+    const currentAttachments = Array.isArray(existing.pdf_attachments) ? existing.pdf_attachments : [];
+    currentAttachments.push(newAtt);
+    existing.pdf_attachments = currentAttachments;
+
+    const currentDetails = parseLocationDetails(existing.location_details);
+    currentDetails.pdf_attachments = currentAttachments;
+
+    try {
+      await query(
+        'UPDATE events SET location_details = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(currentDetails), numId]
+      );
+    } catch {}
+
+    const memEv = memoryEvents.get(numId);
+    if (memEv) {
+      memEv.pdf_attachments = currentAttachments;
+    }
+
+    return newAtt;
+  }
+
+  async checkinAttendee(eventId, barcode, user) {
+    if (!barcode || !String(barcode).trim()) {
+      const err = new Error('Mã barcode hoặc ticket code là bắt buộc');
+      err.statusCode = 400;
+      throw err;
+    }
+    const cleanCode = String(barcode).trim();
+    const numEventId = Number(eventId);
+    const event = await this.getEventById(numEventId);
+    if (!event) {
+      const err = new Error('Sự kiện không tồn tại');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (user.role !== 'ADMIN' && Number(event.organizer_id) !== Number(user.id) && Number(event.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Bạn không có quyền soát vé cho sự kiện này');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    let attendee = null;
+    try {
+      const res = await query(
+        'SELECT * FROM attendees WHERE event_id = $1 AND (barcode = $2 OR short_id = $2 OR public_id = $2) LIMIT 1',
+        [numEventId, cleanCode]
+      );
+      if (res.rowCount > 0) {
+        attendee = res.rows[0];
+      }
+    } catch {}
+
+    const { default: ordersService } = await import('./orders.service.js');
+    if (!attendee && ordersService.getMemoryAttendees) {
+      for (const a of ordersService.getMemoryAttendees()) {
+        if (Number(a.event_id) === numEventId && (a.barcode === cleanCode || a.ticket_code === cleanCode || a.short_id === cleanCode)) {
+          attendee = a;
+          break;
+        }
+      }
+    }
+
+    if (!attendee) {
+      const err = new Error('Vé không tồn tại hoặc không thuộc sự kiện này');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (attendee.status === 'CHECKED_IN') {
+      const err = new Error(`Vé này đã được check-in trước đó vào lúc ${attendee.checked_in_at || 'trước đây'}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status === 'CANCELLED') {
+      const err = new Error('Vé không hợp lệ: Vé đã bị hủy hoặc hoàn tiền');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status === 'TRANSFERRED') {
+      const err = new Error('Vé không hợp lệ: Vé đã được chuyển nhượng cho người khác và mã cũ đã bị vô hiệu hóa');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status !== 'ACTIVE') {
+      const err = new Error(`Trạng thái vé không hợp lệ để check-in: ${attendee.status}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const nowIso = new Date().toISOString();
+    attendee.status = 'CHECKED_IN';
+    attendee.checked_in_at = nowIso;
+    attendee.checked_in_by = user.id;
+
+    try {
+      await query(
+        "UPDATE attendees SET status = 'CHECKED_IN', checked_in_at = NOW(), checked_in_by = $1, updated_at = NOW() WHERE id = $2",
+        [user.id, attendee.id]
+      );
+    } catch {}
+
+    return {
+      success: true,
+      message: 'Check-in thành công!',
+      attendee: {
+        id: attendee.id,
+        name: attendee.first_name || attendee.name || 'Khách Tham Dự',
+        email: attendee.email,
+        ticket_tier_id: attendee.ticket_tier_id,
+        barcode: attendee.barcode,
+        status: 'CHECKED_IN',
+        checked_in_at: nowIso,
+      },
+    };
   }
 
   async deleteEvent(user, id) {
@@ -546,7 +735,18 @@ class EventsService {
           WHERE id = $1
         `, [numId]);
       } else {
-        // Complete hard delete for events without orders
+        // Complete hard delete for events without orders: clean up associated media objects from cloud storage
+        try {
+          const { rows: mediaRows } = await query(
+            'SELECT storage_path FROM event_media_assets WHERE event_id = $1',
+            [numId]
+          );
+          for (const m of mediaRows) {
+            if (m.storage_path) {
+              storageService.deleteFile('event-images', m.storage_path).catch(() => {});
+            }
+          }
+        } catch {}
         await query('DELETE FROM event_settings WHERE event_id = $1', [numId]).catch(() => {});
         await query('DELETE FROM event_favorites WHERE event_id = $1', [numId]).catch(() => {});
         await query('DELETE FROM promo_codes WHERE event_id = $1', [numId]).catch(() => {});

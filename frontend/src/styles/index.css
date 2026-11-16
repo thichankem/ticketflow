@@ -3801,23 +3801,6 @@ textarea.form-control:focus {
   gap: 0.25rem;
 }
 
-/* FAQ Row Flex Separation */
-.faq-question-row {
-  display: flex !important;
-  align-items: center !important;
-  justify-content: space-between !important;
-  gap: 1rem !important;
-  width: 100% !important;
-}
-
-.faq-toggle-icon {
-  margin-left: auto;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
 /* 14. KPI GRIDS & EXECUTIVE ADMIN DASHBOARD */
 .kpi-grid {
   display: grid;

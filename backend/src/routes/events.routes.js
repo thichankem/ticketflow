@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import multer from 'multer';
 import eventsController from '../controllers/events.controller.js';
 import ticketsController from '../controllers/tickets.controller.js';
 import promosController from '../controllers/promos.controller.js';
@@ -7,6 +8,27 @@ import { authenticateToken, optionalAuthenticateToken } from '../middleware/auth
 import { requireRole } from '../middleware/rbac.middleware.js';
 
 const router = Router();
+
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const handleUploadMiddleware = (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    memoryUpload.single('file')(req, res, (err) => {
+      if (err) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ error: 'Kích thước tệp vượt quá giới hạn tối đa cho phép (10MB).' });
+        }
+        return res.status(400).json({ error: err.message });
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+};
 
 // Organizer Dashboard (Must be before /:id)
 router.get('/organizer/dashboard', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.organizerDashboard);
@@ -26,7 +48,8 @@ router.get('/announcements', eventsController.getAnnouncements);
 router.get('/recommendations', eventsController.recommendations);
 
 // Image Upload with Auto-Formatting & Size Compression
-router.post('/upload-image', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.uploadImage);
+router.post('/upload-image', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), handleUploadMiddleware, eventsController.uploadImage);
+router.delete('/images', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.deleteImage);
 
 // Public event routes
 router.get('/', eventsController.list);
@@ -40,6 +63,11 @@ router.post('/:id/queue/configure', authenticateToken, requireRole('ORGANIZER', 
 router.post('/', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.create);
 router.put('/:id', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.update);
 router.delete('/:id', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.delete);
+
+// Image management for existing events
+router.post('/:id/images', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), handleUploadMiddleware, eventsController.uploadImage);
+router.delete('/:id/images/:type', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.deleteImage);
+router.delete('/:id/images', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.deleteImage);
 
 // Behavioral tracking & interactions
 router.post('/:id/favorite', optionalAuthenticateToken, eventsController.toggleFavorite);
@@ -79,5 +107,6 @@ router.get('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'
 router.post('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.createAttendee);
 router.put('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.updateAttendee);
 router.delete('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.deleteAttendee);
+router.post('/:id/checkin', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.checkinAttendee);
 
 export default router;

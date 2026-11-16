@@ -125,7 +125,7 @@ export const ReceiptPage = () => {
               <div key={att.id || idx} className="e-ticket-card">
                 <div className="ticket-top-band">
                   <span className="ticket-brand">TICKETFLOW PASS</span>
-                  <span className="ticket-tier-badge">{att.seat ? `Ghế: ${att.seat}` : 'Vé tham dự'}</span>
+                  <span className="ticket-tier-badge">{att.tier_name || 'Vé tham dự'}</span>
                 </div>
                 <div className="ticket-main-body">
                   <div className="ticket-info-col">
@@ -133,12 +133,10 @@ export const ReceiptPage = () => {
                       <span className="field-label">NGƯỜI THAM DỰ</span>
                       <span className="field-value">{att.name || receipt.buyer?.name}</span>
                     </div>
-                    {att.seat && (
-                      <div className="ticket-field">
-                        <span className="field-label">CHỖ NGỒI</span>
-                        <span className="field-value text-primary font-bold">{att.seat}</span>
-                      </div>
-                    )}
+                    <div className="ticket-field">
+                      <span className="field-label">QUY CHẾ CHỖ NGỒI</span>
+                      <span className="field-value text-primary font-bold">Ghế tự do (Open Seating)</span>
+                    </div>
                     <div className="ticket-field">
                       <span className="field-label">MÃ VÉ</span>
                       <span className="field-value seat-highlight">{att.ticket_code || att.barcode}</span>

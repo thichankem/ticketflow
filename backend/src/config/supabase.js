@@ -18,6 +18,8 @@ const supabaseKey =
   process.env.SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImttY2lsdWNoY2Zhamxhd3J3YmdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQxNTAxMTksImV4cCI6MjEwOTcyNjExOX0.RhNxhApAGSpqdm0fX3uVjF6i59Od_UdvCCQnztZgtvw';
 
+export const SUPABASE_STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'event-images';
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     persistSession: false,

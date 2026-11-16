@@ -331,8 +331,8 @@ export const MyTicketsPage = () => {
                         <strong>Email:</strong> {att.email || '—'}
                       </div>
                       <div className="ticket-seat-assignment">
-                        <strong>Vị trí chỗ ngồi:</strong>{' '}
-                        <span className="seat-badge">{att.seat || 'Ghế tự do (Open Seating)'}</span>
+                        <strong>Quy chế chỗ ngồi:</strong>{' '}
+                        <span className="badge badge-info">Ghế tự do (Open Seating)</span>
                       </div>
 
                       {/* Transfer Ticket Action Button */}
@@ -491,7 +491,7 @@ export const MyTicketsPage = () => {
             <form onSubmit={handleConfirmTransfer}>
               <div className="modal-body">
                 <p className="muted text-sm">
-                  Bạn đang chuyển nhượng vé <strong>{transferTargetAttendee.tier_name || 'Vé tham dự'}</strong> (Ghế: {transferTargetAttendee.seat || 'Tự do'}). Sau khi chuyển nhượng, vé và mã QR sẽ thuộc quyền sở hữu của người nhận.
+                  Bạn đang chuyển nhượng vé <strong>{transferTargetAttendee.tier_name || 'Vé tham dự'}</strong> (Quy chế: Ghế tự do theo hạng vé). Sau khi chuyển nhượng, vé gốc của bạn sẽ bị vô hiệu hóa mã QR và hệ thống cấp mã QR mới độc nhất cho người nhận.
                 </p>
 
                 <div className="form-group form-mt">

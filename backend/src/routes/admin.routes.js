@@ -34,9 +34,6 @@ router.get('/announcements', adminController.getAnnouncements);
 router.post('/announcements', adminController.createAnnouncement);
 router.delete('/announcements/:id', adminController.deleteAnnouncement);
 
-// Helpdesk Dispute Refund Override (SPEC.md Section 5.6)
-router.post('/helpdesk/tickets/:id/dispute-refund', adminController.disputeRefund);
-
 // Export Financial Audit Report (Phân hệ 2.14 & SPEC.md Section 5.5)
 router.get('/export/audit', adminController.exportAuditReport);
 router.get('/reports/audit-financial/export', adminController.exportAuditReport);

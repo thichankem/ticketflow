@@ -112,6 +112,19 @@ export const EventDetailsPage = () => {
     return [];
   }, [event]);
 
+  // Media / image blocks from blog content
+  const blogMediaBlocks = useMemo(() => {
+    const rawBlocks =
+      event?.blocks ||
+      event?.blog_blocks ||
+      event?.location_details?.blog_blocks ||
+      [];
+    if (!Array.isArray(rawBlocks)) return [];
+    return rawBlocks.filter(
+      (b) => b && (b.type === 'media' || b.media_url || b.url) && (b.media_url || b.url)
+    );
+  }, [event]);
+
   if (loading) {
     return (
       <div className="card loading-state">
@@ -193,6 +206,37 @@ export const EventDetailsPage = () => {
             <div className="prose blog-body" dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
           </section>
 
+          {/* Blog Media Gallery */}
+          {blogMediaBlocks && blogMediaBlocks.length > 0 && (
+            <section className="card blog-media-section">
+              <h2 className="section-title">{t('event.gallery_title', 'Hình ảnh sự kiện')}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-sm my-2">
+                {blogMediaBlocks.map((b, idx) => {
+                  const mediaSrc = b.media_url || b.url;
+                  return (
+                    <figure key={idx} className="blog-media-item m-0 rounded overflow-hidden border">
+                      <img
+                        src={mediaSrc}
+                        alt={b.caption || `${event.title} - ảnh ${idx + 1}`}
+                        className="w-full h-48 object-cover"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = '/images/events/summit.svg';
+                        }}
+                      />
+                      {b.caption && (
+                        <figcaption className="p-xs text-xs text-center muted italic bg-slate-50 dark:bg-slate-900">
+                          {b.caption}
+                        </figcaption>
+                      )}
+                    </figure>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Schedule / Timeline Blocks */}
           {scheduleTimeline && scheduleTimeline.length > 0 && (
             <section className="card timeline-card">
@@ -211,39 +255,35 @@ export const EventDetailsPage = () => {
             </section>
           )}
 
-          {/* Seating Layout Map */}
+          {/* Open Seating & Venue Layout */}
           <section className="card seatmap-card">
-            <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ chỗ ngồi')}</h2>
-            <p className="muted">
-              {t('event.seatmap_desc', 'Sơ đồ chỗ ngồi. Hệ thống tự động xếp ghế liền kề khi chọn từ 2 vé trở lên.')}
-            </p>
+            <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ phân khu & Không gian')}</h2>
+            <div className="open-seating-alert p-3 mb-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-900 dark:text-blue-200">
+              <span className="font-semibold">💡 Nguyên tắc Open Seating:</span> Sự kiện áp dụng quy chế ngồi/đứng tự do theo khu vực hạng vé đã mua. Vui lòng có mặt sớm trước giờ mở cửa để có vị trí quan sát tốt nhất trong phân khu của bạn.
+            </div>
             <div className="seat-map-preview-box">
               {event.seat_map_url && !seatMapImgError ? (
                 <img
                   src={event.seat_map_url}
-                  alt="Sơ đồ khán phòng"
-                  className="seat-map-custom-img"
+                  alt="Sơ đồ phân khu sự kiện"
+                  className="seat-map-custom-img rounded-lg max-h-80 mx-auto object-contain"
                   onError={() => setSeatMapImgError(true)}
                 />
               ) : (
-                <div className="seat-map-stage-diagram">
-                  <div className="seat-map-stage-banner">
+                <div className="seat-map-stage-diagram p-4 bg-slate-50 dark:bg-slate-900 rounded-lg text-center">
+                  <div className="seat-map-stage-banner font-bold py-2 px-6 bg-slate-800 text-white rounded mb-4 inline-block">
                     {t('event.seatmap_stage', 'SÂN KHẤU CHÍNH')}
                   </div>
-                  <div className="seat-map-grid">
-                    {['A', 'B', 'C', 'D'].map((row) =>
-                      Array.from({ length: 10 }, (_, i) => (
-                        <div
-                          key={`${row}-${i + 1}`}
-                          className={`seat-map-cell ${row === 'A' ? 'vip' : 'available'}`}
-                        >
-                          {row}{i + 1}
-                        </div>
-                      ))
-                    )}
+                  <div className="flex flex-col gap-3 max-w-md mx-auto my-4">
+                    <div className="p-3 bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 rounded text-amber-900 dark:text-amber-200 font-medium">
+                      👑 Khu vực Hạng Vé VIP (Gần sân khấu nhất)
+                    </div>
+                    <div className="p-3 bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 rounded text-indigo-900 dark:text-indigo-200 font-medium">
+                      🎫 Khu vực Hạng Vé Tiêu Chuẩn / Phổ Thông
+                    </div>
                   </div>
-                  <p className="seat-map-legend-text">
-                    {t('event.seatmap_legend', 'Ghế VIP · Ghế Tiêu chuẩn · Tự động xếp chỗ liền kề')}
+                  <p className="seat-map-legend-text text-xs text-slate-500">
+                    Phân khu mở · Ghế tự do theo hạng vé · Nhận chỗ theo thứ tự vào cửa
                   </p>
                 </div>
               )}

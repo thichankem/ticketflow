@@ -49,10 +49,13 @@ export const apiFetch = async (endpoint, options = {}) => {
 
   const url = endpoint.startsWith('http') ? endpoint : `${API_BASE}${endpoint.startsWith('/') ? '' : '/'}${endpoint}`;
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const requestHeaders = {
-    'Content-Type': 'application/json',
     ...headers,
   };
+  if (!isFormData && !requestHeaders['Content-Type']) {
+    requestHeaders['Content-Type'] = 'application/json';
+  }
 
   if (authToken && !requestHeaders['Authorization']) {
     requestHeaders['Authorization'] = `Bearer ${authToken}`;
@@ -64,7 +67,7 @@ export const apiFetch = async (endpoint, options = {}) => {
       headers: requestHeaders,
       credentials: 'include', // Include HttpOnly cookies
       signal: controller.signal,
-      ...(body ? { body: JSON.stringify(body) } : {}),
+      ...(body ? { body: isFormData ? body : JSON.stringify(body) } : {}),
     });
 
     clearTimeout(timeoutId);
@@ -156,24 +159,6 @@ export const api = {
     clearAll: () => apiFetch('/events/notifications', { method: 'DELETE' }),
   },
 
-  // Helpdesk & Dispute APIs
-  helpdesk: {
-    getFaqs: (category) => apiFetch(`/helpdesk/faqs${category ? `?category=${category}` : ''}`),
-    createFaq: (data) => apiFetch('/helpdesk/faqs', { method: 'POST', body: data }),
-    updateFaq: (id, data) => apiFetch(`/helpdesk/faqs/${id}`, { method: 'PUT', body: data }),
-    deleteFaq: (id) => apiFetch(`/helpdesk/faqs/${id}`, { method: 'DELETE' }),
-    listTickets: (params) => {
-      const q = params ? '?' + new URLSearchParams(params).toString() : '';
-      return apiFetch(`/helpdesk/tickets${q}`);
-    },
-    getTicket: (id) => apiFetch(`/helpdesk/tickets/${id}`),
-    createTicket: (data) => apiFetch('/helpdesk/tickets', { method: 'POST', body: data }),
-    addMessage: (id, message) => apiFetch(`/helpdesk/tickets/${id}/messages`, { method: 'POST', body: { message } }),
-    updateStatus: (id, status, notes) =>
-      apiFetch(`/helpdesk/tickets/${id}/status`, { method: 'PUT', body: { status, resolution_notes: notes } }),
-    deleteTicket: (id) => apiFetch(`/helpdesk/tickets/${id}`, { method: 'DELETE' }),
-  },
-
   // Events & Organizer APIs
   events: {
     list: (params) => {
@@ -185,7 +170,24 @@ export const api = {
     create: (data) => apiFetch('/events', { method: 'POST', body: data }),
     update: (id, data) => apiFetch(`/events/${id}`, { method: 'PUT', body: data }),
     delete: (id) => apiFetch(`/events/${id}`, { method: 'DELETE' }),
-    uploadImage: (data) => apiFetch('/events/upload-image', { method: 'POST', body: data }),
+    uploadImage: (payload) => {
+      if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+        return apiFetch('/events/upload-image', { method: 'POST', body: payload });
+      }
+      if (payload?.file) {
+        const formData = new FormData();
+        formData.append('file', payload.file);
+        if (payload.eventId) formData.append('eventId', payload.eventId);
+        if (payload.mediaType) formData.append('mediaType', payload.mediaType);
+        if (payload.fileName) formData.append('fileName', payload.fileName);
+        return apiFetch('/events/upload-image', { method: 'POST', body: formData });
+      }
+      return apiFetch('/events/upload-image', { method: 'POST', body: payload });
+    },
+    deleteImage: (data) => {
+      const endpoint = data?.eventId ? `/events/${data.eventId}/images` : '/events/images';
+      return apiFetch(endpoint, { method: 'DELETE', body: data });
+    },
 
     // Organizer Dashboard
     getOrganizerDashboard: () => apiFetch('/events/organizer/dashboard'),

@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 
 /**
- * Standard ISO/IEC 18004 QR Code Component
+ * Standard ISO/IEC 18004 Vector SVG QR Code Component (SPEC-ISSUE-011)
  */
 export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
-  const [dataUrl, setDataUrl] = useState('');
+  const [svgMarkup, setSvgMarkup] = useState('');
 
   useEffect(() => {
     let isMounted = true;
-    QRCode.toDataURL(String(value || 'TICKETFLOW'), {
+    QRCode.toString(String(value || 'TICKETFLOW'), {
+      type: 'svg',
       width: size,
       margin: 1,
       color: {
@@ -18,11 +19,11 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
       },
       errorCorrectionLevel: 'M',
     })
-      .then((url) => {
-        if (isMounted) setDataUrl(url);
+      .then((svg) => {
+        if (isMounted) setSvgMarkup(svg);
       })
       .catch((err) => {
-        console.error('[QrCode] Generation error:', err);
+        console.error('[QrCodeSvg] Generation error:', err);
       });
 
     return () => {
@@ -30,7 +31,7 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
     };
   }, [value, size]);
 
-  if (!dataUrl) {
+  if (!svgMarkup) {
     return (
       <svg
         width={size}
@@ -56,12 +57,11 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
   }
 
   return (
-    <img
-      src={dataUrl}
-      alt={`QR Code for ${value}`}
-      width={size}
-      height={size}
-      className={`qr-code-img inline-block bg-white p-1 rounded-lg shadow-sm border border-slate-100 dark:border-slate-800 ${className}`}
+    <div
+      className={`qr-code-svg-container inline-block bg-white p-1 rounded-lg shadow-sm border border-slate-100 dark:border-slate-800 ${className}`}
+      style={{ width: size, height: size }}
+      aria-label={`QR Code for ${value}`}
+      dangerouslySetInnerHTML={{ __html: svgMarkup }}
     />
   );
 };

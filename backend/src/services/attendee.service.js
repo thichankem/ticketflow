@@ -1,0 +1,534 @@
+import crypto from 'node:crypto';
+import { query } from '../config/db.js';
+import { memoryOrders, memoryAttendees, getNextAttendeeId } from '../data/order-store.js';
+import eventsService from './events.service.js';
+import ticketsService from './tickets.service.js';
+
+/**
+ * Cohesive Attendee and Ticket Transfer Domain Service
+ * Encapsulates attendee roster management, guest passes, and secure ticket transfers.
+ */
+export class AttendeeService {
+  async transferTicket(attendeeId, { new_email, target_email, new_name, recipient_name, user = null }) {
+    const finalEmail = (new_email || target_email || '').toLowerCase().trim();
+    const finalName = new_name || recipient_name;
+    if (!finalEmail) {
+      const err = new Error('Email người nhận chuyển nhượng là bắt buộc');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const numAttId = Number(attendeeId);
+    let attendee = memoryAttendees.get(numAttId);
+    if (!attendee) {
+      try {
+        const res = await query('SELECT * FROM attendees WHERE id = $1', [numAttId]);
+        if (res.rowCount > 0) {
+          attendee = res.rows[0];
+          attendee.name = attendee.first_name || attendee.email;
+        }
+      } catch {}
+    }
+
+    if (!attendee) {
+      const err = new Error('Vé không tồn tại');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // IDOR Check
+    if (!user) {
+      const err = new Error('Unauthorized: Đăng nhập để chuyển nhượng vé');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (user.role !== 'ADMIN') {
+      const isOwnerEmail = user.email && attendee.email && user.email.toLowerCase() === attendee.email.toLowerCase();
+      let isOrderOwner = false;
+      if (!attendee.is_transferred && attendee.order_id) {
+        const ord = memoryOrders.get(Number(attendee.order_id));
+        if (ord && ord.user_id && Number(ord.user_id) === Number(user.id)) {
+          isOrderOwner = true;
+        }
+      }
+      if (!isOwnerEmail && !isOrderOwner) {
+        const err = new Error('Forbidden: Bạn không có quyền chuyển nhượng vé này');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    if (attendee.status === 'CANCELLED') {
+      const err = new Error('Vé đã bị hủy, không thể chuyển nhượng');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status === 'TRANSFERRED') {
+      const err = new Error('Vé này đã được chuyển nhượng trước đó và không còn hiệu lực');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status === 'CHECKED_IN') {
+      const err = new Error('Vé đã được check-in tại sự kiện, không thể chuyển nhượng');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (attendee.status !== 'ACTIVE') {
+      const err = new Error('Chỉ có thể chuyển nhượng vé đã thanh toán và phát hành (ACTIVE)');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const oldBarcode = attendee.barcode;
+    const nowIso = new Date().toISOString();
+
+    attendee.status = 'TRANSFERRED';
+    attendee.is_transferred = true;
+    attendee.transferred_at = nowIso;
+
+    let history = [];
+    try {
+      const curAtt = await query('SELECT barcode_history FROM attendees WHERE id = $1', [numAttId]);
+      if (curAtt.rows[0]?.barcode_history) {
+        history = Array.isArray(curAtt.rows[0].barcode_history) ? curAtt.rows[0].barcode_history : [];
+      }
+    } catch {}
+    if (oldBarcode && !history.includes(oldBarcode)) {
+      history.push(oldBarcode);
+    }
+    attendee.barcode_history = history;
+
+    try {
+      await query(
+        `
+        UPDATE attendees
+        SET status = 'TRANSFERRED', barcode_history = $1, is_transferred = TRUE, transferred_at = NOW(), updated_at = NOW()
+        WHERE id = $2
+      `,
+        [JSON.stringify(history), numAttId]
+      );
+    } catch {}
+
+    // Mint new active ticket for recipient
+    let newAttId = getNextAttendeeId();
+    const newBarcode = `TKT-${attendee.order_id}-${newAttId}-TRF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+    const newRecipientName = finalName || finalEmail.split('@')[0];
+
+    try {
+      const publicId = `att_pub_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+      const shortId = `att_${Date.now().toString().slice(-6)}`;
+      const newAttRes = await query(
+        `
+        INSERT INTO attendees (
+          short_id, public_id, order_id, ticket_tier_id, event_id,
+          first_name, last_name, email, status, barcode, previous_barcode, barcode_history,
+          is_transferred, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, '', $7, 'ACTIVE', $8, $9, $10, FALSE, NOW(), NOW())
+        RETURNING id, short_id, public_id, barcode
+      `,
+        [
+          shortId,
+          publicId,
+          attendee.order_id,
+          attendee.ticket_tier_id,
+          attendee.event_id,
+          newRecipientName,
+          finalEmail,
+          newBarcode,
+          oldBarcode,
+          JSON.stringify(history),
+        ]
+      );
+      if (newAttRes.rowCount > 0) {
+        newAttId = Number(newAttRes.rows[0].id);
+      }
+    } catch (dbErr) {
+      console.warn('[transferTicket] DB new attendee insert fallback:', dbErr.message);
+    }
+
+    const newAttendeeRecord = {
+      id: newAttId,
+      order_id: attendee.order_id,
+      event_id: attendee.event_id,
+      name: newRecipientName,
+      email: finalEmail,
+      ticket_tier_id: attendee.ticket_tier_id,
+      ticket_code: newBarcode,
+      qr_hash: newBarcode,
+      barcode: newBarcode,
+      previous_barcode: oldBarcode,
+      barcode_history: history,
+      seat: null,
+      status: 'ACTIVE',
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    memoryAttendees.set(newAttId, newAttendeeRecord);
+
+    const memOrder = memoryOrders.get(Number(attendee.order_id));
+    if (memOrder && memOrder.attendees) {
+      const oAtt = memOrder.attendees.find((a) => a.id === numAttId);
+      if (oAtt) {
+        oAtt.status = 'TRANSFERRED';
+        oAtt.is_transferred = true;
+        oAtt.transferred_at = nowIso;
+      }
+      memOrder.attendees.push(newAttendeeRecord);
+    }
+
+    return {
+      success: true,
+      message: `Đã chuyển nhượng vé thành công sang email ${finalEmail}`,
+      transferred_from_ticket_id: numAttId,
+      new_ticket: newAttendeeRecord,
+      attendee: newAttendeeRecord,
+    };
+  }
+
+  async getAttendeesByEvent(eventId, user) {
+    const numEventId = Number(eventId);
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    try {
+      const sql = `
+        SELECT 
+          a.id,
+          a.short_id,
+          a.first_name,
+          a.last_name,
+          a.email,
+          a.barcode,
+          a.status,
+          a.checked_in_at,
+          a.created_at,
+          a.ticket_tier_id,
+          COALESCE(t.title, '') AS tier_name,
+          COALESCE(t.title, '') AS "tier name"
+        FROM attendees a
+        LEFT JOIN ticket_tiers t ON a.ticket_tier_id = t.id
+        WHERE a.event_id = $1
+        ORDER BY a.id ASC
+      `;
+      const res = await query(sql, [numEventId]);
+      return (res.rows || []).map((r) => ({
+        id: Number(r.id),
+        short_id: r.short_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        email: r.email,
+        barcode: r.barcode,
+        status: r.status,
+        checked_in_at: r.checked_in_at,
+        created_at: r.created_at,
+        ticket_tier_id: r.ticket_tier_id ? Number(r.ticket_tier_id) : null,
+        tier_name: r.tier_name,
+        'tier name': r.tier_name,
+      }));
+    } catch (dbErr) {
+      console.warn('[AttendeeService.getAttendeesByEvent] DB error, using fallback:', dbErr.message);
+    }
+
+    const list = [];
+    for (const a of memoryAttendees.values()) {
+      if (a.event_id === numEventId) {
+        const tier = a.ticket_tier_id ? await ticketsService.getTierById(a.ticket_tier_id) : null;
+        const tierName = tier ? tier.title || tier.name || '' : '';
+        list.push({
+          id: a.id,
+          short_id: a.short_id || `att_${a.id}`,
+          first_name: a.first_name || (a.name ? a.name.split(' ')[0] : ''),
+          last_name: a.last_name || (a.name && a.name.split(' ').length > 1 ? a.name.split(' ').slice(1).join(' ') : ''),
+          email: a.email,
+          barcode: a.barcode,
+          status: a.status,
+          checked_in_at: a.checked_in_at || null,
+          created_at: a.created_at || new Date().toISOString(),
+          ticket_tier_id: a.ticket_tier_id ? Number(a.ticket_tier_id) : null,
+          tier_name: tierName,
+          'tier name': tierName,
+        });
+      }
+    }
+    list.sort((a, b) => a.id - b.id);
+    return list;
+  }
+
+  async createGuestAttendee(eventId, data, user) {
+    const numEventId = Number(eventId);
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const { first_name, last_name, name, email, ticket_tier_id } = data;
+    if (!email || (!name && !first_name)) {
+      const err = new Error('Họ tên và email khách mời là bắt buộc');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const fullName = name ? name.trim() : `${first_name || ''} ${last_name || ''}`.trim();
+    const firstName = first_name || fullName.split(' ')[0] || 'Khách mời';
+    const lastName = last_name || (fullName.split(' ').length > 1 ? fullName.split(' ').slice(1).join(' ') : 'VIP');
+
+    const tiers = await ticketsService.listByEventId(numEventId, true);
+    let tierId = ticket_tier_id ? Number(ticket_tier_id) : tiers[0]?.id || null;
+    const chosenTier = tiers.find((t) => Number(t.id) === tierId) || tiers[0];
+    if (chosenTier) tierId = Number(chosenTier.id);
+
+    const barcode = `TKT-${numEventId}-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const shortId = `att_${Date.now().toString().slice(-8)}`;
+    const publicId = `guest_${Math.random().toString(36).substring(2, 10)}`;
+
+    let newAttendee = null;
+
+    try {
+      let orderId = null;
+      const orderRes = await query(
+        `
+        INSERT INTO orders (
+          short_id, public_id, event_id, user_id, first_name, last_name, email,
+          status, payment_status, payment_gateway, currency, subtotal,
+          total_before_additions, discount_amount, total_tax, total_fee, total_gross,
+          total_refunded, created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          'COMPLETED', 'NO_PAYMENT_REQUIRED', 'COMPLIMENTARY', 'USD', 0,
+          0, 0, 0, 0, 0,
+          0, NOW(), NOW()
+        ) RETURNING id
+      `,
+        [
+          `ord_guest_${Date.now().toString().slice(-6)}`,
+          `pub_guest_${Date.now().toString().slice(-6)}`,
+          numEventId,
+          user ? Number(user.id) : null,
+          firstName,
+          lastName,
+          cleanEmail,
+        ]
+      );
+
+      if (orderRes.rowCount > 0) {
+        orderId = Number(orderRes.rows[0].id);
+      }
+
+      if (orderId && tierId) {
+        const attRes = await query(
+          `
+          INSERT INTO attendees (
+            short_id, public_id, order_id, ticket_tier_id, event_id,
+            first_name, last_name, email, status, barcode, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, NOW(), NOW())
+          RETURNING *
+        `,
+          [shortId, publicId, orderId, tierId, numEventId, firstName, lastName, cleanEmail, barcode]
+        );
+
+        if (attRes.rowCount > 0) {
+          const row = attRes.rows[0];
+          newAttendee = {
+            id: Number(row.id),
+            short_id: row.short_id,
+            first_name: row.first_name,
+            last_name: row.last_name,
+            name: `${row.first_name} ${row.last_name}`.trim(),
+            email: row.email,
+            barcode: row.barcode,
+            status: row.status,
+            checked_in_at: row.checked_in_at,
+            tier_name: chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+            'tier name': chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+            ticket_tier_id: tierId,
+            event_id: numEventId,
+            order_id: orderId,
+          };
+        }
+      }
+    } catch (dbErr) {
+      console.warn('[AttendeeService.createGuestAttendee] DB error, using fallback:', dbErr.message);
+    }
+
+    if (!newAttendee) {
+      const id = getNextAttendeeId();
+      newAttendee = {
+        id,
+        short_id: shortId,
+        public_id: publicId,
+        first_name: firstName,
+        last_name: lastName,
+        name: fullName,
+        email: cleanEmail,
+        barcode,
+        status: 'ACTIVE',
+        checked_in_at: null,
+        tier_name: chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+        'tier name': chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+        ticket_tier_id: tierId,
+        event_id: numEventId,
+      };
+      memoryAttendees.set(id, newAttendee);
+    } else {
+      memoryAttendees.set(newAttendee.id, newAttendee);
+    }
+
+    return newAttendee;
+  }
+
+  async updateAttendee(eventId, attendeeId, data, user) {
+    const numEventId = Number(eventId);
+    const numAttendeeId = Number(attendeeId);
+
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const { first_name, last_name, name, email, ticket_tier_id, status } = data;
+    const cleanEmail = email ? String(email).trim().toLowerCase() : undefined;
+    const fullName = name ? name.trim() : first_name || last_name ? `${first_name || ''} ${last_name || ''}`.trim() : undefined;
+    const firstName = first_name || (fullName ? fullName.split(' ')[0] : undefined);
+    const lastName = last_name || (fullName && fullName.split(' ').length > 1 ? fullName.split(' ').slice(1).join(' ') : undefined);
+
+    let updated = null;
+
+    try {
+      const res = await query(
+        `
+        UPDATE attendees
+        SET first_name = COALESCE($1, first_name),
+            last_name = COALESCE($2, last_name),
+            email = COALESCE($3, email),
+            ticket_tier_id = COALESCE($4, ticket_tier_id),
+            status = COALESCE($5, status),
+            updated_at = NOW()
+        WHERE id = $6 AND event_id = $7
+        RETURNING *
+      `,
+        [firstName, lastName, cleanEmail, ticket_tier_id ? Number(ticket_tier_id) : null, status, numAttendeeId, numEventId]
+      );
+
+      if (res.rowCount > 0) {
+        const row = res.rows[0];
+        const tier = row.ticket_tier_id ? await ticketsService.getTierById(row.ticket_tier_id) : null;
+        updated = {
+          id: Number(row.id),
+          short_id: row.short_id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          name: `${row.first_name} ${row.last_name}`.trim(),
+          email: row.email,
+          barcode: row.barcode,
+          status: row.status,
+          checked_in_at: row.checked_in_at,
+          tier_name: tier?.title || tier?.name || '',
+          'tier name': tier?.title || tier?.name || '',
+          ticket_tier_id: Number(row.ticket_tier_id),
+          event_id: numEventId,
+        };
+      }
+    } catch (dbErr) {
+      console.warn('[AttendeeService.updateAttendee] DB error, using fallback:', dbErr.message);
+    }
+
+    const memAtt = memoryAttendees.get(numAttendeeId);
+    if (memAtt && Number(memAtt.event_id) === numEventId) {
+      if (firstName !== undefined) memAtt.first_name = firstName;
+      if (lastName !== undefined) memAtt.last_name = lastName;
+      if (cleanEmail !== undefined) memAtt.email = cleanEmail;
+      if (ticket_tier_id !== undefined) memAtt.ticket_tier_id = Number(ticket_tier_id);
+      if (status !== undefined) memAtt.status = status;
+      if (!updated) updated = memAtt;
+    }
+
+    if (!updated) {
+      const err = new Error('Attendee not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return updated;
+  }
+
+  async deleteAttendee(eventId, attendeeId, user) {
+    const numEventId = Number(eventId);
+    const numAttendeeId = Number(attendeeId);
+
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    let found = false;
+
+    try {
+      const res = await query(
+        `
+        UPDATE attendees
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE id = $1 AND event_id = $2
+        RETURNING id
+      `,
+        [numAttendeeId, numEventId]
+      );
+      if (res.rowCount > 0) found = true;
+    } catch (dbErr) {
+      console.warn('[AttendeeService.deleteAttendee] DB error, using fallback:', dbErr.message);
+    }
+
+    const memAtt = memoryAttendees.get(numAttendeeId);
+    if (memAtt && Number(memAtt.event_id) === numEventId) {
+      memAtt.status = 'CANCELLED';
+      found = true;
+    }
+
+    if (!found) {
+      const err = new Error('Attendee not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return {
+      success: true,
+      message: `Đã hủy vé của khách tham dự #${numAttendeeId} thành công`,
+    };
+  }
+}
+
+export default new AttendeeService();

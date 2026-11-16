@@ -103,10 +103,11 @@ class AuthController {
       }
       const { name, email, phone } = req.body;
       const result = await authService.updateProfile(req.user.id, { name, email, phone });
+      const userObj = result.user || result;
       return res.status(200).json({
         success: true,
         message: 'Cập nhật thông tin hồ sơ thành công',
-        user: result.user,
+        user: userObj,
         token: result.token,
       });
     } catch (err) {
