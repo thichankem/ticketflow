@@ -27,6 +27,9 @@ export const RoleSwitcherBar = () => {
 
   const handleRoleSelect = async (role, path) => {
     if (switching) return;
+    if (user?.role === 'ADMIN' && role === 'ORGANIZER') {
+      return; // Quản trị viên sàn (Super Admin) không thể sang giao diện Ban tổ chức
+    }
     try {
       setSwitching(true);
       await switchDemoRole(role);
@@ -49,7 +52,6 @@ export const RoleSwitcherBar = () => {
     <aside className={`role-switcher-banner ${collapsed ? 'is-collapsed' : ''}`} aria-label={t('role.title', 'HỆ THỐNG VAI TRÒ')}>
       <div className="role-switcher-container">
         <div className="role-switcher-meta">
-          <span className="role-switcher-badge">RBAC</span>
           <span className="role-switcher-label">
             <span className="workspace-prefix">{t('role.workspace', 'Không gian:')}</span> <strong>{getWorkspaceTitle()}</strong>
           </span>
@@ -64,25 +66,23 @@ export const RoleSwitcherBar = () => {
               className={`role-btn role-btn-attendee ${activeRole === 'ATTENDEE' ? 'active' : ''}`}
               onClick={() => handleRoleSelect('ATTENDEE', '/')}
               disabled={switching}
-              title="Cổng Khách Hàng: Khám phá sự kiện, giữ chỗ 15p, nhận vé QR, biên lai trực tuyến & hỗ trợ"
+              title={t('role.attendee', 'Khách Mua Vé')}
             >
-              <span className="role-icon" aria-hidden="true">👤</span>
               <span className="role-name">{t('role.attendee', 'Khách Mua Vé')}</span>
-              <span className="role-sub">Attendee</span>
+              <span className="role-sub">Khách hàng</span>
             </button>
 
             <button
               type="button"
               role="tab"
               aria-selected={activeRole === 'ORGANIZER'}
-              className={`role-btn role-btn-organizer ${activeRole === 'ORGANIZER' ? 'active' : ''}`}
+              className={`role-btn role-btn-organizer ${activeRole === 'ORGANIZER' ? 'active' : ''} ${user?.role === 'ADMIN' ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => handleRoleSelect('ORGANIZER', '/organizer')}
-              disabled={switching}
-              title="Studio Ban Tổ Chức: Quản lý sự kiện, check-in, blog & PDF, sơ đồ ghế & VIP, đa hạng vé, mã giảm giá & escrow"
+              disabled={switching || user?.role === 'ADMIN'}
+              title={user?.role === 'ADMIN' ? 'Quản trị viên sàn (Super Admin) không thể sang không gian Ban tổ chức' : t('role.organizer', 'Ban Tổ Chức')}
             >
-              <span className="role-icon" aria-hidden="true">🎪</span>
               <span className="role-name">{t('role.organizer', 'Ban Tổ Chức')}</span>
-              <span className="role-sub">Organizer</span>
+              <span className="role-sub">{user?.role === 'ADMIN' ? 'Bị khóa' : 'Ban tổ chức'}</span>
             </button>
 
             <button
@@ -92,11 +92,10 @@ export const RoleSwitcherBar = () => {
               className={`role-btn role-btn-admin ${activeRole === 'ADMIN' ? 'active' : ''}`}
               onClick={() => handleRoleSelect('ADMIN', '/admin')}
               disabled={switching}
-              title="Trung Tâm Quản Trị Sàn: Executive Console, GMV, đối soát Escrow, Mass Refund & Kill Switch"
+              title={t('role.admin', 'Quản Trị Sàn')}
             >
-              <span className="role-icon" aria-hidden="true">🛡️</span>
               <span className="role-name">{t('role.admin', 'Quản Trị Sàn')}</span>
-              <span className="role-sub">Admin</span>
+              <span className="role-sub">Quản trị viên</span>
             </button>
           </div>
         )}

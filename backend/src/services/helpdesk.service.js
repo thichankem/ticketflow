@@ -42,14 +42,14 @@ export const FAQ_ARTICLES = [
   {
     id: 'faq-5',
     category: 'ORGANIZER',
-    question: 'Cơ chế bảo chứng dòng tiền Escrow hoạt động như thế nào?',
-    answer: 'Ticketflow tạm giữ 100% doanh thu bán vé trong tài khoản bảo chứng Escrow suốt thời gian mở bán. Sau khi sự kiện diễn ra thành công từ 3-5 ngày làm việc và không phát sinh tranh chấp lớn, ban tổ chức có thể gửi yêu cầu quyết toán doanh thu về tài khoản ngân hàng sau khi trừ 5% hoa hồng sàn.',
+    question: 'Hệ thống bảo vệ giao dịch và doanh thu sự kiện như thế nào?',
+    answer: 'Ticketflow xử lý thanh toán trực tuyến 100% qua các cổng thanh toán uy tín và đối soát giao dịch an toàn, đảm bảo dữ liệu bán vé và doanh thu của ban tổ chức luôn minh bạch, chính xác theo thời gian thực.',
   },
   {
     id: 'faq-6',
     category: 'ORGANIZER',
-    question: 'Làm sao để soát vé tại cổng sự kiện?',
-    answer: 'Ban tổ chức không cần thuê nhân viên soát vé riêng biệt. Bạn có thể mở trực tiếp Studio Ban Tổ Chức trên điện thoại hoặc máy tính bảng, truy cập tab "Người tham dự & Soát vé" để quét mã QR hoặc tìm theo tên/mã vé để check-in tức thì.',
+    question: 'Làm sao để quản lý danh sách khách tham dự sự kiện?',
+    answer: 'Ban tổ chức có thể mở trực tiếp Studio Ban Tổ Chức, truy cập tab "Khách Mời & Người Tham Dự" để xem danh sách khách, cấp vé mời VIP mới, chỉnh sửa thông tin người tham dự hoặc xuất danh sách ra tệp CSV chuẩn.',
   },
 ];
 
@@ -60,6 +60,55 @@ class HelpdeskService {
   getFaqs(category = null) {
     if (!category) return FAQ_ARTICLES;
     return FAQ_ARTICLES.filter((f) => f.category.toUpperCase() === category.toUpperCase());
+  }
+
+  /**
+   * Create new FAQ article (Admin only)
+   */
+  createFaq({ category = 'ATTENDEE', question, answer }) {
+    if (!question || !answer) {
+      const err = new Error('Câu hỏi và câu trả lời không được để trống');
+      err.statusCode = 400;
+      throw err;
+    }
+    const newFaq = {
+      id: `faq-${Date.now()}`,
+      category: category.toUpperCase(),
+      question,
+      answer,
+    };
+    FAQ_ARTICLES.push(newFaq);
+    return newFaq;
+  }
+
+  /**
+   * Update FAQ article (Admin only)
+   */
+  updateFaq(id, { category, question, answer }) {
+    const faq = FAQ_ARTICLES.find((f) => f.id === id);
+    if (!faq) {
+      const err = new Error('FAQ không tồn tại');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (category) faq.category = category.toUpperCase();
+    if (question) faq.question = question;
+    if (answer) faq.answer = answer;
+    return faq;
+  }
+
+  /**
+   * Delete FAQ article (Admin only)
+   */
+  deleteFaq(id) {
+    const idx = FAQ_ARTICLES.findIndex((f) => f.id === id);
+    if (idx === -1) {
+      const err = new Error('FAQ không tồn tại');
+      err.statusCode = 404;
+      throw err;
+    }
+    const deleted = FAQ_ARTICLES.splice(idx, 1)[0];
+    return { success: true, faq: deleted };
   }
 
   /**
@@ -177,11 +226,24 @@ class HelpdeskService {
       throw err;
     }
 
-    // IDOR Check: Ensure user is owner, organizer, or admin
-    if (user && user.role !== 'ADMIN') {
+    // IDOR Check: Ensure user is owner, organizer of this event, or admin (SEC-05 remediation)
+    if (!user) {
+      const err = new Error('Unauthorized: Authentication required to view support tickets');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    if (user.role !== 'ADMIN') {
       const isOwner = (ticket.user_id && Number(ticket.user_id) === Number(user.id)) ||
                       (ticket.contact_email && ticket.contact_email.toLowerCase() === user.email.toLowerCase());
-      if (!isOwner && user.role !== 'ORGANIZER') {
+      let isOrgForEvent = false;
+      if (user.role === 'ORGANIZER' && ticket.event_id) {
+        const ev = await eventsService.getEventById(ticket.event_id);
+        if (ev && (Number(ev.account_id) === Number(user.account_id) || Number(ev.organizer_id) === Number(user.id))) {
+          isOrgForEvent = true;
+        }
+      }
+      if (!isOwner && !isOrgForEvent) {
         const err = new Error('Forbidden: You do not have access to this support ticket');
         err.statusCode = 403;
         throw err;
@@ -403,6 +465,41 @@ class HelpdeskService {
     }
 
     return null;
+  }
+
+  /**
+   * Delete a support ticket and its messages
+   */
+  async deleteTicket(ticketId, user = null) {
+    const numId = Number(ticketId);
+    const ticket = await this.getTicket(numId, user);
+    if (!ticket) {
+      const err = new Error('Ticket not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (user && user.role === 'ATTENDEE') {
+      if (
+        Number(ticket.user_id) !== Number(user.id) &&
+        ticket.contact_email?.toLowerCase() !== user.email?.toLowerCase()
+      ) {
+        const err = new Error('Forbidden: Bạn không có quyền xóa khiếu nại này');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    try {
+      await query('DELETE FROM support_messages WHERE ticket_id = $1', [numId]);
+      await query('DELETE FROM support_tickets WHERE id = $1', [numId]);
+    } catch {
+      // Fallback
+    }
+
+    memoryMessages.delete(numId);
+    memoryTickets.delete(numId);
+    return { success: true, message: 'Ticket deleted successfully' };
   }
 }
 

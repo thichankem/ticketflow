@@ -52,7 +52,7 @@ export const EventsPage = () => {
       const isFav = prev.includes(eventId);
       const next = isFav ? prev.filter((id) => id !== eventId) : [...prev, eventId];
       localStorage.setItem('tf_favorites', JSON.stringify(next));
-      showToast(isFav ? 'Đã xóa sự kiện khỏi danh sách quan tâm' : '❤️ Đã lưu sự kiện! Hệ thống sẽ thông báo khi vé mở bán.');
+      showToast(isFav ? 'Đã bỏ lưu sự kiện' : 'Đã lưu sự kiện');
       return next;
     });
   };
@@ -179,7 +179,7 @@ export const EventsPage = () => {
 
   return (
     <div className="home-container pt-lg pb-4xl">
-      /* Toast Notification */
+      {/* Toast Notification */}
       {notificationState && (
         <div className="toast-floating flex items-center gap-sm">
           <span>{notificationState}</span>
@@ -196,14 +196,17 @@ export const EventsPage = () => {
       {/* Search Bar & Quick Filters */}
       <div className="hero-search-wrapper mb-175">
         <div className="hero-search-field">
-          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
+          <label htmlFor="events-search-input" className="sr-only">Tìm kiếm sự kiện</label>
           <input
+            id="events-search-input"
             type="search"
             className="hero-search-input"
             placeholder="Tìm theo tên sự kiện, nghệ sĩ, ca sĩ, ban nhạc hoặc địa điểm..."
+            aria-label="Tìm theo tên sự kiện, nghệ sĩ, ca sĩ, ban nhạc hoặc địa điểm..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
           />
@@ -213,6 +216,7 @@ export const EventsPage = () => {
               onClick={() => handleSearchChange('')}
               className="btn-clear-search"
               title="Xóa tìm kiếm"
+              aria-label="Xóa nội dung tìm kiếm"
             >
               ✕
             </button>
@@ -220,15 +224,18 @@ export const EventsPage = () => {
         </div>
 
         <div className="hero-location-picker">
-          <svg className="pin-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="pin-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
+          <label htmlFor="events-province-select" className="sr-only">Lọc theo tỉnh thành</label>
           <select
+            id="events-province-select"
             value={selectedProvinceFilter}
             onChange={(e) => handleProvinceChange(e.target.value)}
             className="location-select"
             title="Lọc sự kiện theo tỉnh/thành"
+            aria-label="Lọc sự kiện theo tỉnh thành"
           >
             <option value="ALL">Toàn quốc (Tất cả tỉnh/thành)</option>
             {VIETNAM_PROVINCES.map((prov) => (
@@ -308,19 +315,18 @@ export const EventsPage = () => {
       {/* Empty state */}
       {!loading && !error && filteredEvents.length === 0 && (
         <div className="card empty-state empty-state-dashed">
-          <div className="empty-icon empty-state-card-icon">🎪</div>
           <h3 className="empty-state-card-heading">
-            {events.length === 0 ? 'Chưa có sự kiện nào được đăng tải' : 'Không tìm thấy sự kiện phù hợp'}
+            {events.length === 0 ? 'Chưa có sự kiện nào' : 'Không tìm thấy sự kiện phù hợp'}
           </h3>
           <p className="muted empty-state-card-desc">
             {events.length === 0
-              ? 'Hệ thống hiện tại chưa có sự kiện nào đang mở bán. Hãy trở thành Nhà tổ chức để khởi tạo sự kiện đầu tiên của bạn!'
-              : 'Hãy thử thay đổi từ khóa tìm kiếm, chọn thể loại khác hoặc chuyển khu vực sang Toàn quốc.'}
+              ? 'Hệ thống hiện tại chưa có sự kiện nào đang mở bán.'
+              : 'Hãy thử thay đổi từ khóa tìm kiếm hoặc chọn thể loại khác.'}
           </p>
           <div className="flex gap-sm justify-center flex-wrap">
             {events.length === 0 ? (
               <Link to="/organizer" className="btn btn-primary btn-pill">
-                + Tạo sự kiện ngay
+                Tạo sự kiện
               </Link>
             ) : (
               <button
@@ -335,7 +341,7 @@ export const EventsPage = () => {
         </div>
       )}
 
-      {/* Grid of Event Cards Matching User's Image */}
+      {/* Grid of Event Cards */}
       {!loading && displayedEvents.length > 0 && (
         <div className="grid-cards">
           {displayedEvents.map((event) => {
@@ -345,7 +351,14 @@ export const EventsPage = () => {
             return (
               <article key={event.id} className="event-card">
                 <div className={`event-cover ${toneClass(event.category)}`}>
-                  {event.cover && <img src={event.cover} alt={event.title} loading="lazy" />}
+                  {(event.cover || event.banner) && (
+                    <img
+                      src={event.cover || event.banner}
+                      alt={event.title}
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+                    />
+                  )}
                   <div className="cover-meta">
                     <span className="status-pill">{event.category || event.status}</span>
                     <span className="price-chip">
@@ -356,8 +369,8 @@ export const EventsPage = () => {
                     type="button"
                     className={`btn-favorite ${isFav ? 'active' : ''}`}
                     onClick={(e) => toggleFavorite(event.id, e)}
-                    title={isFav ? 'Bỏ thích' : 'Thả tim để nhận thông báo'}
-                    aria-label="Thả tim sự kiện"
+                    title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
+                    aria-label="Lưu sự kiện"
                   >
                     ♥
                   </button>
@@ -365,8 +378,8 @@ export const EventsPage = () => {
 
                 <div className="event-card-body">
                   <div className="meta-row">
-                    <span className="event-date-chip">📅 {formatDate(eventStart(event))}</span>
-                    <span className="location-chip">📍 {event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
+                    <span className="event-date-chip">{formatDate(eventStart(event))}</span>
+                    <span className="location-chip">{event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
                   </div>
 
                   <h3 className="event-title">

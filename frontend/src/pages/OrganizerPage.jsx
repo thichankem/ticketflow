@@ -1,14 +1,25 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { money, formatDate, formatDateTime } from '../utils/display';
+import { ImageUploader } from '../components/ImageUploader';
+import { Modal } from '../components/Modal';
+import { EventAnalyticsDashboard } from '../components/EventAnalyticsDashboard';
 
 export const OrganizerPage = () => {
   const { user, isOrganizer, loading: authLoading } = useAuth();
+  const { t } = useLanguage();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  // Active Tab: 'events' | 'edit-event' | 'tiers' | 'promos' | 'attendees' | 'escrow' | 'helpdesk'
+  // Active Tab: 'events' | 'edit-event' | 'tiers' | 'promos' | 'attendees' | 'event-dashboard'
   const [activeTab, setActiveTab] = useState('events');
+
+  // Popup Modal states for clean, focused create/add workflows
+  const [showTierModal, setShowTierModal] = useState(false);
+  const [showPromoModal, setShowPromoModal] = useState(false);
 
   // Global feedback / notification
   const [notice, setNotice] = useState(null);
@@ -16,6 +27,17 @@ export const OrganizerPage = () => {
     setNotice({ message: msg, type });
     setTimeout(() => setNotice(null), 4500);
   };
+
+  // Check flash messages from navigation
+  useEffect(() => {
+    if (location.state?.notice) {
+      notify(location.state.notice);
+      if (location.state.selectedEventId) {
+        setSelectedEventId(String(location.state.selectedEventId));
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   // Events list & Selection
   const [events, setEvents] = useState([]);
@@ -89,7 +111,8 @@ export const OrganizerPage = () => {
     end_date: '',
     status: 'LIVE',
     description: '',
-    pdf_brochure_url: '',
+    banner: '',
+    cover: '',
     allow_refunds: true,
     refund_max_days: 3,
     refund_min_days_before_event: 3,
@@ -105,7 +128,7 @@ export const OrganizerPage = () => {
         {
           id: Date.now(),
           type,
-          title: type === 'text' ? 'Đoạn văn bản' : type === 'media' ? 'Media / Hình ảnh' : 'Lịch trình sự kiện',
+          title: type === 'text' ? 'Đoạn văn bản' : type === 'media' ? 'Hình ảnh bài viết' : 'Lịch trình sự kiện',
           content: '',
           url: '',
           caption: '',
@@ -140,7 +163,8 @@ export const OrganizerPage = () => {
       end_date: ev.end_date || ev.ends_at ? new Date(ev.end_date || ev.ends_at).toISOString().slice(0, 16) : '',
       status: ev.status || 'LIVE',
       description: ev.description || '',
-      pdf_brochure_url: ev.pdf_brochure_url || ev.brochure_url || '',
+      banner: ev.banner || ev.banner_url || ev.cover || '',
+      cover: ev.cover || ev.image_url || '',
       allow_refunds: ev.allow_refunds !== undefined ? ev.allow_refunds : true,
       refund_max_days: ev.refund_max_days || 3,
       refund_min_days_before_event: ev.refund_min_days_before_event || 3,
@@ -161,7 +185,8 @@ export const OrganizerPage = () => {
       end_date: '',
       status: 'LIVE',
       description: '',
-      pdf_brochure_url: '',
+      banner: '',
+      cover: '',
       allow_refunds: true,
       refund_max_days: 3,
       refund_min_days_before_event: 3,
@@ -197,16 +222,33 @@ export const OrganizerPage = () => {
     }
   };
 
+  const [deletingEvent, setDeletingEvent] = useState(false);
+
   const handleDeleteEvent = async (eventId, title) => {
-    if (!window.confirm(`Are you sure you want to delete "${title}"? All tiers and tickets will be affected.`)) {
-      return;
-    }
+    const isConfirmed = window.confirm(
+      `⚠️ CẢNH BÁO XÓA SỰ KIỆN: "${title}"\n\n` +
+      `Bạn có chắc chắn muốn xóa sự kiện này không?\n\n` +
+      `⚡ QUAN TRỌNG: Toàn bộ vé đã bán sẽ tự động được HOÀN TIỀN 100% cho tất cả người mua và toàn bộ vé phát hành sẽ bị hủy hiệu lực.\n\n` +
+      `Thao tác này là vĩnh viễn và không thể hoàn tác!`
+    );
+    if (!isConfirmed) return;
+
     try {
-      await api.events.delete(eventId);
-      notify(`Event "${title}" deleted.`);
-      setEvents((prev) => prev.filter((e) => e.id !== eventId));
+      setDeletingEvent(true);
+      const res = await api.events.delete(eventId);
+      notify(
+        res?.message || `Đã xóa sự kiện "${title}" và tự động hoàn tiền 100% cho người mua vé thành công.`,
+        'success'
+      );
+      setEvents((prev) => prev.filter((e) => Number(e.id) !== Number(eventId)));
+      if (Number(selectedEventId) === Number(eventId)) {
+        setSelectedEventId(null);
+        setActiveTab('events');
+      }
     } catch (err) {
-      notify(`Failed to delete event: ${err.message}`, 'error');
+      notify(`Không thể xóa sự kiện: ${err.message}`, 'error');
+    } finally {
+      setDeletingEvent(false);
     }
   };
 
@@ -240,10 +282,10 @@ export const OrganizerPage = () => {
   };
 
   useEffect(() => {
-    if (selectedEventId && (activeTab === 'tiers' || activeTab === 'events')) {
+    if (selectedEventId) {
       loadTiers(selectedEventId);
     }
-  }, [selectedEventId, activeTab]);
+  }, [selectedEventId]);
 
   const handleSaveTier = async (e) => {
     e.preventDefault();
@@ -282,6 +324,7 @@ export const OrganizerPage = () => {
         type: 'PAID',
         is_hidden: false,
       });
+      setShowTierModal(false);
     } catch (err) {
       notify(`Error saving tier: ${err.message}`, 'error');
     }
@@ -296,6 +339,7 @@ export const OrganizerPage = () => {
       type: tier.type || (tier.price === 0 ? 'FREE' : 'PAID'),
       is_hidden: Boolean(tier.is_hidden),
     });
+    setShowTierModal(true);
   };
 
   const handleDeleteTier = async (tierId, tierName) => {
@@ -321,6 +365,31 @@ export const OrganizerPage = () => {
     max_uses: '100',
     expires_at: '',
   });
+  const [promoEditId, setPromoEditId] = useState(null);
+
+  const startEditPromo = (promo) => {
+    setPromoEditId(promo.id);
+    setPromoFormData({
+      code: promo.code || '',
+      discount_type: promo.discount_type || 'PERCENTAGE',
+      discount: String(promo.discount ?? promo.discount_amount ?? 20),
+      max_uses: promo.max_uses ? String(promo.max_uses) : '100',
+      expires_at: promo.expires_at || promo.expiry ? (typeof (promo.expires_at || promo.expiry) === 'string' ? (promo.expires_at || promo.expiry).split('T')[0] : '') : '',
+    });
+    setShowPromoModal(true);
+  };
+
+  const cancelEditPromo = () => {
+    setPromoEditId(null);
+    setPromoFormData({
+      code: '',
+      discount_type: 'PERCENTAGE',
+      discount: '20',
+      max_uses: '100',
+      expires_at: '',
+    });
+    setShowPromoModal(false);
+  };
 
   const loadPromos = async (eventId) => {
     if (!eventId) return;
@@ -338,12 +407,12 @@ export const OrganizerPage = () => {
   };
 
   useEffect(() => {
-    if (selectedEventId && activeTab === 'promos') {
+    if (selectedEventId) {
       loadPromos(selectedEventId);
     }
-  }, [selectedEventId, activeTab]);
+  }, [selectedEventId]);
 
-  const handleCreatePromo = async (e) => {
+  const handleSavePromo = async (e) => {
     e.preventDefault();
     if (!selectedEventId) return;
     try {
@@ -351,33 +420,41 @@ export const OrganizerPage = () => {
         code: promoFormData.code.trim().toUpperCase(),
         discount_type: promoFormData.discount_type,
         discount: Number(promoFormData.discount),
+        discount_amount: Number(promoFormData.discount),
         max_uses: Number(promoFormData.max_uses) || 100,
         expires_at: promoFormData.expires_at || null,
       };
-      const res = await api.events.createPromo(selectedEventId, payload);
-      const created = res?.promo || { id: Date.now(), ...payload, usages: 0 };
-      notify(`Promo code ${created.code} created!`);
-      setPromos((prev) => [created, ...prev]);
-      setPromoFormData({
-        code: '',
-        discount_type: 'PERCENTAGE',
-        discount: '20',
-        max_uses: '100',
-        expires_at: '',
-      });
+
+      if (promoEditId) {
+        const res = await api.events.updatePromo(selectedEventId, promoEditId, payload);
+        const updated = res?.promo || { id: promoEditId, ...payload };
+        notify(`Mã giảm giá "${updated.code}" đã được cập nhật thành công!`);
+        setPromos((prev) => prev.map((p) => (p.id === promoEditId ? { ...p, ...updated } : p)));
+        cancelEditPromo();
+      } else {
+        const res = await api.events.createPromo(selectedEventId, payload);
+        const created = res?.promo || { id: Date.now(), ...payload, usages: 0 };
+        notify(`Mã giảm giá "${created.code}" đã được tạo thành công!`);
+        setPromos((prev) => [created, ...prev]);
+        cancelEditPromo();
+      }
     } catch (err) {
-      notify(`Failed to create promo: ${err.message}`, 'error');
+      notify(`Lỗi lưu mã giảm giá: ${err.message}`, 'error');
     }
   };
+  const handleCreatePromo = handleSavePromo;
 
   const handleDeletePromo = async (promoId, code) => {
-    if (!window.confirm(`Delete promo code "${code}"?`)) return;
+    if (!window.confirm(`Bạn có chắc muốn xóa mã giảm giá "${code}"?`)) return;
     try {
       await api.events.deletePromo(selectedEventId, promoId);
-      notify(`Promo code "${code}" removed.`);
+      notify(`Đã xóa mã ưu đãi "${code}".`);
       setPromos((prev) => prev.filter((p) => p.id !== promoId));
+      if (promoEditId === promoId) {
+        cancelEditPromo();
+      }
     } catch (err) {
-      notify(`Failed to delete promo: ${err.message}`, 'error');
+      notify(`Không thể xóa mã giảm giá: ${err.message}`, 'error');
     }
   };
 
@@ -389,62 +466,70 @@ export const OrganizerPage = () => {
   const [attendeeSearch, setAttendeeSearch] = useState('');
   const [attendeeStatusFilter, setAttendeeStatusFilter] = useState('ALL');
   const [attendeeVisibleCount, setAttendeeVisibleCount] = useState(25);
-  const [scannerInput, setScannerInput] = useState('');
-  const [scanResult, setScanResult] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [cameraScanning, setCameraScanning] = useState(false);
-  const html5QrCodeRef = useRef(null);
 
-  const toggleCameraScanner = async () => {
-    if (cameraScanning) {
-      if (html5QrCodeRef.current) {
-        try {
-          await html5QrCodeRef.current.stop();
-          html5QrCodeRef.current.clear();
-        } catch (e) {
-          console.warn('Error stopping camera:', e);
-        }
-        html5QrCodeRef.current = null;
-      }
-      setCameraScanning(false);
-    } else {
-      setCameraScanning(true);
-      setTimeout(async () => {
-        try {
-          const qrCodeScanner = new Html5Qrcode('live-qr-reader');
-          html5QrCodeRef.current = qrCodeScanner;
-          await qrCodeScanner.start(
-            { facingMode: 'environment' },
-            {
-              fps: 10,
-              qrbox: { width: 250, height: 250 },
-            },
-            (decodedText) => {
-              if (decodedText) {
-                handleBarcodeScan(null, decodedText);
-              }
-            },
-            () => {}
-          );
-        } catch (err) {
-          console.error('Camera QR start error:', err);
-          notify(`Không thể mở camera: ${err.message || 'Chưa cấp quyền camera'}`, 'error');
-          setCameraScanning(false);
-        }
-      }, 100);
+  const [showAddGuestModal, setShowAddGuestModal] = useState(false);
+  const [guestFormData, setGuestFormData] = useState({
+    name: '',
+    email: '',
+    ticket_tier_id: '',
+  });
+  const [editingAttendee, setEditingAttendee] = useState(null);
+
+  const handleCreateGuest = async (e) => {
+    e.preventDefault();
+    if (!selectedEventId) return;
+    try {
+      const res = await api.events.createAttendee(selectedEventId, guestFormData);
+      notify(`Đã cấp vé khách mời cho ${guestFormData.name || guestFormData.email} thành công!`);
+      setShowAddGuestModal(false);
+      setGuestFormData({ name: '', email: '', ticket_tier_id: '' });
+      loadAttendees(selectedEventId);
+    } catch (err) {
+      notify(`Lỗi tạo khách mời: ${err.message}`, 'error');
     }
   };
 
-  useEffect(() => {
-    return () => {
-      if (html5QrCodeRef.current) {
-        try {
-          html5QrCodeRef.current.stop();
-          html5QrCodeRef.current.clear();
-        } catch (e) {}
-      }
-    };
-  }, []);
+  const handleUpdateAttendee = async (e) => {
+    e.preventDefault();
+    if (!selectedEventId || !editingAttendee) return;
+    try {
+      await api.events.updateAttendee(selectedEventId, editingAttendee.id, editingAttendee);
+      notify(`Đã cập nhật thông tin người tham dự #${editingAttendee.id} thành công!`);
+      setEditingAttendee(null);
+      loadAttendees(selectedEventId);
+    } catch (err) {
+      notify(`Lỗi cập nhật người tham dự: ${err.message}`, 'error');
+    }
+  };
+
+  const handleDeleteAttendee = async (attendeeId, attendeeName) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn hủy vé của "${attendeeName}"? Mã vé này sẽ không còn giá trị vào cửa.`)) return;
+    try {
+      await api.events.deleteAttendee(selectedEventId, attendeeId);
+      notify(`Đã hủy vé của khách "${attendeeName}" thành công.`);
+      setAttendees((prev) => prev.map((a) => (a.id === attendeeId ? { ...a, status: 'CANCELLED' } : a)));
+    } catch (err) {
+      notify(`Lỗi hủy vé: ${err.message}`, 'error');
+    }
+  };
+
+  const [eventOrders, setEventOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const loadEventOrders = async (eventId) => {
+    if (!eventId) return;
+    setLoadingOrders(true);
+    try {
+      const res = await api.events.getOrders(eventId);
+      const list = Array.isArray(res) ? res : res?.orders || [];
+      setEventOrders(list);
+    } catch (err) {
+      console.warn('Could not load event orders:', err.message);
+      setEventOrders([]);
+    } finally {
+      setLoadingOrders(false);
+    }
+  };
 
   const loadAttendees = async (eventId) => {
     if (!eventId) return;
@@ -461,86 +546,26 @@ export const OrganizerPage = () => {
     }
   };
 
-  const handleBarcodeScan = async (e, barcodeOverride = null) => {
-    if (e && e.preventDefault) e.preventDefault();
-    const barcode = (barcodeOverride || scannerInput || '').trim();
-    if (!barcode) return;
-    setScanning(true);
-    setScanResult(null);
-    try {
-      const res = await api.events.checkInBarcode(selectedEventId, barcode);
-      setScanResult({
-        type: 'success',
-        message: `✅ Soát vé thành công: ${res.attendee?.name || res.attendee?.first_name || barcode} đã được xác nhận vào cửa!`,
-      });
-      setScannerInput('');
+  useEffect(() => {
+    if (selectedEventId) {
       loadAttendees(selectedEventId);
-      notify('Soát vé vào cửa thành công!');
-    } catch (err) {
-      if (err.status === 409) {
-        setScanResult({
-          type: 'error',
-          message: `🚨 BÁO ĐỘNG QUÉT TRÙNG (Anti-Passback): Vé "${barcode}" này ĐÃ ĐƯỢC CHECK-IN trước đó! Từ chối vào cửa.`,
-        });
-        notify('Vé đã check-in trước đó (Anti-passback)!', 'error');
-      } else if (err.status === 403) {
-        setScanResult({
-          type: 'error',
-          message: `⛔ Vé "${barcode}" đã bị hủy hoặc hoàn tiền! Không có giá trị vào cửa.`,
-        });
-        notify('Vé đã bị hủy/hoàn tiền!', 'error');
-      } else {
-        setScanResult({
-          type: 'error',
-          message: `⚠️ Lỗi soát vé: ${err.message || 'Mã vé không tồn tại trong sự kiện này.'}`,
-        });
-        notify(`Lỗi soát vé: ${err.message}`, 'error');
-      }
-    } finally {
-      setScanning(false);
+      loadEventOrders(selectedEventId);
     }
-  };
-
-  const handleToggleCheckin = async (attendeeId, barcode) => {
-    if (barcode) {
-      await handleBarcodeScan(null, barcode);
-      return;
-    }
-    try {
-      const res = await api.events.toggleCheckin(selectedEventId, attendeeId);
-      const updated = res?.attendee;
-      setAttendees((prev) =>
-        prev.map((a) => {
-          if (a.id === attendeeId) {
-            const nextStatus = updated?.status || 'CHECKED_IN';
-            return {
-              ...a,
-              status: nextStatus,
-              checked_in_at: nextStatus === 'CHECKED_IN' ? new Date().toISOString() : a.checked_in_at,
-            };
-          }
-          return a;
-        })
-      );
-      notify(`Check-in attendee #${attendeeId} thành công.`);
-    } catch (err) {
-      notify(`Lỗi check-in: ${err.message}`, 'error');
-    }
-  };
+  }, [selectedEventId]);
 
   const filteredAttendees = useMemo(() => {
     return attendees.filter((a) => {
       const query = attendeeSearch.toLowerCase();
       const name = `${a.first_name || ''} ${a.last_name || ''} ${a.name || ''}`.toLowerCase();
       const email = (a.email || '').toLowerCase();
-      const barcode = (a.barcode || '').toLowerCase();
-      const matchesQuery = !query || name.includes(query) || email.includes(query) || barcode.includes(query);
+      const ticketCode = (a.ticket_code || a.barcode || '').toLowerCase();
+      const matchesQuery = !query || name.includes(query) || email.includes(query) || ticketCode.includes(query);
 
-      const isChecked = a.status === 'CHECKED_IN';
+      const isCancelled = a.status === 'CANCELLED';
       const matchesStatus =
         attendeeStatusFilter === 'ALL' ||
-        (attendeeStatusFilter === 'CHECKED_IN' && isChecked) ||
-        (attendeeStatusFilter === 'PENDING' && !isChecked);
+        (attendeeStatusFilter === 'ACTIVE' && !isCancelled) ||
+        (attendeeStatusFilter === 'CANCELLED' && isCancelled);
 
       return matchesQuery && matchesStatus;
     });
@@ -548,149 +573,26 @@ export const OrganizerPage = () => {
 
   const displayedAttendees = filteredAttendees.slice(0, attendeeVisibleCount);
 
-  const attendeeCheckedInCount = attendees.filter((a) => a.status === 'CHECKED_IN').length;
-  const attendanceRate =
-    attendees.length > 0
-      ? ((attendeeCheckedInCount / attendees.length) * 100).toFixed(1) + '%'
-      : '0.0%';
-
-  // --------------------------------------------------------------------------
-  // TAB 6: Escrow & Payout Management (Phân hệ 2.14)
-  // --------------------------------------------------------------------------
-  const [escrowSummary, setEscrowSummary] = useState(null);
-  const [loadingEscrow, setLoadingEscrow] = useState(false);
-  const [payoutForm, setPayoutForm] = useState({
-    bank_name: 'Vietcombank',
-    bank_account_number: '',
-    bank_account_name: '',
-    notes: '',
-  });
-  const [submittingPayout, setSubmittingPayout] = useState(false);
-
-  const loadEscrowSummary = async (eventId) => {
-    if (!eventId) return;
-    setLoadingEscrow(true);
-    try {
-      const summary = await api.escrow.getEventSummary(eventId);
-      setEscrowSummary(summary);
-    } catch (err) {
-      console.warn('Could not load escrow summary:', err.message);
-      setEscrowSummary(null);
-    } finally {
-      setLoadingEscrow(false);
-    }
-  };
-
-  useEffect(() => {
-    if (selectedEventId && activeTab === 'escrow') {
-      loadEscrowSummary(selectedEventId);
-    }
-  }, [selectedEventId, activeTab]);
-
-  const handleRequestPayout = async (e) => {
-    e.preventDefault();
-    if (!selectedEventId) return;
-    setSubmittingPayout(true);
-    try {
-      await api.escrow.requestPayout(selectedEventId, payoutForm);
-      notify('Yêu cầu quyết toán doanh thu đã được gửi tới Ban Quản Trị Sàn!');
-      await loadEscrowSummary(selectedEventId);
-      setPayoutForm({
-        bank_name: 'Vietcombank',
-        bank_account_number: '',
-        bank_account_name: '',
-        notes: '',
-      });
-    } catch (err) {
-      notify(`Không thể gửi yêu cầu quyết toán: ${err.message}`, 'error');
-    } finally {
-      setSubmittingPayout(false);
-    }
-  };
-
-  // --------------------------------------------------------------------------
-  // TAB 7: Helpdesk & Support Tickets (Phân hệ 2.16)
-  // --------------------------------------------------------------------------
-  const [tickets, setTickets] = useState([]);
-  const [loadingTickets, setLoadingTickets] = useState(false);
-  const [ticketSearch, setTicketSearch] = useState('');
-  const [ticketStatusFilter, setTicketStatusFilter] = useState('ALL');
-  const [selectedTicket, setSelectedTicket] = useState(null);
-  const [replyText, setReplyText] = useState('');
-  const [sendingReply, setSendingReply] = useState(false);
-
-  const loadTickets = async () => {
-    setLoadingTickets(true);
-    try {
-      const res = await api.helpdesk.listTickets();
-      const list = Array.isArray(res) ? res : res?.tickets || [];
-      setTickets(list);
-    } catch (err) {
-      console.warn('Could not load tickets:', err.message);
-      setTickets([]);
-    } finally {
-      setLoadingTickets(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'helpdesk') {
-      loadTickets();
-    }
-  }, [activeTab]);
-
-  const handleOpenTicket = async (ticket) => {
-    try {
-      const detail = await api.helpdesk.getTicket(ticket.id);
-      setSelectedTicket(detail);
-    } catch {
-      setSelectedTicket(ticket);
-    }
-  };
-
-  const handleSendTicketReply = async (e) => {
-    e.preventDefault();
-    if (!selectedTicket || !replyText.trim()) return;
-    setSendingReply(true);
-    try {
-      await api.helpdesk.addMessage(selectedTicket.id, replyText.trim());
-      notify('Đã gửi phản hồi hỗ trợ thành công!');
-      const updated = await api.helpdesk.getTicket(selectedTicket.id);
-      setSelectedTicket(updated);
-      setReplyText('');
-      loadTickets();
-    } catch (err) {
-      notify(`Lỗi gửi phản hồi: ${err.message}`, 'error');
-    } finally {
-      setSendingReply(false);
-    }
-  };
-
-  const filteredTickets = useMemo(() => {
-    return tickets.filter((t) => {
-      const query = ticketSearch.toLowerCase();
-      const subject = (t.subject || '').toLowerCase();
-      const email = (t.contact_email || '').toLowerCase();
-      const name = (t.contact_name || '').toLowerCase();
-      const code = (t.short_id || '').toLowerCase();
-      const matchesQuery = !query || subject.includes(query) || email.includes(query) || name.includes(query) || code.includes(query);
-
-      const matchesStatus = ticketStatusFilter === 'ALL' || t.status === ticketStatusFilter;
-      return matchesQuery && matchesStatus;
-    });
-  }, [tickets, ticketSearch, ticketStatusFilter]);
-
   // --------------------------------------------------------------------------
   // Guard for Non-organizers
   // --------------------------------------------------------------------------
   if (!authLoading && !isOrganizer) {
     return (
       <section className="card empty-state max-w-modal">
-        <span className="badge badge-warning">Restricted Access</span>
-        <h2 className="mt-08">Organizer Desk Required</h2>
+        <span className="badge badge-warning">Truy Cập Bị Giới Hạn</span>
+        <h2 className="mt-08">Chỉ Dành Cho Ban Tổ Chức</h2>
         <p className="muted">
-          You must be signed in with an Organizer or Administrator account to manage events and check in guests.
+          {user?.role === 'ADMIN'
+            ? 'Quản trị viên sàn (Super Admin) không thể truy cập vào giao diện Ban tổ chức sự kiện.'
+            : 'Bạn cần đăng nhập bằng tài khoản Ban tổ chức để quản lý sự kiện.'}
         </p>
+        {user?.role === 'ADMIN' && (
+          <div className="mt-md">
+            <Link to="/admin" className="btn btn-primary">
+              Quay Về Bảng Quản Trị Sàn
+            </Link>
+          </div>
+        )}
       </section>
     );
   }
@@ -698,19 +600,59 @@ export const OrganizerPage = () => {
   // Aggregate stats across all organizer events
   const totalTicketsSold = events.reduce((sum, e) => sum + (Number(e.tickets_sold) || 0), 0);
   const totalRevenue = events.reduce((sum, e) => sum + (Number(e.gross_revenue) || 0), 0);
-  const totalCheckins = events.reduce((sum, e) => sum + (Number(e.checked_in_count) || 0), 0);
+  const totalRemainingCapacity = events.reduce((sum, e) => sum + (Number(e.ticket_quantity_available) || 0), 0);
+
+  // Event-specific calculated statistics for the Event Dashboard (Của riêng từng sự kiện)
+  const eventTotalCapacity = useMemo(() => {
+    const fromTiers = tiers.reduce((sum, t) => sum + (Number(t.total_quantity || t.initial_quantity) || 0), 0);
+    return fromTiers || Number(selectedEvent?.total_tickets) || 100;
+  }, [tiers, selectedEvent]);
+
+  const eventTicketsSold = useMemo(() => {
+    const fromTiers = tiers.reduce((sum, t) => {
+      const init = Number(t.total_quantity || t.initial_quantity) || 0;
+      const rem = t.remaining_quantity !== undefined ? Number(t.remaining_quantity) : init;
+      return sum + Math.max(0, init - rem);
+    }, 0);
+    return Math.max(fromTiers, Number(selectedEvent?.tickets_sold) || 0);
+  }, [tiers, selectedEvent]);
+
+  const eventTicketsRemaining = Math.max(0, eventTotalCapacity - eventTicketsSold);
+  const eventSoldPercent = eventTotalCapacity > 0 ? Math.min(100, Math.round((eventTicketsSold / eventTotalCapacity) * 100)) : 0;
+
+  const eventRevenue = useMemo(() => {
+    if (selectedEvent?.gross_revenue) {
+      return Number(selectedEvent.gross_revenue);
+    }
+    return tiers.reduce((sum, t) => {
+      const init = Number(t.total_quantity || t.initial_quantity) || 0;
+      const rem = t.remaining_quantity !== undefined ? Number(t.remaining_quantity) : init;
+      const sold = Math.max(0, init - rem);
+      return sum + (sold * (Number(t.price) || 0));
+    }, 0);
+  }, [selectedEvent, tiers]);
+
+  const eventTotalAttendees = useMemo(() => {
+    return attendees.length || Number(selectedEvent?.attendee_count) || eventTicketsSold;
+  }, [attendees, selectedEvent, eventTicketsSold]);
+
+  const eventActiveAttendeesCount = useMemo(() => {
+    return attendees.filter((a) => a.status !== 'CANCELLED').length;
+  }, [attendees]);
+
+  const eventCompletedOrdersCount = attendees.length > 0 ? Math.ceil(attendees.length / 1.5) : 0;
 
   return (
     <section>
       <header className="page-head">
         <div className="flex items-center gap-sm">
-          <span className="badge badge-role-organizer">Organizer Desk</span>
+          <span className="badge badge-role-organizer">{t('organizer.title', 'Studio Ban Tổ Chức')}</span>
           <span className="muted text-xs">
             {user?.name || 'Organizer'} · Account #{user?.account_id || 1}
           </span>
         </div>
-        <h1>Event Operations & Desk</h1>
-        <p>End-to-end management: lifecycle controls, multi-tier ticketing, promo codes, door admission, escrow & support.</p>
+        <h1>{t('organizer.title', 'Studio Ban Tổ Chức')}</h1>
+        <p>{t('organizer.subtitle', 'Trung tâm vận hành sự kiện, phân bổ hạng vé, quản lý mã ưu đãi và người tham dự')}</p>
       </header>
 
       {/* Global Alert Notification */}
@@ -720,106 +662,151 @@ export const OrganizerPage = () => {
         </div>
       )}
 
-      {/* Tabs Navigation */}
-      <nav className="tabs-nav" aria-label="Organizer Sections">
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'events' ? 'active' : ''}`}
-          onClick={() => setActiveTab('events')}
-        >
-          <span>My Events & Overview</span>
-          <span className="tab-count">{events.length}</span>
-        </button>
+      {/* Navigation: Overview mode vs Event-Scoped mode */}
+      {activeTab === 'events' ? (
+        <nav className="tabs-nav" aria-label="Organizer Sections">
+          <button
+            type="button"
+            className="tab-btn active"
+            onClick={() => setActiveTab('events')}
+          >
+            <span>📋 {t('organizer.tab_events', 'Sự Kiện Của Tôi')}</span>
+            <span className="tab-count">{events.length}</span>
+          </button>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'edit-event' ? 'active' : ''}`}
-          onClick={() => setActiveTab('edit-event')}
-        >
-          <span>{eventFormId ? 'Edit Event' : 'Create & Edit Event'}</span>
-        </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm ml-auto"
+            onClick={() => navigate('/organizer/events/new')}
+          >
+            ➕ {t('organizer.tab_create', 'Tạo Sự Kiện Mới')}
+          </button>
+        </nav>
+      ) : (
+        /* Event-Scoped Context Header & Navigation (Của riêng từng sự kiện) */
+        <div className="event-workspace-header-block mb-md">
+          <div className="event-context-bar">
+            <div className="event-context-title">
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setActiveTab('events')}
+              >
+                ← {t('organizer.back_to_events', 'Tất Cả Sự Kiện')}
+              </button>
+              {selectedEvent && (eventFormId !== null || activeTab !== 'edit-event') ? (
+                <div className="flex items-center gap-sm flex-wrap">
+                  <span className={`badge badge-status-${(selectedEvent?.status || 'DRAFT').toLowerCase()}`}>
+                    {selectedEvent?.status || 'DRAFT'}
+                  </span>
+                  <h2 className="text-lg font-bold m-0">{selectedEvent?.title || 'Sự kiện'}</h2>
+                  <span className="muted text-xs">
+                    {formatDate(selectedEvent?.start_date || selectedEvent?.starts_at)} · {selectedEvent?.location || 'Online / TBA'}
+                  </span>
+                </div>
+              ) : (
+                <h2 className="text-lg font-bold m-0">➕ Tạo Sự Kiện Mới</h2>
+              )}
+            </div>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'tiers' ? 'active' : ''}`}
-          onClick={() => setActiveTab('tiers')}
-        >
-          <span>Ticket Tiers</span>
-          {tiers.length > 0 && <span className="tab-count">{tiers.length}</span>}
-        </button>
+            {selectedEvent && activeTab !== 'edit-event' && events.length > 1 && (
+              <div className="flex items-center gap-xs flex-wrap">
+                <label htmlFor="quickEvSwitcher" className="text-xs muted whitespace-nowrap">
+                  Chuyển sự kiện:
+                </label>
+                <select
+                  id="quickEvSwitcher"
+                  className="select select-sm select-bold"
+                  value={selectedEventId}
+                  onChange={(e) => setSelectedEventId(e.target.value)}
+                >
+                  {events.map((ev) => (
+                    <option key={ev.id} value={ev.id}>
+                      {ev.title} (#{ev.id})
+                    </option>
+                  ))}
+                </select>
+                <a
+                  href={`/events/${selectedEventId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-secondary btn-sm"
+                  title="Xem trang sự kiện công khai"
+                >
+                  Xem trang ↗
+                </a>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  title="Xóa sự kiện này và tự động hoàn tiền 100% cho toàn bộ khách mua vé"
+                  onClick={() => handleDeleteEvent(selectedEvent.id, selectedEvent.title)}
+                  disabled={deletingEvent}
+                >
+                  🗑️ {t('organizer.delete_event', 'Xóa Sự Kiện')}
+                </button>
+              </div>
+            )}
+          </div>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'promos' ? 'active' : ''}`}
-          onClick={() => setActiveTab('promos')}
-        >
-          <span>Promo Codes</span>
-          {promos.length > 0 && <span className="tab-count">{promos.length}</span>}
-        </button>
+          {/* Event-Scoped Tabs Navigation */}
+          {selectedEvent && (eventFormId !== null || activeTab !== 'edit-event') && (
+            <nav className="tabs-nav event-tabs-nav" aria-label="Event Sections">
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'event-dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('event-dashboard')}
+              >
+                <span>📊 {t('organizer.tab_dashboard', 'Dashboard Sự Kiện')}</span>
+              </button>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'attendees' ? 'active' : ''}`}
-          onClick={() => setActiveTab('attendees')}
-        >
-          <span>Guest & Attendee List</span>
-          {attendees.length > 0 && <span className="tab-count">{attendees.length}</span>}
-        </button>
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'tiers' ? 'active' : ''}`}
+                onClick={() => setActiveTab('tiers')}
+              >
+                <span>🎫 {t('organizer.tab_tiers', 'Hạng Vé')}</span>
+                {tiers.length > 0 && <span className="tab-count">{tiers.length}</span>}
+              </button>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'escrow' ? 'active' : ''}`}
-          onClick={() => setActiveTab('escrow')}
-        >
-          <span>🛡️ Escrow & Quyết toán</span>
-        </button>
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'promos' ? 'active' : ''}`}
+                onClick={() => setActiveTab('promos')}
+              >
+                <span>🏷️ {t('organizer.tab_promos', 'Mã Giảm Giá')}</span>
+                {promos.length > 0 && <span className="tab-count">{promos.length}</span>}
+              </button>
 
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'helpdesk' ? 'active' : ''}`}
-          onClick={() => setActiveTab('helpdesk')}
-        >
-          <span>💬 Hỗ trợ & Khiếu nại</span>
-          {tickets.length > 0 && <span className="tab-count">{tickets.length}</span>}
-        </button>
-      </nav>
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'attendees' ? 'active' : ''}`}
+                onClick={() => setActiveTab('attendees')}
+              >
+                <span>👥 {t('organizer.tab_attendees', 'Khách Mời & Người Tham Dự')}</span>
+                {attendees.length > 0 && <span className="tab-count">{attendees.length}</span>}
+              </button>
+
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'edit-event' ? 'active' : ''}`}
+                onClick={() => startEditEvent(selectedEvent)}
+              >
+                <span>⚙️ {t('organizer.tab_edit', 'Chỉnh Sửa Sự Kiện')}</span>
+              </button>
+            </nav>
+          )}
+        </div>
+      )}
 
       {/* =========================================================================
           TAB 1: My Events & Overview
          ========================================================================= */}
       {activeTab === 'events' && (
         <div className="stack">
-          {/* Top Aggregates */}
-          <div className="kpi-grid">
-            <article className="card kpi">
-              <span className="muted">Total Events</span>
-              <strong>{events.length}</strong>
-              <span className="muted text-xs">Active & Draft</span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Tickets Sold</span>
-              <strong>{totalTicketsSold}</strong>
-              <span className="note good text-xs">Issued passes</span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Gross Revenue</span>
-              <strong>{money(totalRevenue)}</strong>
-              <span className="note good text-xs">Processed sales</span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Door Check-ins</span>
-              <strong>{totalCheckins}</strong>
-              <span className="muted text-xs">Admitted guests</span>
-            </article>
-          </div>
-
           <div className="toolbar toolbar-row-flex">
             <div className="flex items-center gap-sm flex-wrap">
               <h2 className="panel-title m-0">
-                Your Events Portfolio
+                {t('organizer.tab_events', 'Sự Kiện Của Tôi')}
               </h2>
               <span className="badge badge-primary">
                 {filteredEvents.length} events
@@ -827,10 +814,13 @@ export const OrganizerPage = () => {
             </div>
             
             <div className="flex items-center gap-sm flex-wrap">
+              <label htmlFor="organizer-event-search" className="sr-only">Tìm kiếm sự kiện</label>
               <input
+                id="organizer-event-search"
                 type="search"
                 className="input input-sm w-input-260"
                 placeholder="Search events by title, category, venue..."
+                aria-label="Search events by title, category, venue..."
                 value={eventSearch}
                 onChange={(e) => {
                   setEventSearch(e.target.value);
@@ -840,10 +830,7 @@ export const OrganizerPage = () => {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
-                onClick={() => {
-                  resetEventForm();
-                  setActiveTab('edit-event');
-                }}
+                onClick={() => navigate('/organizer/events/new')}
               >
                 + Create New Event
               </button>
@@ -859,10 +846,7 @@ export const OrganizerPage = () => {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => {
-                  resetEventForm();
-                  setActiveTab('edit-event');
-                }}
+                onClick={() => navigate('/organizer/events/new')}
               >
                 Create Event Now
               </button>
@@ -875,15 +859,19 @@ export const OrganizerPage = () => {
                 const total = Number(ev.total_tickets) || (sold > 0 ? sold + 20 : 100);
                 const soldPct = Math.min(100, Math.round((sold / total) * 100));
 
-                const checkedIn = Number(ev.checked_in_count) || 0;
-                const totalGuests = Number(ev.attendee_count) || sold || 1;
-                const checkinPct = Math.min(100, Math.round((checkedIn / totalGuests) * 100));
-
                 return (
                   <article key={ev.id} className="event-card">
-                    <div className="event-cover">
-                      {ev.cover ? (
-                        <img src={ev.cover} alt={ev.title} />
+                    <div
+                      className="event-cover"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setSelectedEventId(String(ev.id));
+                        setActiveTab('event-dashboard');
+                      }}
+                      title="Xem chi tiết & Dashboard sự kiện"
+                    >
+                      {ev.cover || ev.banner ? (
+                        <img src={ev.cover || ev.banner} alt={ev.title} onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }} />
                       ) : (
                         <div className="event-thumb-placeholder">
                           {ev.category || 'Event'}
@@ -900,7 +888,16 @@ export const OrganizerPage = () => {
                     </div>
 
                     <div className="event-card-body">
-                      <h3>{ev.title}</h3>
+                      <h3
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          setSelectedEventId(String(ev.id));
+                          setActiveTab('event-dashboard');
+                        }}
+                        title="Xem chi tiết & Dashboard sự kiện"
+                      >
+                        {ev.title}
+                      </h3>
                       <p className="muted text-xs">
                         {formatDate(ev.start_date || ev.starts_at)} · {ev.location || 'Online / TBA'}
                       </p>
@@ -922,64 +919,38 @@ export const OrganizerPage = () => {
                             {money(ev.gross_revenue || ev.revenue || 0)}
                           </strong>
                         </div>
-
-                        {/* Check-in Progress Bar */}
-                        <div className="flex justify-between text-xs mt-03">
-                          <span className="muted">Check-in Rate</span>
-                          <span>
-                            {checkedIn} / {totalGuests} ({checkinPct}%)
-                          </span>
-                        </div>
-                        <progress className="progress-bar-element progress-green" value={Math.min(100, Math.max(0, checkinPct))} max={100} />
                       </div>
 
                       {/* Event Quick Actions */}
                       <div className="card-actions flex gap-xs flex-wrap">
                         <button
                           type="button"
-                          className="btn btn-secondary btn-xs flex-1"
-                          onClick={() => startEditEvent(ev)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-xs flex-1"
+                          className="btn btn-primary btn-sm w-full font-bold flex items-center justify-center gap-xs"
                           onClick={() => {
                             setSelectedEventId(String(ev.id));
-                            setActiveTab('tiers');
+                            setActiveTab('event-dashboard');
                           }}
                         >
-                          Tiers
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-xs flex-1"
-                          onClick={() => {
-                            setSelectedEventId(String(ev.id));
-                            setActiveTab('attendees');
-                          }}
-                        >
-                          Guests
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-xs flex-1"
-                          onClick={() => {
-                            setSelectedEventId(String(ev.id));
-                            setActiveTab('escrow');
-                          }}
-                        >
-                          Escrow
+                          <span>📊 {t('organizer.view_dashboard', 'Xem Chi Tiết & Dashboard')}</span>
                         </button>
 
                         <button
                           type="button"
-                          className="btn btn-danger btn-xs"
-                          title="Delete Event"
-                          onClick={() => handleDeleteEvent(ev.id, ev.title)}
+                          className="btn btn-secondary btn-xs flex-1"
+                          title="Chỉnh sửa thông tin sự kiện"
+                          onClick={() => startEditEvent(ev)}
                         >
-                          ✕
+                          ⚙️ Sửa
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-xs flex-1"
+                          title="Xóa sự kiện & tự động hoàn tiền 100% cho khách mua vé"
+                          onClick={() => handleDeleteEvent(ev.id, ev.title)}
+                          disabled={deletingEvent}
+                        >
+                          🗑️ Xóa
                         </button>
                       </div>
                     </div>
@@ -1020,6 +991,212 @@ export const OrganizerPage = () => {
         )}
       </div>
     )}
+
+      {/* =========================================================================
+          TAB: Event Dashboard (Của riêng từng sự kiện - Doanh thu, Vé, Người)
+         ========================================================================= */}
+      {activeTab === 'event-dashboard' && selectedEvent && (
+        <div className="stack gap-md">
+          {/* Enhanced Analytics Dashboard with Line Chart (Orders) & Bar Chart (Tiers by Day) */}
+          <EventAnalyticsDashboard
+            event={selectedEvent}
+            tiers={tiers}
+            orders={eventOrders}
+            attendees={attendees}
+            loading={loadingOrders}
+            onRefresh={() => {
+              loadEventOrders(selectedEventId);
+              loadAttendees(selectedEventId);
+            }}
+          />
+
+          {/* Section: Bảng phân tích chi tiết theo từng Hạng Vé */}
+          <section className="card">
+            <div className="toolbar toolbar-row-flex mb-md">
+              <div>
+                <h3 className="panel-title m-0">Hiệu Suất Theo Từng Hạng Vé</h3>
+                <p className="muted text-xs m-0">Doanh thu và tiến độ lấp đầy chi tiết của từng hạng vé trong sự kiện #{selectedEvent.id}</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setActiveTab('tiers')}
+              >
+                + Quản Lý Hạng Vé
+              </button>
+            </div>
+
+            {tiers.length === 0 ? (
+              <div className="empty-state p-md text-center">
+                <p className="muted">Sự kiện này chưa có hạng vé nào.</p>
+                <button type="button" className="btn btn-primary btn-sm mt-xs" onClick={() => setActiveTab('tiers')}>
+                  Thêm hạng vé đầu tiên
+                </button>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Hạng Vé</th>
+                      <th>Loại</th>
+                      <th>Đơn Giá</th>
+                      <th>Phát Hành</th>
+                      <th>Đã Bán</th>
+                      <th>Còn Lại</th>
+                      <th>Tỷ Lệ Bán</th>
+                      <th className="text-right">Doanh Thu Thu Được</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tiers.map((t) => {
+                      const totalQty = t.total_quantity || t.initial_quantity || 0;
+                      const remQty = t.remaining_quantity !== undefined ? t.remaining_quantity : totalQty;
+                      const soldQty = Math.max(0, totalQty - remQty);
+                      const pct = totalQty > 0 ? Math.min(100, Math.round((soldQty / totalQty) * 100)) : 0;
+                      const tierRev = soldQty * (Number(t.price) || 0);
+
+                      return (
+                        <tr key={t.id}>
+                          <td><strong>{t.name || t.title}</strong></td>
+                          <td>
+                            <span className={`status-pill ${t.type === 'FREE' ? 'ready' : ''}`}>
+                              {t.type || (t.price === 0 ? 'FREE' : 'PAID')}
+                            </span>
+                          </td>
+                          <td>{t.price === 0 ? 'Miễn phí' : money(t.price)}</td>
+                          <td>{totalQty}</td>
+                          <td><span className="font-bold">{soldQty}</span></td>
+                          <td><span className="muted">{remQty}</span></td>
+                          <td>
+                            <div className="flex items-center gap-xs" style={{ minWidth: 120 }}>
+                              <progress className="progress-bar-element flex-1" value={pct} max={100} />
+                              <span className="text-xs font-semibold">{pct}%</span>
+                            </div>
+                          </td>
+                          <td className="text-right font-bold note good">{money(tierRev)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="font-bold bg-muted-row">
+                      <td colSpan={3}>Tổng Cộng Toàn Bộ Hạng Vé</td>
+                      <td>{eventTotalCapacity}</td>
+                      <td>{eventTicketsSold}</td>
+                      <td>{eventTicketsRemaining}</td>
+                      <td>
+                        <span className="text-xs font-bold">{eventSoldPercent}%</span>
+                      </td>
+                      <td className="text-right text-primary">{money(eventRevenue)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Section: Split 2 columns (Mã Giảm Giá & Khách Mời Mới Nhất) */}
+          <div className="split">
+            {/* Promo Codes Summary */}
+            <section className="card flex-1">
+              <div className="flex justify-between items-center mb-sm">
+                <div>
+                  <h3 className="panel-title m-0">Mã Giảm Giá Của Sự Kiện ({promos.length})</h3>
+                  <p className="muted text-xs m-0">Các mã ưu đãi áp dụng riêng cho sự kiện này</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-xs"
+                  onClick={() => setActiveTab('promos')}
+                >
+                  Quản lý mã →
+                </button>
+              </div>
+
+              {promos.length === 0 ? (
+                <div className="empty-state p-sm text-center">
+                  <p className="muted text-sm">Chưa có mã giảm giá nào cho sự kiện này.</p>
+                  <button type="button" className="btn btn-secondary btn-xs mt-xs" onClick={() => setActiveTab('promos')}>
+                    + Tạo mã ưu đãi
+                  </button>
+                </div>
+              ) : (
+                <div className="stack gap-xs">
+                  {promos.slice(0, 4).map((p) => (
+                    <div key={p.id} className="flex justify-between items-center p-sm rounded bg-muted-row border border-default">
+                      <div>
+                        <strong className="badge badge-primary font-mono">{p.code}</strong>
+                        <span className="text-xs muted ml-sm">
+                          {p.discount_type === 'PERCENTAGE' ? `Giảm ${p.discount}%` : `Giảm ${money(p.discount)}`}
+                        </span>
+                      </div>
+                      <div className="text-xs text-right">
+                        <span className="muted">Đã dùng: </span>
+                        <strong>{p.usages || 0} / {p.max_uses || '∞'}</strong>
+                      </div>
+                    </div>
+                  ))}
+                  {promos.length > 4 && (
+                    <button type="button" className="btn btn-link btn-xs" onClick={() => setActiveTab('promos')}>
+                      Xem tất cả {promos.length} mã giảm giá →
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Recent Attendees & Guests */}
+            <section className="card flex-1">
+              <div className="flex justify-between items-center mb-sm">
+                <div>
+                  <h3 className="panel-title m-0">Khách Mời & Người Tham Dự ({attendees.length})</h3>
+                  <p className="muted text-xs m-0">Danh sách người tham dự gần đây</p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-xs"
+                  onClick={() => setActiveTab('attendees')}
+                >
+                  👥 Xem Danh Sách Khách →
+                </button>
+              </div>
+
+              {attendees.length === 0 ? (
+                <div className="empty-state p-sm text-center">
+                  <p className="muted text-sm">Chưa có người tham dự nào cho sự kiện này.</p>
+                </div>
+              ) : (
+                <div className="stack gap-xs">
+                  {attendees.slice(0, 5).map((a) => {
+                    const fullName = `${a.first_name || ''} ${a.last_name || ''}`.trim() || a.name || a.email;
+                    const isCancelled = a.status === 'CANCELLED';
+
+                    return (
+                      <div key={a.id || a.short_id} className="flex justify-between items-center p-sm rounded bg-muted-row border border-default">
+                        <div>
+                          <div className="font-bold text-sm">{fullName}</div>
+                          <div className="text-xs muted font-mono">{a.ticket_code || a.barcode}</div>
+                        </div>
+                        <div>
+                          <span className={`status-pill ${isCancelled ? 'cancelled' : 'ready'}`}>
+                            {isCancelled ? 'Đã hủy' : 'Hợp lệ'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {attendees.length > 5 && (
+                    <button type="button" className="btn btn-link btn-xs" onClick={() => setActiveTab('attendees')}>
+                      Xem toàn bộ {attendees.length} khách mời →
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
 
       {/* =========================================================================
           TAB 2: Create & Edit Event
@@ -1145,13 +1322,49 @@ export const OrganizerPage = () => {
               />
             </div>
 
+            {/* Section: Event Branding (Banner & Cover) with Direct Upload & Auto-Optimization */}
+            <div className="form-section-box form-section-box-muted">
+              <div className="mb-085">
+                <h3 className="m-0 text-title-sm">🖼️ Ảnh Bìa & Nhận Diện Sự Kiện (Banner & Poster)</h3>
+                <p className="muted mt-02 text-xs">
+                  Tải ảnh trực tiếp từ thiết bị (không cần nhập URL). Hệ thống tự động ép kích cỡ và chuyển đổi sang định dạng WebP tối ưu (tối đa 10MB). Không cho phép tải video và PDF.
+                </p>
+              </div>
+
+              <div className="event-branding-grid">
+                {/* Banner Upload */}
+                <ImageUploader
+                  id="evBanner"
+                  label="Ảnh bìa sự kiện (Event Banner)"
+                  hint="Khuyến nghị tỉ lệ 16:9 (1920×1080px). Dùng làm hero header đầu trang chi tiết sự kiện và trang chủ."
+                  value={eventFormData.banner}
+                  aspect="banner"
+                  maxWidth={1920}
+                  maxHeight={1080}
+                  onChange={(url) => setEventFormData((prev) => ({ ...prev, banner: url }))}
+                />
+
+                {/* Poster / Cover Upload */}
+                <ImageUploader
+                  id="evCover"
+                  label="Ảnh đại diện / Poster (Event Cover)"
+                  hint="Khuyến nghị tỉ lệ 4:3 hoặc vuông (1200×1200px). Dùng hiển thị trên danh sách các thẻ sự kiện."
+                  value={eventFormData.cover}
+                  aspect="cover"
+                  maxWidth={1200}
+                  maxHeight={1200}
+                  onChange={(url) => setEventFormData((prev) => ({ ...prev, cover: url }))}
+                />
+              </div>
+            </div>
+
             {/* Section: Blog-style Multimedia Blocks */}
             <div className="form-section-box form-section-box-muted">
               <div className="flex justify-between items-center mb-085">
                 <div>
                   <h3 className="m-0 text-title-sm">📝 Trình thiết kế bài viết dạng Blog (Multimedia Blocks)</h3>
                   <p className="muted mt-02 text-xs">
-                    Thêm các khối nội dung phong phú: văn bản, hình ảnh media, hoặc mốc lịch trình (Agenda).
+                    Thêm các khối nội dung phong phú: văn bản, hình ảnh bài viết, hoặc mốc lịch trình (Agenda).
                   </p>
                 </div>
                 <div className="flex gap-xs">
@@ -1159,7 +1372,7 @@ export const OrganizerPage = () => {
                     + Đoạn văn bản
                   </button>
                   <button type="button" className="btn btn-secondary btn-xs" onClick={() => addBlock('media')}>
-                    + Ảnh / Media
+                    + Ảnh bài viết
                   </button>
                   <button type="button" className="btn btn-secondary btn-xs" onClick={() => addBlock('schedule')}>
                     + Mốc lịch trình
@@ -1172,7 +1385,7 @@ export const OrganizerPage = () => {
                   <div key={block.id || idx} className="blog-block-item">
                     <div className="flex justify-between items-center mb-sm">
                       <span className="badge badge-primary uppercase">
-                        Khối #{idx + 1}: {block.type}
+                        Khối #{idx + 1}: {block.type === 'media' ? 'Hình ảnh' : block.type}
                       </span>
                       <button
                         type="button"
@@ -1205,12 +1418,15 @@ export const OrganizerPage = () => {
 
                     {block.type === 'media' && (
                       <div className="stack gap-xs">
-                        <input
-                          type="url"
-                          className="input input-sm"
-                          placeholder="URL hình ảnh / video (https://...)"
+                        <ImageUploader
+                          id={`block-media-${block.id}`}
+                          label="Hình ảnh bài viết"
+                          hint="Tải ảnh trực tiếp từ máy (tối đa 1200px, tự nén WebP, không cho phép video & PDF)."
                           value={block.url}
-                          onChange={(e) => updateBlock(block.id, 'url', e.target.value)}
+                          aspect="banner"
+                          maxWidth={1200}
+                          maxHeight={1200}
+                          onChange={(url) => updateBlock(block.id, 'url', url)}
                         />
                         <input
                           type="text"
@@ -1245,9 +1461,9 @@ export const OrganizerPage = () => {
               </div>
             </div>
 
-            {/* Section: Refund Policy & PDF Attachment */}
+            {/* Section: Refund Policy */}
             <div className="form-section-box form-section-box-muted mt-125">
-              <h3 className="mb-04 text-title-sm">🛡️ Chính sách Hoàn vé & Tài liệu Đính kèm (PDF)</h3>
+              <h3 className="mb-04 text-title-sm">🛡️ Chính sách Hoàn vé & Hủy vé tự phục vụ</h3>
 
               <div className="flex items-center gap-sm my-075">
                 <input
@@ -1287,18 +1503,6 @@ export const OrganizerPage = () => {
                   </div>
                 </div>
               )}
-
-              <div className="form-group mt-085">
-                <label htmlFor="pdfBrochureUrl">Tệp tài liệu đính kèm / Cẩm nang sự kiện (URL PDF)</label>
-                <input
-                  id="pdfBrochureUrl"
-                  type="url"
-                  className="input"
-                  placeholder="https://example.com/brochure-event.pdf"
-                  value={eventFormData.pdf_brochure_url}
-                  onChange={(e) => setEventFormData({ ...eventFormData, pdf_brochure_url: e.target.value })}
-                />
-              </div>
             </div>
 
             <div className="flex gap-sm mt-125">
@@ -1322,6 +1526,40 @@ export const OrganizerPage = () => {
               </button>
             </div>
           </form>
+
+          {eventFormId && (
+            <div
+              className="card danger-zone mt-xl"
+              style={{
+                borderColor: 'var(--color-danger, #ef4444)',
+                background: 'rgba(239, 68, 68, 0.04)',
+                borderWidth: '1.5px',
+                borderStyle: 'solid',
+              }}
+            >
+              <div className="flex justify-between items-center flex-wrap gap-md">
+                <div>
+                  <h4 className="text-danger m-0 font-bold flex items-center gap-xs">
+                    <span>⚠️</span> {t('organizer.delete_event_danger_zone', 'Vùng Nguy Hiểm: Xóa Sự Kiện')}
+                  </h4>
+                  <p className="muted text-sm mt-xs mb-0">
+                    {t(
+                      'organizer.delete_event_danger_desc',
+                      'Khi xóa sự kiện, hệ thống sẽ tự động hoàn tiền 100% cho toàn bộ người mua vé và hủy toàn bộ vé đã phát hành. Thao tác này là vĩnh viễn và không thể hoàn tác.'
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={() => handleDeleteEvent(eventFormId, eventFormData.title || 'Sự kiện')}
+                  disabled={deletingEvent}
+                >
+                  {deletingEvent ? 'Đang Xóa & Hoàn Tiền...' : `🗑️ ${t('organizer.delete_event_btn', 'Xóa sự kiện & Hoàn tiền 100%')}`}
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1354,179 +1592,212 @@ export const OrganizerPage = () => {
             </span>
           </div>
 
-          <div className="split">
-            {/* Existing Tiers List */}
-            <section className="card flex-1">
-              <h2 className="panel-title">Active Ticket Tiers</h2>
-              {loadingTiers ? (
-                <div className="loading-state">Loading tiers...</div>
-              ) : tiers.length === 0 ? (
-                <div className="empty-state">
-                  <p className="muted">No ticket tiers configured for this event yet.</p>
-                  <p className="hint">Add your first admission tier using the form.</p>
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Tier Name</th>
-                        <th>Type</th>
-                        <th>Price</th>
-                        <th>Capacity</th>
-                        <th>Visibility</th>
-                        <th className="text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiers.map((t) => {
-                        const tierPrice = t.price || 0;
-                        const capacity = t.total_quantity || t.initial_quantity || 0;
-                        return (
-                          <tr key={t.id}>
-                            <td>
-                              <strong>{t.name || t.title}</strong>
-                            </td>
-                            <td>
-                              <span className="badge badge-info">{t.type || (tierPrice === 0 ? 'FREE' : 'PAID')}</span>
-                            </td>
-                            <td>
-                              <strong>{money(tierPrice)}</strong>
-                            </td>
-                            <td>{capacity} tickets</td>
-                            <td>
-                              <span
-                                className={`badge ${t.is_hidden ? 'badge-warning' : 'badge-success'}`}
+          {/* Existing Tiers List */}
+          <section className="card">
+            <div className="flex justify-between items-center mb-md">
+              <div>
+                <h2 className="panel-title mb-0">{t('organizer.tab_tiers', 'Cấu Hình Hạng Vé')}</h2>
+                <p className="muted text-xs m-0">Quản lý các loại vé, mức giá và số lượng phát hành cho sự kiện</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setTierEditId(null);
+                  setTierFormData({
+                    name: '',
+                    price: '2500',
+                    total_quantity: '100',
+                    type: 'PAID',
+                    is_hidden: false,
+                  });
+                  setShowTierModal(true);
+                }}
+              >
+                ➕ Thêm Hạng Vé Mới
+              </button>
+            </div>
+
+            {loadingTiers ? (
+              <div className="loading-state">Loading tiers...</div>
+            ) : tiers.length === 0 ? (
+              <div className="empty-state">
+                <p className="muted">{t('organizer.no_tiers', 'Chưa có hạng vé nào được cấu hình cho sự kiện này.')}</p>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm mt-sm"
+                  onClick={() => {
+                    setTierEditId(null);
+                    setTierFormData({
+                      name: '',
+                      price: '2500',
+                      total_quantity: '100',
+                      type: 'PAID',
+                      is_hidden: false,
+                    });
+                    setShowTierModal(true);
+                  }}
+                >
+                  ➕ Thêm Hạng Vé Mới
+                </button>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t('organizer.col_tier_name', 'Tên hạng vé')}</th>
+                      <th>Type</th>
+                      <th>{t('organizer.col_price', 'Giá vé')}</th>
+                      <th>{t('organizer.col_capacity', 'Số lượng phát hành')}</th>
+                      <th>Visibility</th>
+                      <th className="text-right">{t('organizer.col_actions', 'Thao tác')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tiers.map((t) => {
+                      const tierPrice = t.price || 0;
+                      const capacity = t.total_quantity || t.initial_quantity || 0;
+                      return (
+                        <tr key={t.id}>
+                          <td>
+                            <strong>{t.name || t.title}</strong>
+                          </td>
+                          <td>
+                            <span className="badge badge-info">{t.type || (tierPrice === 0 ? 'FREE' : 'PAID')}</span>
+                          </td>
+                          <td>
+                            <strong>{money(tierPrice)}</strong>
+                          </td>
+                          <td>{capacity} tickets</td>
+                          <td>
+                            <span
+                              className={`badge ${t.is_hidden ? 'badge-warning' : 'badge-success'}`}
+                            >
+                              {t.is_hidden ? 'Hidden' : 'Public'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="table-actions justify-end">
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-secondary"
+                                onClick={() => handleEditTier(t)}
                               >
-                                {t.is_hidden ? 'Hidden' : 'Public'}
-                              </span>
-                            </td>
-                            <td>
-                              <div className="table-actions justify-end">
-                                <button
-                                  type="button"
-                                  className="btn btn-xs btn-secondary"
-                                  onClick={() => handleEditTier(t)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn btn-xs btn-danger"
-                                  onClick={() => handleDeleteTier(t.id, t.name || t.title)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-danger"
+                                onClick={() => handleDeleteTier(t.id, t.name || t.title)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Modal Popup: Add / Edit Ticket Tier */}
+          <Modal
+            isOpen={showTierModal}
+            onClose={() => {
+              setShowTierModal(false);
+              setTierEditId(null);
+            }}
+            title={tierEditId ? '✏️ Chỉnh Sửa Hạng Vé' : '➕ Thêm Hạng Vé Mới'}
+            subtitle="Cấu hình loại vé, đơn giá thanh toán và hạn mức phát hành"
+          >
+            <form onSubmit={handleSaveTier}>
+              <div className="form-group">
+                <label htmlFor="tierName">Tier Name *</label>
+                <input
+                  id="tierName"
+                  type="text"
+                  className="input"
+                  required
+                  placeholder="e.g. VIP Early Access"
+                  value={tierFormData.name}
+                  onChange={(e) => setTierFormData({ ...tierFormData, name: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="tierType">Ticket Type</label>
+                <select
+                  id="tierType"
+                  className="select"
+                  value={tierFormData.type}
+                  onChange={(e) => setTierFormData({ ...tierFormData, type: e.target.value })}
+                >
+                  <option value="PAID">PAID</option>
+                  <option value="FREE">FREE</option>
+                  <option value="DONATION">DONATION</option>
+                </select>
+              </div>
+
+              {tierFormData.type !== 'FREE' && (
+                <div className="form-group">
+                  <label htmlFor="tierPrice">Price in Cents (e.g. 2500 = $25.00)</label>
+                  <input
+                    id="tierPrice"
+                    type="number"
+                    min="0"
+                    className="input"
+                    required
+                    value={tierFormData.price}
+                    onChange={(e) => setTierFormData({ ...tierFormData, price: e.target.value })}
+                  />
                 </div>
               )}
-            </section>
 
-            {/* Tier Form */}
-            <section className="card w-modal-380">
-              <h2 className="panel-title">
-                {tierEditId ? 'Edit Ticket Tier' : 'Add New Tier'}
-              </h2>
+              <div className="form-group">
+                <label htmlFor="tierQty">Total Quantity / Capacity</label>
+                <input
+                  id="tierQty"
+                  type="number"
+                  min="1"
+                  className="input"
+                  required
+                  value={tierFormData.total_quantity}
+                  onChange={(e) => setTierFormData({ ...tierFormData, total_quantity: e.target.value })}
+                />
+              </div>
 
-              <form onSubmit={handleSaveTier}>
-                <div className="form-group">
-                  <label htmlFor="tierName">Tier Name *</label>
+              <div className="form-group">
+                <label className="choice">
                   <input
-                    id="tierName"
-                    type="text"
-                    className="input"
-                    required
-                    placeholder="e.g. VIP Early Access"
-                    value={tierFormData.name}
-                    onChange={(e) => setTierFormData({ ...tierFormData, name: e.target.value })}
+                    type="checkbox"
+                    checked={tierFormData.is_hidden}
+                    onChange={(e) => setTierFormData({ ...tierFormData, is_hidden: e.target.checked })}
                   />
-                </div>
+                  <span>Hide tier from public catalogue (Access code only)</span>
+                </label>
+              </div>
 
-                <div className="form-group">
-                  <label htmlFor="tierType">Ticket Type</label>
-                  <select
-                    id="tierType"
-                    className="select"
-                    value={tierFormData.type}
-                    onChange={(e) => setTierFormData({ ...tierFormData, type: e.target.value })}
-                  >
-                    <option value="PAID">PAID</option>
-                    <option value="FREE">FREE</option>
-                    <option value="DONATION">DONATION</option>
-                  </select>
-                </div>
-
-                {tierFormData.type !== 'FREE' && (
-                  <div className="form-group">
-                    <label htmlFor="tierPrice">Price in Cents (e.g. 2500 = $25.00)</label>
-                    <input
-                      id="tierPrice"
-                      type="number"
-                      min="0"
-                      className="input"
-                      required
-                      value={tierFormData.price}
-                      onChange={(e) => setTierFormData({ ...tierFormData, price: e.target.value })}
-                    />
-                  </div>
-                )}
-
-                <div className="form-group">
-                  <label htmlFor="tierQty">Total Quantity / Capacity</label>
-                  <input
-                    id="tierQty"
-                    type="number"
-                    min="1"
-                    className="input"
-                    required
-                    value={tierFormData.total_quantity}
-                    onChange={(e) => setTierFormData({ ...tierFormData, total_quantity: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="choice">
-                    <input
-                      type="checkbox"
-                      checked={tierFormData.is_hidden}
-                      onChange={(e) => setTierFormData({ ...tierFormData, is_hidden: e.target.checked })}
-                    />
-                    <span>Hide tier from public catalogue (Access code only)</span>
-                  </label>
-                </div>
-
-                <div className="flex gap-xs mt-md">
-                  <button type="submit" className="btn btn-primary flex-1">
-                    {tierEditId ? 'Update Tier' : 'Add Tier to Event'}
-                  </button>
-                  {tierEditId && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => {
-                        setTierEditId(null);
-                        setTierFormData({
-                          name: '',
-                          price: '2500',
-                          total_quantity: '100',
-                          type: 'PAID',
-                          is_hidden: false,
-                        });
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </div>
-              </form>
-            </section>
-          </div>
+              <div className="flex gap-xs mt-md">
+                <button
+                  type="button"
+                  className="btn btn-secondary flex-1"
+                  onClick={() => {
+                    setShowTierModal(false);
+                    setTierEditId(null);
+                  }}
+                >
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  {tierEditId ? 'Lưu Thay Đổi' : 'Thêm Hạng Vé'}
+                </button>
+              </div>
+            </form>
+          </Modal>
         </div>
       )}
 
@@ -1559,150 +1830,200 @@ export const OrganizerPage = () => {
             </span>
           </div>
 
-          <div className="split">
-            {/* Promo Codes List */}
-            <section className="card flex-1">
-              <h2 className="panel-title">Active Promo Codes</h2>
-              {loadingPromos ? (
-                <div className="loading-state">Loading promo codes...</div>
-              ) : promos.length === 0 ? (
-                <div className="empty-state">
-                  <p className="muted">No promo codes active for this event.</p>
-                  <p className="hint">Create a promotional code to run ticket discounts.</p>
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Code</th>
-                        <th>Discount</th>
-                        <th>Usage / Limit</th>
-                        <th>Expires</th>
-                        <th className="text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {promos.map((p) => {
-                        const usages = p.usages || 0;
-                        const maxUses = p.max_uses || p.maxUsages || '∞';
-                        return (
-                          <tr key={p.id || p.code}>
-                            <td>
-                              <span className="badge-promo-code">
-                                {p.code}
-                              </span>
-                            </td>
-                            <td>
-                              <strong className="note good">
-                                {p.discount_type === 'PERCENTAGE'
-                                  ? `${p.discount}% OFF`
-                                  : `${money(p.discount)} OFF`}
-                              </strong>
-                            </td>
-                            <td>
-                              {usages} / {maxUses} uses
-                            </td>
-                            <td className="muted text-xs">
-                              {p.expires_at ? formatDate(p.expires_at) : 'No expiration'}
-                            </td>
-                            <td>
-                              <div className="table-actions justify-end">
-                                <button
-                                  type="button"
-                                  className="btn btn-xs btn-danger"
-                                  onClick={() => handleDeletePromo(p.id, p.code)}
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
+          {/* Promo Codes List */}
+          <section className="card">
+            <div className="flex justify-between items-center mb-md">
+              <div>
+                <h2 className="panel-title mb-0">{t('organizer.tab_promos', 'Mã Giảm Giá')}</h2>
+                <p className="muted text-xs m-0">Quản lý mã khuyến mãi, voucher giảm giá và hạn mức sử dụng</p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  cancelEditPromo();
+                  setShowPromoModal(true);
+                }}
+              >
+                ➕ Thêm Mã Giảm Giá
+              </button>
+            </div>
 
-            {/* Create Promo Form */}
-            <section className="card w-modal-380">
-              <h2 className="panel-title">Create Promo Code</h2>
-
-              <form onSubmit={handleCreatePromo}>
-                <div className="form-group">
-                  <label htmlFor="promoCode">Promo Code *</label>
-                  <input
-                    id="promoCode"
-                    type="text"
-                    className="input"
-                    required
-                    placeholder="e.g. EARLYBIRD20"
-                    value={promoFormData.code}
-                    onChange={(e) => setPromoFormData({ ...promoFormData, code: e.target.value.toUpperCase() })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="discountType">Discount Type</label>
-                  <select
-                    id="discountType"
-                    className="select"
-                    value={promoFormData.discount_type}
-                    onChange={(e) => setPromoFormData({ ...promoFormData, discount_type: e.target.value })}
-                  >
-                    <option value="PERCENTAGE">Percentage (%)</option>
-                    <option value="FIXED">Fixed Amount ($ Cents)</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="discountVal">
-                    {promoFormData.discount_type === 'PERCENTAGE'
-                      ? 'Discount Percentage (e.g. 20 for 20%)'
-                      : 'Fixed Discount in Cents (e.g. 1000 = $10.00)'}
-                  </label>
-                  <input
-                    id="discountVal"
-                    type="number"
-                    min="1"
-                    className="input"
-                    required
-                    value={promoFormData.discount}
-                    onChange={(e) => setPromoFormData({ ...promoFormData, discount: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="maxUses">Max Usages</label>
-                  <input
-                    id="maxUses"
-                    type="number"
-                    min="1"
-                    className="input"
-                    value={promoFormData.max_uses}
-                    onChange={(e) => setPromoFormData({ ...promoFormData, max_uses: e.target.value })}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="expiresAt">Expiration Date (Optional)</label>
-                  <input
-                    id="expiresAt"
-                    type="date"
-                    className="input"
-                    value={promoFormData.expires_at}
-                    onChange={(e) => setPromoFormData({ ...promoFormData, expires_at: e.target.value })}
-                  />
-                </div>
-
-                <button type="submit" className="btn btn-primary btn-block mt-08">
-                  Publish Promo Code
+            {loadingPromos ? (
+              <div className="loading-state">Loading promo codes...</div>
+            ) : promos.length === 0 ? (
+              <div className="empty-state">
+                <p className="muted">{t('organizer.no_promos', 'Chưa có mã giảm giá nào cho sự kiện này.')}</p>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm mt-sm"
+                  onClick={() => {
+                    cancelEditPromo();
+                    setShowPromoModal(true);
+                  }}
+                >
+                  ➕ Thêm Mã Giảm Giá
                 </button>
-              </form>
-            </section>
-          </div>
+              </div>
+            ) : (
+              <div className="table-responsive">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>{t('organizer.col_promo_code', 'Mã ưu đãi')}</th>
+                      <th>{t('organizer.col_discount', 'Giảm giá')}</th>
+                      <th>{t('organizer.col_usage', 'Lượt sử dụng')} / Limit</th>
+                      <th>Expires</th>
+                      <th className="text-right">{t('organizer.col_actions', 'Thao tác')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {promos.map((p) => {
+                      const usages = p.usages || 0;
+                      const maxUses = p.max_uses || p.maxUsages || '∞';
+                      return (
+                        <tr key={p.id || p.code}>
+                          <td>
+                            <span className="badge-promo-code">
+                              {p.code}
+                            </span>
+                          </td>
+                          <td>
+                            <strong className="note good">
+                              {p.discount_type === 'PERCENTAGE'
+                                ? `${p.discount}% OFF`
+                                : `${money(p.discount)} OFF`}
+                            </strong>
+                          </td>
+                          <td>
+                            {usages} / {maxUses} uses
+                          </td>
+                          <td className="muted text-xs">
+                            {p.expires_at ? formatDate(p.expires_at) : 'No expiration'}
+                          </td>
+                          <td>
+                            <div className="table-actions justify-end">
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-secondary"
+                                title="Chỉnh sửa mã ưu đãi"
+                                onClick={() => startEditPromo(p)}
+                              >
+                                ✏️ Sửa
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-danger"
+                                title="Xóa mã ưu đãi"
+                                onClick={() => handleDeletePromo(p.id, p.code)}
+                              >
+                                Xóa
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {/* Modal Popup: Create / Edit Promo */}
+          <Modal
+            isOpen={showPromoModal}
+            onClose={() => {
+              setShowPromoModal(false);
+              cancelEditPromo();
+            }}
+            title={promoEditId ? '✏️ Cập Nhật Mã Giảm Giá' : '➕ Tạo Mã Giảm Giá Mới'}
+            subtitle="Áp dụng chiết khấu % hoặc số tiền cố định cho người mua vé"
+          >
+            <form onSubmit={handleSavePromo}>
+              <div className="form-group">
+                <label htmlFor="promoCode">Promo Code *</label>
+                <input
+                  id="promoCode"
+                  type="text"
+                  className="input"
+                  required
+                  placeholder="e.g. EARLYBIRD20"
+                  value={promoFormData.code}
+                  onChange={(e) => setPromoFormData({ ...promoFormData, code: e.target.value.toUpperCase() })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="discountType">Discount Type</label>
+                <select
+                  id="discountType"
+                  className="select"
+                  value={promoFormData.discount_type}
+                  onChange={(e) => setPromoFormData({ ...promoFormData, discount_type: e.target.value })}
+                >
+                  <option value="PERCENTAGE">Percentage (%)</option>
+                  <option value="FIXED">Fixed Amount ($ Cents)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="discountVal">
+                  {promoFormData.discount_type === 'PERCENTAGE'
+                    ? 'Discount Percentage (e.g. 20 for 20%)'
+                    : 'Fixed Discount in Cents (e.g. 1000 = $10.00)'}
+                </label>
+                <input
+                  id="discountVal"
+                  type="number"
+                  min="1"
+                  className="input"
+                  required
+                  value={promoFormData.discount}
+                  onChange={(e) => setPromoFormData({ ...promoFormData, discount: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="maxUses">Max Usages</label>
+                <input
+                  id="maxUses"
+                  type="number"
+                  min="1"
+                  className="input"
+                  value={promoFormData.max_uses}
+                  onChange={(e) => setPromoFormData({ ...promoFormData, max_uses: e.target.value })}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="expiresAt">Expiration Date (Optional)</label>
+                <input
+                  id="expiresAt"
+                  type="date"
+                  className="input"
+                  value={promoFormData.expires_at}
+                  onChange={(e) => setPromoFormData({ ...promoFormData, expires_at: e.target.value })}
+                />
+              </div>
+
+              <div className="flex gap-xs mt-md">
+                <button
+                  type="button"
+                  className="btn btn-secondary flex-1"
+                  onClick={() => {
+                    setShowPromoModal(false);
+                    cancelEditPromo();
+                  }}
+                >
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  {promoEditId ? 'Lưu Thay Đổi Mã' : 'Tạo Mã Giảm Giá'}
+                </button>
+              </div>
+            </form>
+          </Modal>
         </div>
       )}
 
@@ -1731,28 +2052,28 @@ export const OrganizerPage = () => {
               </select>
             </div>
             <span className="muted text-sm">
-              Guest roster, credentials, and live check-in overrides
+              Danh sách khách mời và quản lý người tham dự sự kiện
             </span>
           </div>
 
           {/* Metrics Summary Banner */}
           <div className="kpi-grid">
             <article className="card kpi">
-              <span className="muted">Total Tickets</span>
+              <span className="muted">Tổng Số Vé</span>
               <strong>{attendees.length}</strong>
               <span className="muted text-xs">Registered attendees</span>
             </article>
 
             <article className="card kpi">
-              <span className="muted">Checked In</span>
-              <strong>{attendeeCheckedInCount}</strong>
-              <span className="note good text-xs">Admitted at door</span>
+              <span className="muted">Vé Đang Hoạt Động</span>
+              <strong className="text-success">{attendees.filter((a) => a.status !== 'CANCELLED').length}</strong>
+              <span className="note good text-xs">Active guest passes</span>
             </article>
 
             <article className="card kpi">
-              <span className="muted">Attendance Rate</span>
-              <strong>{attendanceRate}</strong>
-              <span className="muted text-xs">Turnout percentage</span>
+              <span className="muted">Vé Đã Hủy</span>
+              <strong className="text-muted">{attendees.filter((a) => a.status === 'CANCELLED').length}</strong>
+              <span className="muted text-xs">Cancelled tickets</span>
             </article>
           </div>
 
@@ -1760,10 +2081,13 @@ export const OrganizerPage = () => {
           <section className="card">
             <div className="toolbar flex-wrap gap-sm">
               <div className="search-input-wrapper flex-1-240">
+                <label htmlFor="organizer-attendee-search" className="sr-only">Tìm kiếm người tham dự</label>
                 <input
+                  id="organizer-attendee-search"
                   type="text"
                   className="input"
-                  placeholder="Search attendee by name, email, or barcode..."
+                  placeholder="Search attendee by name, email, or ticket code..."
+                  aria-label="Search attendee by name, email, or ticket code..."
                   value={attendeeSearch}
                   onChange={(e) => setAttendeeSearch(e.target.value)}
                 />
@@ -1776,21 +2100,21 @@ export const OrganizerPage = () => {
                   className={`btn btn-xs ${attendeeStatusFilter === 'ALL' ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setAttendeeStatusFilter('ALL')}
                 >
-                  All ({attendees.length})
+                  Tất Cả ({attendees.length})
                 </button>
                 <button
                   type="button"
-                  className={`btn btn-xs ${attendeeStatusFilter === 'CHECKED_IN' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setAttendeeStatusFilter('CHECKED_IN')}
+                  className={`btn btn-xs ${attendeeStatusFilter === 'ACTIVE' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setAttendeeStatusFilter('ACTIVE')}
                 >
-                  Admitted ({attendeeCheckedInCount})
+                  Hoạt Động ({attendees.filter((a) => a.status !== 'CANCELLED').length})
                 </button>
                 <button
                   type="button"
-                  className={`btn btn-xs ${attendeeStatusFilter === 'PENDING' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setAttendeeStatusFilter('PENDING')}
+                  className={`btn btn-xs ${attendeeStatusFilter === 'CANCELLED' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setAttendeeStatusFilter('CANCELLED')}
                 >
-                  Pending ({attendees.length - attendeeCheckedInCount})
+                  Đã Hủy ({attendees.filter((a) => a.status === 'CANCELLED').length})
                 </button>
               </div>
 
@@ -1819,96 +2143,162 @@ export const OrganizerPage = () => {
                 >
                   Xuất CSV
                 </button>
-              </div>
-            </div>
-
-            {/* Quick QR & Barcode Door Scanner Console */}
-            <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-4 shadow-sm">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-2">
-                <div>
-                  <h4 className="font-semibold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <span>📷 Máy Quét Vé Cổng Soát Vé (Door QR / Barcode Scanner)</span>
-                    <span className="badge badge-success text-xs font-normal">Chống Quét Trùng (Anti-Passback) Active</span>
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Quét trực tiếp bằng camera, đầu đọc mã vạch chuyên dụng hoặc nhập mã barcode (ví dụ: TKT-100-200) rồi nhấn Enter.
-                  </p>
-                </div>
                 <button
                   type="button"
-                  className={`btn ${cameraScanning ? 'btn-danger' : 'btn-secondary'} btn-sm flex items-center gap-xs`}
-                  onClick={toggleCameraScanner}
+                  className="btn btn-primary btn-xs"
+                  onClick={() => setShowAddGuestModal(true)}
+                  title="Cấp vé khách mời / VIP không cần thanh toán"
                 >
-                  <span>{cameraScanning ? '⏹️ Tắt Camera Quét QR' : '📷 Mở Camera Quét QR'}</span>
+                  ➕ Thêm Khách Mời
                 </button>
               </div>
-
-              {cameraScanning && (
-                <div className="live-qr-scanner-wrapper mb-md mt-sm">
-                  <div id="live-qr-reader" className="mx-auto max-w-400 rounded-lg overflow-hidden border border-default" />
-                  <p className="text-xs muted text-center mt-xs">Hướng camera về phía mã QR trên vé của người tham dự để tự động soát vé.</p>
-                </div>
-              )}
-
-              <form onSubmit={handleBarcodeScan} className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Quét hoặc nhập mã Barcode vé (vd: TKT-...)..."
-                  className="form-control flex-1 font-mono text-sm uppercase"
-                  value={scannerInput}
-                  onChange={(e) => setScannerInput(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  disabled={scanning || !scannerInput.trim()}
-                  className="btn btn-primary text-sm whitespace-nowrap px-4 py-2"
-                >
-                  {scanning ? 'Đang xác thực...' : 'Soát Vé (Check-in)'}
-                </button>
-              </form>
-
-              {scanResult && (
-                <div
-                  className={`mt-3 p-3 rounded-lg text-sm font-medium ${
-                    scanResult.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950 dark:text-emerald-200 dark:border-emerald-800'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200 dark:bg-rose-950 dark:text-rose-200 dark:border-rose-800'
-                  }`}
-                >
-                  {scanResult.message}
-                </div>
-              )}
             </div>
+
+            {/* Modal Popup: Thêm Khách Mời VIP / Comp Ticket */}
+            <Modal
+              isOpen={showAddGuestModal}
+              onClose={() => setShowAddGuestModal(false)}
+              title="➕ Cấp Vé Khách Mời / Vé Mời VIP Mới"
+              subtitle="Tạo vé đặc quyền miễn phí kèm mã QR cho khách danh dự hoặc đối tác"
+            >
+              <form onSubmit={handleCreateGuest} className="stack gap-sm">
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Họ và tên khách mời *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Nguyễn Văn A"
+                    required
+                    value={guestFormData.name}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Email nhận vé *</label>
+                  <input
+                    type="email"
+                    className="input"
+                    placeholder="guest@example.com"
+                    required
+                    value={guestFormData.email}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Hạng vé cấp phát</label>
+                  <select
+                    className="select"
+                    value={guestFormData.ticket_tier_id}
+                    onChange={(e) => setGuestFormData({ ...guestFormData, ticket_tier_id: e.target.value })}
+                  >
+                    <option value="">-- Mặc định (Hạng vé đầu tiên) --</option>
+                    {tiers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title || t.name} ({t.type})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-xs mt-md">
+                  <button
+                    type="button"
+                    className="btn btn-secondary flex-1"
+                    onClick={() => setShowAddGuestModal(false)}
+                  >
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn btn-primary flex-1">
+                    ✓ Cấp Vé & Phát Hành QR
+                  </button>
+                </div>
+              </form>
+            </Modal>
+
+            {/* Modal Popup: Chỉnh Sửa Người Tham Dự */}
+            <Modal
+              isOpen={!!editingAttendee}
+              onClose={() => setEditingAttendee(null)}
+              title={`✏️ Chỉnh Sửa Khách Mời #${editingAttendee?.id || ''}`}
+              subtitle="Cập nhật thông tin định danh và hạng vé của người tham dự"
+            >
+              {editingAttendee && (
+                <form onSubmit={handleUpdateAttendee} className="stack gap-sm">
+                  <div className="form-group mb-0">
+                    <label className="text-sm font-semibold">Họ và tên</label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={editingAttendee.name || `${editingAttendee.first_name || ''} ${editingAttendee.last_name || ''}`.trim()}
+                      onChange={(e) => setEditingAttendee({ ...editingAttendee, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group mb-0">
+                    <label className="text-sm font-semibold">Email</label>
+                    <input
+                      type="email"
+                      className="input"
+                      value={editingAttendee.email || ''}
+                      onChange={(e) => setEditingAttendee({ ...editingAttendee, email: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group mb-0">
+                    <label className="text-sm font-semibold">Hạng vé</label>
+                    <select
+                      className="select"
+                      value={editingAttendee.ticket_tier_id || ''}
+                      onChange={(e) => setEditingAttendee({ ...editingAttendee, ticket_tier_id: e.target.value })}
+                    >
+                      {tiers.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.title || t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex justify-end gap-xs mt-md">
+                    <button
+                      type="button"
+                      className="btn btn-secondary flex-1"
+                      onClick={() => setEditingAttendee(null)}
+                    >
+                      Hủy
+                    </button>
+                    <button type="submit" className="btn btn-primary flex-1">
+                      Lưu Thay Đổi
+                    </button>
+                  </div>
+                </form>
+              )}
+            </Modal>
 
             {loadingAttendees ? (
               <div className="loading-state">Loading attendee roster...</div>
             ) : filteredAttendees.length === 0 ? (
               <div className="empty-state">
-                <p className="muted">No attendees found for this event or matching your search.</p>
+                <p className="muted">{t('organizer.no_attendees', 'Không tìm thấy người tham dự nào cho sự kiện này.')}</p>
               </div>
             ) : (
               <div className="table-responsive">
                 <table className="data-table">
                   <thead>
                     <tr>
-                      <th>Attendee</th>
-                      <th>Email</th>
-                      <th>Tier</th>
-                      <th>Ticket Barcode</th>
-                      <th>Status</th>
-                      <th>Check-in Time</th>
-                      <th className="text-right">One-Click Action</th>
+                      <th>{t('organizer.col_attendee_name', 'Họ và tên')}</th>
+                      <th>{t('organizer.col_email', 'Email')}</th>
+                      <th>{t('organizer.col_tier_name', 'Hạng vé')}</th>
+                      <th>{t('organizer.col_ticket_code', 'Mã vé (QR)')}</th>
+                      <th>{t('organizer.col_status', 'Trạng thái')}</th>
+                      <th className="text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody>
                     {displayedAttendees.map((a) => {
-                      const isCheckedIn = a.status === 'CHECKED_IN';
+                      const isCancelled = a.status === 'CANCELLED';
                       const fullName =
                         `${a.first_name || ''} ${a.last_name || ''}`.trim() ||
                         a.name ||
                         'Ticket Holder';
                       return (
-                        <tr key={a.id || a.barcode}>
+                        <tr key={a.id || a.short_id || a.barcode}>
                           <td>
                             <div className="font-semibold">{fullName}</div>
                             <span className="muted text-xs">
@@ -1920,33 +2310,42 @@ export const OrganizerPage = () => {
                             <span className="badge badge-info">{a.tier_name || a['tier name'] || 'General'}</span>
                           </td>
                           <td>
-                            <span className="badge-barcode">
-                              {a.barcode}
+                            <span className="badge-ticket-code font-mono">
+                              {a.ticket_code || a.barcode}
                             </span>
                           </td>
                           <td>
                             <span
-                              className={`badge ${isCheckedIn ? 'badge-status-live' : 'badge-status-draft'}`}
+                              className={`badge ${isCancelled ? 'badge-status-draft' : 'badge-status-live'}`}
                             >
-                              {isCheckedIn ? 'Checked In' : 'Not Checked In'}
+                              {isCancelled ? 'Đã hủy' : 'Hoạt động'}
                             </span>
                           </td>
-                          <td className="muted text-xs">
-                            {a.checked_in_at ? formatDateTime(a.checked_in_at) : '—'}
-                          </td>
                           <td>
-                            <div className="table-actions justify-end">
-                              {isCheckedIn ? (
-                                <span className="badge badge-success font-semibold">
-                                  ✓ Đã vào cửa
-                                </span>
-                              ) : (
+                            <div className="table-actions justify-end flex items-center gap-1">
+                              <button
+                                type="button"
+                                className="btn btn-xs btn-secondary"
+                                title="Chỉnh sửa thông tin khách"
+                                onClick={() =>
+                                  setEditingAttendee({
+                                    id: a.id,
+                                    name: fullName,
+                                    email: a.email,
+                                    ticket_tier_id: a.ticket_tier_id || (tiers[0] && tiers[0].id),
+                                  })
+                                }
+                              >
+                                ✏️ Sửa
+                              </button>
+                              {!isCancelled && (
                                 <button
                                   type="button"
-                                  className="btn btn-xs btn-primary"
-                                  onClick={() => handleToggleCheckin(a.id, a.barcode)}
+                                  className="btn btn-xs btn-outline-danger"
+                                  title="Hủy / Xóa vé"
+                                  onClick={() => handleDeleteAttendee(a.id, fullName)}
                                 >
-                                  Soát vé vào
+                                  🗑️ Hủy
                                 </button>
                               )}
                             </div>
@@ -1982,440 +2381,6 @@ export const OrganizerPage = () => {
               </div>
             )}
           </section>
-        </div>
-      )}
-
-      {/* =========================================================================
-          TAB 6: Escrow & Payout Management (Phân hệ 2.14)
-         ========================================================================= */}
-      {activeTab === 'escrow' && (
-        <div className="stack">
-          {/* Event Picker Bar */}
-          <div className="card toolbar">
-            <div className="flex items-center gap-sm flex-1">
-              <label htmlFor="escrowEvSelect" className="font-bold whitespace-nowrap">
-                Select Event:
-              </label>
-              <select
-                id="escrowEvSelect"
-                className="select max-w-400"
-                value={selectedEventId}
-                onChange={(e) => setSelectedEventId(e.target.value)}
-              >
-                {events.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    #{ev.id} - {ev.title} ({ev.status})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex gap-sm items-center">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={async () => {
-                  try {
-                    await api.events.exportSales(selectedEventId);
-                  } catch (e) {
-                    alert('Lỗi xuất báo cáo doanh thu: ' + e.message);
-                  }
-                }}
-                title="Xuất báo cáo bán hàng & doanh thu sự kiện dạng CSV"
-              >
-                Xuất Báo Cáo Doanh Thu (CSV)
-              </button>
-            </div>
-          </div>
-
-          {loadingEscrow ? (
-            <div className="card loading-state">Đang tải đối soát doanh thu Escrow...</div>
-          ) : !escrowSummary ? (
-            <div className="card empty-state">Không tìm thấy thông tin tài chính Escrow cho sự kiện này.</div>
-          ) : (
-            <div className="stack">
-              {/* Financial Statement KPI Cards */}
-              <div className="kpi-grid">
-                <article className="card kpi">
-                  <span className="muted">Tổng Doanh Thu Vé (Gross)</span>
-                  <strong>{money(escrowSummary.gross_sales, escrowSummary.currency)}</strong>
-                  <span className="muted text-xs">
-                    {escrowSummary.completed_orders_count || 0} đơn thành công
-                  </span>
-                </article>
-
-                <article className="card kpi">
-                  <span className="muted">Hoa Hồng Sàn (5%)</span>
-                  <strong>{money(escrowSummary.commission_amount, escrowSummary.currency)}</strong>
-                  <span className="note text-xs">
-                    Phí nền tảng Ticketflow (5%)
-                  </span>
-                </article>
-
-                <article className="card kpi">
-                  <span className="muted">Đã Hoàn Hủy Tự Phục Vụ</span>
-                  <strong className="text-danger">
-                    {money(escrowSummary.total_refunded, escrowSummary.currency)}
-                  </strong>
-                  <span className="muted text-xs">
-                    {escrowSummary.refunded_orders_count || 0} đơn đã hoàn tiền
-                  </span>
-                </article>
-
-                <article className="card kpi">
-                  <span className="muted">Số Dư Thực Nhận (Net Payout)</span>
-                  <strong className="note good text-title-md">
-                    {money(escrowSummary.net_payout_amount, escrowSummary.currency)}
-                  </strong>
-                  <span className="muted text-xs">
-                    Khả dụng sau thời gian đóng băng
-                  </span>
-                </article>
-              </div>
-
-              {/* Escrow Cooling-Off Notice */}
-              <div className="card escrow-callout-card">
-                <h3 className="text-base-plus mb-sm">
-                  🛡️ Quy chế Bảo chứng Escrow Plan A (100% Online-only)
-                </h3>
-                <p className="muted text-sm m-0">
-                  Toàn bộ tiền bán vé được bảo lưu 100% trong tài khoản phong tỏa của sàn suốt thời gian bán vé nhằm bảo vệ quyền lợi người mua.
-                  Thời gian kết thúc giải ngân: <strong>3-5 ngày sau khi sự kiện kết thúc thành công</strong> để xử lý khiếu nại (nếu có).
-                </p>
-                <div className="mt-075">
-                  Trạng thái giải ngân hiện tại:{' '}
-                  <span className="badge badge-primary">
-                    {escrowSummary.eligibility_status === 'ELIGIBLE_FOR_PAYOUT'
-                      ? '✅ ĐÃ ĐỦ ĐIỀU KIỆN QUYẾT TOÁN'
-                      : escrowSummary.eligibility_status === 'DISPUTE_COOLING_OFF'
-                      ? `⏳ Đang trong thời gian bảo chứng đóng băng (còn ~${escrowSummary.days_until_eligible} ngày)`
-                      : `🔒 Đang mở bán vé / Sự kiện chưa kết thúc (còn ~${escrowSummary.days_until_eligible} ngày)`}
-                  </span>
-                </div>
-              </div>
-
-              <div className="split">
-                {/* Existing Payout Requests List */}
-                <section className="card flex-1">
-                  <h2 className="panel-title">Lịch sử Yêu cầu Quyết toán</h2>
-                  {!escrowSummary.existing_payouts || escrowSummary.existing_payouts.length === 0 ? (
-                    <div className="empty-state">
-                      <p className="muted">Chưa có yêu cầu quyết toán nào cho sự kiện này.</p>
-                    </div>
-                  ) : (
-                    <div className="table-responsive">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th>Mã yêu cầu</th>
-                            <th>Số tiền thực nhận</th>
-                            <th>Tài khoản thụ hưởng</th>
-                            <th>Trạng thái</th>
-                            <th>Ngày tạo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {escrowSummary.existing_payouts.map((p) => (
-                            <tr key={p.id}>
-                              <td><strong>#PAY-{p.id}</strong></td>
-                              <td><strong className="note good">{money(p.net_amount || p.requested_amount)}</strong></td>
-                              <td>
-                                <div>{p.bank_name}</div>
-                                <span className="muted text-xs">
-                                  STK: {p.bank_account_number} ({p.bank_account_name})
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`badge badge-status-${(p.status || 'REQUESTED').toLowerCase()}`}>
-                                  {p.status}
-                                </span>
-                              </td>
-                              <td className="muted text-xs">
-                                {formatDateTime(p.created_at)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </section>
-
-                {/* Submit Payout Request Form */}
-                <section className="card w-modal-380">
-                  <h2 className="panel-title">Yêu cầu Rút Doanh thu</h2>
-                  <p className="muted text-sm">
-                    Nhập tài khoản ngân hàng của đơn vị tổ chức để sàn đối soát và giải ngân tiền bán vé.
-                  </p>
-
-                  <form onSubmit={handleRequestPayout}>
-                    <div className="form-group">
-                      <label htmlFor="payoutBankName">Ngân hàng thụ hưởng *</label>
-                      <input
-                        id="payoutBankName"
-                        type="text"
-                        className="input"
-                        required
-                        placeholder="Vietcombank, Techcombank, MB Bank..."
-                        value={payoutForm.bank_name}
-                        onChange={(e) => setPayoutForm({ ...payoutForm, bank_name: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="payoutAccNum">Số tài khoản ngân hàng *</label>
-                      <input
-                        id="payoutAccNum"
-                        type="text"
-                        className="input"
-                        required
-                        placeholder="0123456789"
-                        value={payoutForm.bank_account_number}
-                        onChange={(e) => setPayoutForm({ ...payoutForm, bank_account_number: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="payoutAccHolder">Tên chủ tài khoản (In hoa không dấu) *</label>
-                      <input
-                        id="payoutAccHolder"
-                        type="text"
-                        className="input"
-                        required
-                        placeholder="NGUYEN VAN A"
-                        value={payoutForm.bank_account_name}
-                        onChange={(e) => setPayoutForm({ ...payoutForm, bank_account_name: e.target.value.toUpperCase() })}
-                      />
-                    </div>
-
-                    <div className="form-group">
-                      <label htmlFor="payoutNotes">Ghi chú đối soát (Tùy chọn)</label>
-                      <textarea
-                        id="payoutNotes"
-                        className="textarea"
-                        rows="2"
-                        placeholder="Đề nghị quyết toán đợt 1..."
-                        value={payoutForm.notes}
-                        onChange={(e) => setPayoutForm({ ...payoutForm, notes: e.target.value })}
-                      />
-                    </div>
-
-                    <div className="audit-note-box">
-                      <div className="flex justify-between">
-                        <span>Số dư giải ngân:</span>
-                        <strong>{money(escrowSummary.net_payout_amount, escrowSummary.currency)}</strong>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="btn btn-primary btn-block mt-md"
-                      disabled={submittingPayout || escrowSummary.net_payout_amount <= 0}
-                    >
-                      {submittingPayout ? 'Đang gửi yêu cầu...' : 'Gửi Yêu Cầu Quyết Toán'}
-                    </button>
-                  </form>
-                </section>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* =========================================================================
-          TAB 7: Helpdesk & Support Tickets (Phân hệ 2.16)
-         ========================================================================= */}
-      {activeTab === 'helpdesk' && (
-        <div className="stack">
-          <div className="toolbar">
-            <div className="search-input-wrapper">
-              <input
-                type="text"
-                className="input"
-                placeholder="Tìm phiếu hỗ trợ theo tiêu đề, email, mã phiếu..."
-                value={ticketSearch}
-                onChange={(e) => setTicketSearch(e.target.value)}
-              />
-            </div>
-
-            <div className="filter-pills">
-              <span className="muted text-xs mr-02">
-                Trạng thái:
-              </span>
-              {['ALL', 'OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'].map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  className={`filter-pill ${ticketStatusFilter === st ? 'active' : ''}`}
-                  onClick={() => setTicketStatusFilter(st)}
-                >
-                  {st === 'ALL' ? 'Tất cả' : st}
-                </button>
-              ))}
-            </div>
-
-            <button type="button" className="btn btn-secondary btn-sm" onClick={loadTickets}>
-              Làm mới
-            </button>
-          </div>
-
-          <div className="split">
-            {/* Tickets Table */}
-            <section className="card flex-1">
-              <h2 className="panel-title">Danh sách Phiếu Hỗ trợ & Tranh chấp</h2>
-              {loadingTickets ? (
-                <div className="loading-state">Đang tải phiếu hỗ trợ...</div>
-              ) : filteredTickets.length === 0 ? (
-                <div className="empty-state">
-                  <p className="muted">Không có phiếu hỗ trợ nào cần xử lý.</p>
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Mã phiếu</th>
-                        <th>Chủ đề / Yêu cầu</th>
-                        <th>Người gửi</th>
-                        <th>Độ ưu tiên</th>
-                        <th>Trạng thái</th>
-                        <th>Ngày tạo</th>
-                        <th className="text-right">Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredTickets.map((t) => (
-                        <tr key={t.id}>
-                          <td><strong>{t.short_id || `#TCK-${t.id}`}</strong></td>
-                          <td>
-                            <div className="font-semibold">{t.subject}</div>
-                            <span className="muted text-xs">{t.category}</span>
-                          </td>
-                          <td>
-                            <div>{t.contact_name}</div>
-                            <span className="muted text-xs">{t.contact_email}</span>
-                          </td>
-                          <td>
-                            <span className={`badge ${t.priority === 'URGENT' || t.priority === 'HIGH' ? 'badge-danger' : 'badge-primary'}`}>
-                              {t.priority}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`badge badge-status-${(t.status || 'OPEN').toLowerCase()}`}>
-                              {t.status}
-                            </span>
-                          </td>
-                          <td className="muted text-xs">
-                            {formatDate(t.created_at)}
-                          </td>
-                          <td>
-                            <div className="table-actions justify-end">
-                              <button
-                                type="button"
-                                className="btn btn-xs btn-primary"
-                                onClick={() => handleOpenTicket(t)}
-                              >
-                                Xem & Phản hồi
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-
-            {/* Ticket Thread & Reply Panel */}
-            {selectedTicket && (
-              <section className="card w-modal-420">
-                <div className="flex justify-between items-center mb-075">
-                  <h2 className="panel-title m-0">
-                    {selectedTicket.short_id || `#${selectedTicket.id}`}
-                  </h2>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-xs"
-                    onClick={() => setSelectedTicket(null)}
-                  >
-                    ✕ Đóng
-                  </button>
-                </div>
-
-                <div className="stack gap-xs border-b-line pb-075 mb-md">
-                  <div className="font-bold text-base-plus">{selectedTicket.subject}</div>
-                  <div className="flex gap-xs flex-wrap">
-                    <span className="badge badge-info">{selectedTicket.category}</span>
-                    <span className="badge badge-primary">{selectedTicket.priority}</span>
-                    <span className={`badge badge-status-${(selectedTicket.status || 'OPEN').toLowerCase()}`}>
-                      {selectedTicket.status}
-                    </span>
-                  </div>
-                  <p className="dispute-summary-preview">
-                    {selectedTicket.description}
-                  </p>
-                  {selectedTicket.evidence_url && (
-                    <div className="text-xs">
-                      Bằng chứng đính kèm:{' '}
-                      <a href={selectedTicket.evidence_url} target="_blank" rel="noopener noreferrer">
-                        Xem tài liệu
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {/* Messages History */}
-                <h3 className="text-sm mb-sm">Trao đổi & Hòa giải:</h3>
-                <div className="stack gap-xs dispute-history-scroll">
-                  {(!selectedTicket.messages || selectedTicket.messages.length === 0) ? (
-                    <p className="muted text-xs">Chưa có tin nhắn phản hồi nào.</p>
-                  ) : (
-                    selectedTicket.messages.map((m) => (
-                      <div
-                        key={m.id}
-                        className={`ticket-bubble ${
-                          m.sender_role === 'ORGANIZER'
-                            ? 'ticket-bubble-organizer'
-                            : m.sender_role === 'ADMIN'
-                            ? 'ticket-bubble-admin'
-                            : 'ticket-bubble-default'
-                        }`}>
-                        <div className="flex justify-between text-xs mb-02">
-                          <strong>{m.sender_name} ({m.sender_role})</strong>
-                          <span className="muted">{formatDateTime(m.created_at)}</span>
-                        </div>
-                        <div>{m.message}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Reply Form */}
-                <form onSubmit={handleSendTicketReply}>
-                  <div className="form-group">
-                    <label htmlFor="ticketReplyMsg">Phản hồi của Ban Tổ Chức:</label>
-                    <textarea
-                      id="ticketReplyMsg"
-                      className="textarea"
-                      rows="3"
-                      required
-                      placeholder="Nhập nội dung hướng dẫn hoặc giải quyết khiếu nại cho khách..."
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn btn-primary btn-block"
-                    disabled={sendingReply || !replyText.trim()}
-                  >
-                    {sendingReply ? 'Đang gửi...' : 'Gửi Phản Hồi Cho Khách'}
-                  </button>
-                </form>
-              </section>
-            )}
-          </div>
         </div>
       )}
     </section>

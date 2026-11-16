@@ -214,7 +214,7 @@ export const reserveTickets = async (client, items) => {
     const result = await client.query(updateSql, [quantity, tierId]);
 
     if (result.rowCount === 0) {
-      // Diagnostic lookup: fetch current remaining quantity for clear error reporting
+      // Remaining stock lookup: fetch current remaining quantity for clear error reporting
       const checkSql = 'SELECT remaining_quantity FROM ticket_tiers WHERE id = $1';
       const checkResult = await client.query(checkSql, [tierId]);
       const currentRemaining = checkResult.rowCount > 0 ? checkResult.rows[0].remaining_quantity : 0;

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ThemeLangControls } from './ThemeLangControls';
+import NotificationBell from './NotificationBell';
 
 export const OrganizerLayout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -43,24 +43,26 @@ export const OrganizerLayout = ({ children }) => {
               <span>{t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}</span>
             </NavLink>
 
-            <Link to="/" className="nav-shortcut public-shortcut nav-link" title={t('nav.view_store', 'Xem giao diện khách mua vé thực tế')}>
+            <NavLink to="/organizer/events/new" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
-                <line x1="2" x2="22" y1="12" y2="12" />
-                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                <line x1="12" y1="8" x2="12" y2="16" />
+                <line x1="8" y1="12" x2="16" y2="12" />
               </svg>
-              <span>{t('nav.view_store', 'Xem Trang Bán Vé')}</span>
-            </Link>
-
-            <ThemeLangControls />
+              <span>{t('nav.create_event', '➕ Tạo Sự Kiện Mới')}</span>
+            </NavLink>
 
             {isAuthenticated ? (
               <div className="nav-actions">
-                <span className="user-chip user-chip-organizer" title={`Ban tổ chức: ${user.email}`}>
-                  <span className="user-avatar-dot dot-organizer" aria-hidden="true" />
-                  <span className="user-name-text">{user.name}</span>
-                  <span className="chip-role">{t('nav.organizer_role', 'BTC')}</span>
-                </span>
+                <NotificationBell />
+
+                <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Hồ sơ tài khoản">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  <span>{t('nav.profile', 'Hồ Sơ')}</span>
+                </NavLink>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
                   {t('nav.logout', 'Đăng Xuất')}
                 </button>
@@ -108,20 +110,22 @@ export const OrganizerLayout = ({ children }) => {
 
             <div className="mobile-drawer-links">
               <NavLink to="/organizer" end className="drawer-link active">
-                🎪 {t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}
+                {t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}
               </NavLink>
-              <Link to="/" className="drawer-link">
-                🌐 {t('nav.view_store', 'Xem Trang Bán Vé Khách')}
-              </Link>
+              <NavLink to="/notifications" className="drawer-link">
+                🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}
+              </NavLink>
+              <NavLink to="/profile" className="drawer-link">
+                {t('nav.profile', 'Hồ Sơ Cá Nhân')}
+              </NavLink>
             </div>
 
             <div className="mobile-drawer-footer">
-              <div className="drawer-controls-row">
-                <ThemeLangControls />
-              </div>
               {isAuthenticated && (
                 <div className="drawer-user-info">
-                  <div className="drawer-user-name">🏢 {user.name} ({user.role})</div>
+                  <Link to="/profile" className="drawer-user-name" style={{ display: 'block', marginBottom: '8px', color: 'inherit', textDecoration: 'none' }}>
+                    <strong>{user.name}</strong> ({user.role}) &rarr; {t('nav.profile', 'Hồ Sơ')}
+                  </Link>
                   <button type="button" onClick={handleLogout} className="btn btn-secondary btn-block btn-sm">
                     {t('nav.logout', 'Đăng Xuất')}
                   </button>
@@ -139,15 +143,12 @@ export const OrganizerLayout = ({ children }) => {
       <footer className="site-footer organizer-footer">
         <div className="footer-inner">
           <div className="footer-brand-section">
-            <div className="footer-brand">Ticketflow · {t('role.organizer_sub', 'Organizer Studio')}</div>
-            <p className="footer-desc">
-              Quản lý toàn diện vòng đời sự kiện, sơ đồ chỗ ngồi, đa hạng vé, mã ưu đãi, dòng tiền bảo chứng Escrow và soát vé trực tiếp.
-            </p>
+            <div className="footer-brand">Ticketflow · Organizer</div>
           </div>
           <div className="footer-links">
             <Link to="/" className="footer-link">{t('role.attendee', 'Trang Khách Mua Vé')}</Link>
-            <span className="divider" aria-hidden="true">·</span>
-            <span className="footer-note">Escrow Bảo chứng 100%</span>
+            <span className="divider" aria-hidden="true">&bull;</span>
+            <span className="footer-copyright">© 2026 Ticketflow</span>
           </div>
         </div>
       </footer>

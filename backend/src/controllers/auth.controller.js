@@ -59,6 +59,9 @@ class AuthController {
   async refresh(req, res, next) {
     try {
       const refreshToken = req.cookies?.refreshToken;
+      if (!refreshToken) {
+        return res.status(401).json({ error: 'Unauthorized', message: 'Missing refresh token' });
+      }
       const { token } = await authService.refreshToken(refreshToken);
       return res.status(200).json({
         success: true,
@@ -84,9 +87,41 @@ class AuthController {
           id: user.id,
           name: user.name,
           email: user.email,
+          phone: user.phone || '',
           role: user.role,
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateProfile(req, res, next) {
+    try {
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { name, email, phone } = req.body;
+      const result = await authService.updateProfile(req.user.id, { name, email, phone });
+      return res.status(200).json({
+        success: true,
+        message: 'Cập nhật thông tin hồ sơ thành công',
+        user: result.user,
+        token: result.token,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async changePassword(req, res, next) {
+    try {
+      if (!req.user || !req.user.id) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+      const { currentPassword, newPassword } = req.body;
+      const result = await authService.changePassword(req.user.id, { currentPassword, newPassword });
+      return res.status(200).json(result);
     } catch (err) {
       next(err);
     }

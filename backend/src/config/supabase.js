@@ -8,6 +8,10 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
+if (process.env.NODE_ENV === 'production' && !process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY) {
+  console.warn('[SECURITY WARNING] Supabase credentials not explicitly configured via environment variables.');
+}
+
 const supabaseUrl = process.env.SUPABASE_URL || 'https://kmciluchcfajlawrwbgs.supabase.co';
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||

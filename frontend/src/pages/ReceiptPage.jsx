@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { money, formatDateTime } from '../utils/display';
-import { QrCodeSvg, BarcodeSvg } from '../utils/qr';
+import { QrCodeSvg } from '../utils/qr';
 
 export const ReceiptPage = () => {
   const { id } = useParams();
@@ -32,7 +32,7 @@ export const ReceiptPage = () => {
     return (
       <div className="card loading-state empty-state-card">
         <div className="spinner" />
-        <p className="muted">Đang tải biên lai điện tử bảo chứng Escrow...</p>
+        <p className="muted">Đang tải biên lai...</p>
       </div>
     );
   }
@@ -53,29 +53,29 @@ export const ReceiptPage = () => {
       <div className="receipt-page-container">
         <div className="receipt-header">
           <div className="receipt-icon-circle">✓</div>
-          <span className="badge badge-success">{t('receipt.valid_badge', 'Biên lai điện tử hợp lệ · Bảo chứng 100% Escrow')}</span>
-          <h1 className="receipt-title">{t('receipt.title', 'Biên Lai Điện Tử / Hóa Đơn Trực Tuyến')}</h1>
+          <span className="badge badge-success">{t('receipt.header_badge', 'Biên lai thanh toán')}</span>
+          <h1 className="receipt-title">{t('receipt.headline', 'Biên lai thanh toán')}</h1>
           <p className="receipt-subtitle">
-            {t('receipt.receipt_code', 'Mã biên lai:')} <strong>{receipt.receipt_id}</strong> · Mã đơn: <strong>{receipt.order_short_id || receipt.order_id}</strong>
+            {t('receipt.code_label', 'Mã biên lai:')} <strong>{receipt.receipt_id}</strong> · {t('receipt.order_label', 'Mã đơn:')} <strong>{receipt.order_short_id || receipt.order_id}</strong>
           </p>
         </div>
 
         <div className="card receipt-content-card">
           <div className="receipt-meta-grid">
             <div className="receipt-meta-cell">
-              <span className="receipt-meta-label">{t('receipt.event_label', 'SỰ KIỆN')}</span>
+              <span className="receipt-meta-label">{t('receipt.meta_event', 'SỰ KIỆN')}</span>
               <strong className="receipt-meta-val">{receipt.event?.title || 'Sự kiện Ticketflow'}</strong>
-              <div className="muted">📍 {receipt.event?.location || 'Trực tuyến'}</div>
+              <div className="muted">{receipt.event?.location || 'Trực tuyến'}</div>
             </div>
             <div className="receipt-meta-cell">
-              <span className="receipt-meta-label">{t('receipt.buyer_label', 'NGƯỜI MUA VÉ')}</span>
+              <span className="receipt-meta-label">{t('receipt.meta_buyer', 'NGƯỜI MUA VÉ')}</span>
               <strong className="receipt-meta-val">{receipt.buyer?.name || 'Khách mua vé'}</strong>
-              <div className="muted">✉️ {receipt.buyer?.email}</div>
+              <div className="muted">{receipt.buyer?.email}</div>
             </div>
             <div className="receipt-meta-cell">
-              <span className="receipt-meta-label">{t('receipt.payment_label', 'THANH TOÁN')}</span>
+              <span className="receipt-meta-label">{t('receipt.meta_payment', 'THANH TOÁN')}</span>
               <span className="badge badge-success">{receipt.payment_status}</span>
-              <div className="muted">Cổng: {receipt.payment_gateway} · {receipt.transaction_id}</div>
+              <div className="muted">{receipt.payment_gateway} · {receipt.transaction_id}</div>
             </div>
           </div>
 
@@ -119,7 +119,7 @@ export const ReceiptPage = () => {
 
         {/* Issued Tickets Section */}
         <div className="tickets-issued-section">
-          <h2 className="section-title">Danh sách Vé điện tử & Mã QR Check-in</h2>
+          <h2 className="section-title">Vé điện tử</h2>
           <div className="tickets-grid">
             {(receipt.attendees || []).map((att, idx) => (
               <div key={att.id || idx} className="e-ticket-card">
@@ -141,16 +141,13 @@ export const ReceiptPage = () => {
                     )}
                     <div className="ticket-field">
                       <span className="field-label">MÃ VÉ</span>
-                      <span className="field-value seat-highlight">{att.barcode}</span>
+                      <span className="field-value seat-highlight">{att.ticket_code || att.barcode}</span>
                     </div>
                   </div>
                   <div className="ticket-qr-col">
-                    <QrCodeSvg value={att.barcode} size={110} />
+                    <QrCodeSvg value={att.qr_hash || att.ticket_code || att.barcode} size={110} />
                     <div className="qr-caption">Quét QR tại cổng</div>
                   </div>
-                </div>
-                <div className="ticket-barcode-footer">
-                  <BarcodeSvg value={att.barcode} height={38} />
                 </div>
               </div>
             ))}

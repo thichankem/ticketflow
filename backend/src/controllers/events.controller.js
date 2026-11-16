@@ -1,6 +1,8 @@
 import eventsService from '../services/events.service.js';
 import seatingService from '../services/seating.service.js';
 import recommendationService from '../services/recommendation.service.js';
+import storageService from '../services/storage.service.js';
+import { sanitizeCsvCell } from '../utils/csv.js';
 
 class EventsController {
   async list(req, res, next) {
@@ -15,7 +17,7 @@ class EventsController {
   async getById(req, res, next) {
     try {
       const { id } = req.params;
-      const event = await eventsService.getEventById(id);
+      const event = await eventsService.getEventById(id, req.user);
       if (!event) {
         return res.status(404).json({ error: 'Event not found' });
       }
@@ -47,8 +49,11 @@ class EventsController {
   async delete(req, res, next) {
     try {
       const { id } = req.params;
-      await eventsService.deleteEvent(req.user, id);
-      return res.status(200).json({ message: 'Event deleted' });
+      const result = await eventsService.deleteEvent(req.user, id);
+      return res.status(200).json({
+        message: result?.message || 'Event deleted',
+        ...result,
+      });
     } catch (err) {
       next(err);
     }
@@ -145,31 +150,67 @@ class EventsController {
     }
   }
 
-  async uploadAttachment(req, res, next) {
+  async uploadImage(req, res, next) {
     try {
-      const { id } = req.params;
-      const event = await eventsService.getEventById(id);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
+      const { fileData, mimeType, fileName } = req.body;
+      if (!fileData) {
+        return res.status(400).json({ error: 'Dữ liệu hình ảnh (fileData) là bắt buộc.' });
       }
-      if (req.user && req.user.role !== 'ADMIN' && Number(event.account_id) !== Number(req.user.account_id)) {
-        return res.status(403).json({ error: 'Forbidden: Event does not belong to user account' });
+
+      const cleanMime = (mimeType || 'image/webp').toLowerCase();
+
+      // Prohibit videos explicitly
+      if (cleanMime.startsWith('video/') || (fileName && /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(fileName))) {
+        return res.status(400).json({ error: 'Không cho phép tải video lên. Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPEG, WebP).' });
       }
-      const { title, filename, size, url, base64 } = req.body;
-      const attachment = await eventsService.addAttachment(id, {
-        title,
-        filename,
-        size,
-        url,
-        base64,
-      });
-      return res.status(201).json({
-        message: 'Tải lên tài liệu PDF đính kèm thành công',
-        attachment,
+
+      // Prohibit PDFs explicitly
+      if (cleanMime === 'application/pdf' || (fileName && /\.pdf$/i.test(fileName))) {
+        return res.status(400).json({ error: 'Không hỗ trợ tệp PDF nữa. Vui lòng chỉ tải lên hình ảnh (PNG, JPEG, WebP).' });
+      }
+
+      const allowedImages = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml'];
+      if (!allowedImages.includes(cleanMime)) {
+        return res.status(400).json({ error: `Định dạng ${cleanMime} không hợp lệ. Chỉ chấp nhận tệp hình ảnh (PNG, JPEG, WebP).` });
+      }
+
+      const cleanBase64 = fileData.includes(';base64,') ? fileData.split(';base64,')[1] : fileData;
+      const buffer = Buffer.from(cleanBase64, 'base64');
+
+      // Max file size: 10MB
+      if (buffer.length > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: 'Kích thước tệp vượt quá giới hạn tối đa cho phép (10MB).' });
+      }
+
+      const safeName = (fileName || 'image')
+        .toLowerCase()
+        .replace(/[^a-z0-9.]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      const uniquePath = `events/${Date.now()}-${safeName}`;
+
+      let resultUrl;
+      try {
+        const uploadRes = await storageService.uploadFile('event-images', uniquePath, buffer, cleanMime);
+        resultUrl = uploadRes.publicUrl;
+      } catch (storageErr) {
+        resultUrl = fileData.startsWith('data:') ? fileData : `data:${cleanMime};base64,${cleanBase64}`;
+      }
+
+      return res.status(200).json({
+        message: 'Tải ảnh lên và tự động tối ưu hóa thành công',
+        url: resultUrl,
+        size: buffer.length,
+        mimeType: cleanMime,
       });
     } catch (err) {
       next(err);
     }
+  }
+
+  async uploadAttachment(req, res, next) {
+    return res.status(400).json({
+      error: 'Chức năng tải lên tệp PDF đã bị vô hiệu hóa. Hệ thống không cho phép tải lên tệp PDF nữa.',
+    });
   }
 
   async getAttachment(req, res, next) {
@@ -259,6 +300,47 @@ class EventsController {
     }
   }
 
+  async markAllNotificationsRead(req, res, next) {
+    try {
+      const { default: notificationsService } = await import('../services/notifications.service.js');
+      await notificationsService.markAllAsRead(req.user.id);
+      return res.status(200).json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async deleteNotification(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { default: notificationsService } = await import('../services/notifications.service.js');
+      await notificationsService.deleteNotification(id, req.user.id);
+      return res.status(200).json({ success: true, message: 'Notification deleted successfully' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async clearNotifications(req, res, next) {
+    try {
+      const { default: notificationsService } = await import('../services/notifications.service.js');
+      await notificationsService.clearAllNotifications(req.user.id);
+      return res.status(200).json({ success: true, message: 'All notifications cleared' });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getAnnouncements(req, res, next) {
+    try {
+      const { default: announcementsService } = await import('../services/announcements.service.js');
+      const announcements = await announcementsService.getAnnouncements();
+      return res.status(200).json({ announcements });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async exportAttendees(req, res, next) {
     try {
       const { id } = req.params;
@@ -266,18 +348,16 @@ class EventsController {
       const attendees = await ordersService.getAttendeesByEvent(id, req.user);
 
       // Generate UTF-8 CSV with BOM for proper Excel compatibility (Phân hệ 2.14)
-      let csv = '\uFEFFSTT,Mã Vé,Mã Vạch,Họ và Tên,Email,Hạng Vé,Vị Trí Ghế,Trạng Thái,Thời Gian Check-in\n';
+      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Vị Trí Ghế,Trạng Thái\n';
       (attendees || []).forEach((att, idx) => {
         const row = [
           idx + 1,
-          `"${att.id || ''}"`,
-          `"${att.barcode || ''}"`,
-          `"${(att.name || '').replace(/"/g, '""')}"`,
-          `"${(att.email || '').replace(/"/g, '""')}"`,
-          `"${att.tier_name || att.ticket_tier_id || ''}"`,
-          `"${att.seat || 'Tự do'}"`,
-          `"${att.status || 'ACTIVE'}"`,
-          `"${att.checked_in_at || 'Chưa check-in'}"`,
+          sanitizeCsvCell(att.ticket_code || att.barcode || att.short_id || att.id || ''),
+          sanitizeCsvCell(att.name || ''),
+          sanitizeCsvCell(att.email || ''),
+          sanitizeCsvCell(att.tier_name || att.ticket_tier_id || ''),
+          sanitizeCsvCell(att.seat || 'Tự do'),
+          sanitizeCsvCell(att.status || 'ACTIVE'),
         ];
         csv += row.join(',') + '\n';
       });
@@ -300,17 +380,17 @@ class EventsController {
       let csv = '\uFEFFMã Đơn Hàng,Mã Ngắn,Khách Hàng,Email,Tổng Tiền Trước Giảm,Giảm Giá,Tổng Thực Thu,Mã Khuyến Mãi,Cổng Thanh Toán,Trạng Thái,Thời Gian Đặt\n';
       (orders || []).forEach((ord) => {
         const row = [
-          `"${ord.id || ''}"`,
-          `"${ord.short_id || ''}"`,
-          `"${(ord.customer_name || ord.first_name || '').replace(/"/g, '""')}"`,
-          `"${(ord.customer_email || ord.email || '').replace(/"/g, '""')}"`,
+          sanitizeCsvCell(ord.id || ''),
+          sanitizeCsvCell(ord.short_id || ''),
+          sanitizeCsvCell(ord.customer_name || ord.first_name || ''),
+          sanitizeCsvCell(ord.customer_email || ord.email || ''),
           ord.subtotal || ord.total_before_additions || 0,
           ord.discount_amount || ord.discount || 0,
           ord.total_gross || ord.total || 0,
-          `"${ord.promo_code || ''}"`,
-          `"${ord.payment_gateway || ord.payment_method || 'VNPAY'}"`,
-          `"${ord.status || 'COMPLETED'}"`,
-          `"${ord.created_at || ''}"`,
+          sanitizeCsvCell(ord.promo_code || ''),
+          sanitizeCsvCell(ord.payment_gateway || ord.payment_method || 'VNPAY'),
+          sanitizeCsvCell(ord.status || 'COMPLETED'),
+          sanitizeCsvCell(ord.created_at || ''),
         ];
         csv += row.join(',') + '\n';
       });

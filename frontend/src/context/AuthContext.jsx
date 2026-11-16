@@ -83,6 +83,33 @@ export const AuthProvider = ({ children }) => {
     return await login(email, 'password123');
   };
 
+  const updateProfile = async ({ name, email, phone }) => {
+    const res = await api.put('/auth/profile', { name, email, phone });
+    if (res?.user) {
+      setUser(res.user);
+    }
+    if (res?.token) {
+      setAuthToken(res.token);
+      setToken(res.token);
+    }
+    return res;
+  };
+
+  const changePassword = async ({ currentPassword, newPassword }) => {
+    return await api.put('/auth/password', { currentPassword, newPassword });
+  };
+
+  const refreshUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      if (res?.user) {
+        setUser(res.user);
+        return res.user;
+      }
+    } catch {}
+    return null;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -91,13 +118,16 @@ export const AuthProvider = ({ children }) => {
         role: user?.role || null,
         isAuthenticated: !!user,
         isAdmin: user?.role === 'ADMIN',
-        isOrganizer: user?.role === 'ORGANIZER' || user?.role === 'ADMIN',
+        isOrganizer: user?.role === 'ORGANIZER',
         isAttendee: !user || user?.role === 'ATTENDEE',
         loading,
         login,
         register,
         logout,
         switchDemoRole,
+        updateProfile,
+        changePassword,
+        refreshUser,
       }}
     >
       {children}

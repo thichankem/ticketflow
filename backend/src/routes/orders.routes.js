@@ -9,9 +9,6 @@ const router = Router();
 // My Orders (Must be before /:id)
 router.get('/my', authenticateToken, ordersController.getMyOrders);
 
-// Door Check-in Scan (SPEC.md Section 5.4 - Must be before /:id)
-router.post('/check-in', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.checkIn);
-
 // Payment Webhook Callback (Must be before /:id)
 router.post('/webhook/payment-callback', ordersController.paymentWebhook);
 

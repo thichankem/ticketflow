@@ -52,18 +52,23 @@ function parseLocationDetails(details) {
 
 function formatEvent(r) {
   const locDetails = parseLocationDetails(r.location_details);
+  const coverImg = r.cover || r.image_url || locDetails.cover || locDetails.image_url || eventCover(r.slug || r.short_id, r.category);
+  const bannerImg = r.banner || r.banner_url || locDetails.banner || locDetails.banner_url || coverImg;
   return {
     ...r,
     id: Number(r.id),
     account_id: Number(r.account_id),
     category: r.category || 'TECH',
     location: r.location || 'TP. Hồ Chí Minh',
-    cover: eventCover(r.slug || r.short_id, r.category),
+    cover: coverImg,
+    image_url: coverImg,
+    banner: bannerImg,
+    banner_url: bannerImg,
     tags: r.tags || locDetails.tags || ['Sự kiện', r.category || 'Tech'],
     blog_blocks: r.blog_blocks || locDetails.blog_blocks || (r.description ? [
       { type: 'paragraph', text: r.description }
     ] : []),
-    pdf_attachments: r.pdf_attachments || locDetails.pdf_attachments || [],
+    pdf_attachments: [],
     refund_policy: r.refund_policy || locDetails.refund_policy || defaultRefundPolicy,
     seat_map_url: r.seat_map_url || locDetails.seat_map_url || '/images/seat-map-theater.svg',
     ticket_tiers: (r.ticket_tiers || []).map(t => ({
@@ -111,6 +116,7 @@ class EventsService {
           ) AS ticket_tiers
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
+        WHERE e.deleted_at IS NULL
         GROUP BY e.id
         ORDER BY e.id ASC
       `;
@@ -124,6 +130,7 @@ class EventsService {
     const { default: ticketsService } = await import('./tickets.service.js');
     const list = [];
     for (const ev of memoryEvents.values()) {
+      if (ev.deleted_at) continue;
       const tiers = await ticketsService.listByEventId(ev.id, false);
       list.push(formatEvent({ ...ev, ticket_tiers: tiers }));
     }
@@ -131,8 +138,9 @@ class EventsService {
     return list;
   }
 
-  async getEventById(id) {
+  async getEventById(id, user = null) {
     const numId = Number(id);
+    const includeHidden = Boolean(user && (user.role === 'ADMIN' || user.role === 'ORGANIZER'));
     try {
       // Single-query fetch eliminating N+1
       const sql = `
@@ -157,15 +165,15 @@ class EventsService {
                 'max_per_order', t.max_per_order,
                 'is_hidden', t.is_hidden
               )
-            ) FILTER (WHERE t.id IS NOT NULL),
+            ) FILTER (WHERE t.id IS NOT NULL AND (t.is_hidden = false OR $2 = true)),
             '[]'::json
           ) AS ticket_tiers
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
-        WHERE e.id = $1
+        WHERE e.id = $1 AND e.deleted_at IS NULL
         GROUP BY e.id
       `;
-      const res = await query(sql, [numId]);
+      const res = await query(sql, [numId, includeHidden]);
       if (res.rowCount > 0) {
         return formatEvent(res.rows[0]);
       }
@@ -175,9 +183,9 @@ class EventsService {
     }
 
     const ev = memoryEvents.get(numId);
-    if (!ev) return null;
+    if (!ev || ev.deleted_at) return null;
     const { default: ticketsService } = await import('./tickets.service.js');
-    const tiers = await ticketsService.listByEventId(ev.id, true);
+    const tiers = await ticketsService.listByEventId(ev.id, includeHidden);
     return formatEvent({ ...ev, ticket_tiers: tiers });
   }
 
@@ -196,6 +204,10 @@ class EventsService {
       province_code = 'HCM',
       tags = [],
       blog_blocks = [],
+      cover,
+      image_url,
+      banner,
+      banner_url,
       pdf_attachments = [],
       refund_policy = defaultRefundPolicy,
       seat_map_url = '/images/seat-map-theater.svg',
@@ -215,6 +227,8 @@ class EventsService {
     const finalProvinceCode = province_code || 'HCM';
     const finalTags = tags && tags.length > 0 ? tags : ['Sự kiện', category];
     const finalRefundPolicy = refund_policy || defaultRefundPolicy;
+    const finalCover = cover || image_url || null;
+    const finalBanner = banner || banner_url || finalCover || null;
 
     const locationDetails = JSON.stringify({
       venue: finalLocationName,
@@ -222,7 +236,8 @@ class EventsService {
       province_code: finalProvinceCode,
       tags: finalTags,
       blog_blocks: blog_blocks && blog_blocks.length > 0 ? blog_blocks : [{ type: 'paragraph', text: description || '' }],
-      pdf_attachments: pdf_attachments || [],
+      cover: finalCover,
+      banner: finalBanner,
       refund_policy: finalRefundPolicy,
       seat_map_url: seat_map_url || '/images/seat-map-theater.svg',
     });
@@ -234,9 +249,9 @@ class EventsService {
         INSERT INTO events (
           account_id, title, slug, description, status, start_date, end_date,
           short_id, category, location, location_name, province_code, tags,
-          refund_policy, commission_rate, location_details, created_at, updated_at
+          refund_policy, commission_rate, location_details, cover, banner, created_at, updated_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW(), NOW())
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
         RETURNING *, start_date AS starts_at, end_date AS ends_at
       `;
       const res = await query(sql, [
@@ -256,6 +271,8 @@ class EventsService {
         JSON.stringify(finalRefundPolicy),
         commission_rate,
         locationDetails,
+        finalCover,
+        finalBanner,
       ]);
       const created = res.rows[0];
       // Seed escrow account for the newly created event
@@ -266,11 +283,39 @@ class EventsService {
           ON CONFLICT (event_id) DO NOTHING
         `, [created.id]);
       } catch {}
+
+      // Auto-create ticket tiers if passed in eventData
+      const rawTiers = eventData.ticket_tiers || eventData.tiers;
+      if (Array.isArray(rawTiers) && rawTiers.length > 0) {
+        const { default: ticketsService } = await import('./tickets.service.js');
+        for (const t of rawTiers) {
+          try {
+            await ticketsService.createTier(created.id, t, user);
+          } catch (tierErr) {
+            console.warn('[EventsService.createEvent] Error auto-creating tier:', tierErr.message);
+          }
+        }
+      }
+
       return formatEvent(created);
     } catch (dbErr) {
       console.warn('[EventsService.createEvent] Database insert error, using fallback:', dbErr.message);
       // Fallback in-memory
       const id = ++nextEventId;
+      const rawTiers = eventData.ticket_tiers || eventData.tiers;
+      const fallbackTiers = [];
+      if (Array.isArray(rawTiers) && rawTiers.length > 0) {
+        const { default: ticketsService } = await import('./tickets.service.js');
+        for (const t of rawTiers) {
+          try {
+            const ct = await ticketsService.createTier(id, t, user);
+            if (ct) fallbackTiers.push(ct);
+          } catch (tierErr) {
+            console.warn('[EventsService.createEvent] Error auto-creating tier fallback:', tierErr.message);
+          }
+        }
+      }
+
       const newEvent = formatEvent({
         id,
         account_id: accountId,
@@ -286,10 +331,12 @@ class EventsService {
         location_name: finalLocationName,
         province_code: finalProvinceCode,
         tags: finalTags,
+        cover: finalCover,
+        banner: finalBanner,
         refund_policy: finalRefundPolicy,
         commission_rate,
         location_details: JSON.parse(locationDetails),
-        ticket_tiers: [],
+        ticket_tiers: fallbackTiers,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
@@ -314,11 +361,15 @@ class EventsService {
     }
 
     const currentDetails = parseLocationDetails(existing.location_details);
+    const updatedCover = updates.cover !== undefined ? updates.cover : (updates.image_url !== undefined ? updates.image_url : existing.cover);
+    const updatedBanner = updates.banner !== undefined ? updates.banner : (updates.banner_url !== undefined ? updates.banner_url : (existing.banner || updatedCover));
+
     const mergedDetails = JSON.stringify({
       ...currentDetails,
+      cover: updatedCover,
+      banner: updatedBanner,
       tags: updates.tags || existing.tags || currentDetails.tags,
       blog_blocks: updates.blog_blocks || existing.blog_blocks || currentDetails.blog_blocks,
-      pdf_attachments: updates.pdf_attachments || existing.pdf_attachments || currentDetails.pdf_attachments,
       refund_policy: updates.refund_policy || existing.refund_policy || currentDetails.refund_policy,
       seat_map_url: updates.seat_map_url || existing.seat_map_url || currentDetails.seat_map_url,
     });
@@ -330,8 +381,10 @@ class EventsService {
             description = COALESCE($2, description),
             status = COALESCE($3, status),
             location_details = $4,
+            cover = COALESCE($5, cover),
+            banner = COALESCE($6, banner),
             updated_at = NOW()
-        WHERE id = $5
+        WHERE id = $7
         RETURNING *
       `;
       const res = await query(sql, [
@@ -339,6 +392,8 @@ class EventsService {
         updates.description,
         updates.status,
         mergedDetails,
+        updatedCover,
+        updatedBanner,
         numId,
       ]);
       return formatEvent(res.rows[0]);
@@ -349,7 +404,8 @@ class EventsService {
       if (updates.status) existing.status = updates.status;
       if (updates.tags) existing.tags = updates.tags;
       if (updates.blog_blocks) existing.blog_blocks = updates.blog_blocks;
-      if (updates.pdf_attachments) existing.pdf_attachments = updates.pdf_attachments;
+      if (updates.cover !== undefined) existing.cover = updates.cover;
+      if (updates.banner !== undefined) existing.banner = updates.banner;
       if (updates.refund_policy) existing.refund_policy = updates.refund_policy;
       if (updates.seat_map_url) existing.seat_map_url = updates.seat_map_url;
       existing.location_details = mergedDetails;
@@ -359,30 +415,18 @@ class EventsService {
   }
 
   async addAttachment(eventId, attachment) {
-    const event = await this.getEventById(eventId);
-    if (!event) {
-      const err = new Error('Event not found');
-      err.statusCode = 404;
-      throw err;
-    }
-    const attId = `att_${eventId}_${Date.now()}`;
-    const newAttachment = {
-      id: attId,
-      title: attachment.title || 'Tài liệu sự kiện (PDF)',
-      filename: attachment.filename || 'brochure.pdf',
-      size: attachment.size || '1.5 MB',
-      url: attachment.url || `/api/events/${eventId}/attachments/${attId}.pdf`,
-      uploaded_at: new Date().toISOString(),
-    };
-    const attachments = [...(event.pdf_attachments || []), newAttachment];
-    await this.updateEvent({ role: 'ADMIN' }, eventId, { pdf_attachments: attachments });
-    return newAttachment;
+    const err = new Error('Chức năng tải lên tệp PDF đã bị vô hiệu hóa. Hệ thống không cho phép tải tệp PDF nữa.');
+    err.statusCode = 400;
+    throw err;
   }
 
   async deleteEvent(user, id) {
     const numId = Number(id);
-    const existing = await this.getEventById(numId);
+    let existing = await this.getEventById(numId, user).catch(() => null);
     if (!existing) {
+      existing = memoryEvents.get(numId);
+    }
+    if (!existing || existing.deleted_at) {
       const err = new Error('Event not found');
       err.statusCode = 404;
       throw err;
@@ -394,12 +438,150 @@ class EventsService {
       throw err;
     }
 
+    const { default: ordersService } = await import('./orders.service.js');
+    let notificationsService = null;
     try {
-      await query('DELETE FROM events WHERE id = $1', [numId]);
-    } catch {
-      memoryEvents.delete(numId);
+      const mod = await import('./notifications.service.js');
+      notificationsService = mod.default;
+    } catch {}
+
+    let refundedOrdersCount = 0;
+    let refundedAmount = 0;
+    const notifiedUserIds = new Set();
+
+    // 1. In-memory refund processing
+    if (ordersService.getMemoryOrders) {
+      const allOrders = ordersService.getMemoryOrders();
+      for (const order of allOrders) {
+        if (Number(order.event_id) === numId) {
+          if (order.status === 'COMPLETED') {
+            order.status = 'REFUNDED';
+            const amt = Number(order.total || order.total_gross || 0);
+            order.total_refunded = amt;
+            order.refunded_at = new Date().toISOString();
+            refundedAmount += amt;
+            refundedOrdersCount++;
+            if (order.user_id) notifiedUserIds.add(Number(order.user_id));
+          } else if (order.status === 'RESERVED' || order.status === 'AWAITING_OFFLINE_PAYMENT') {
+            order.status = 'CANCELLED';
+          }
+          if (Array.isArray(order.attendees)) {
+            for (const att of order.attendees) {
+              att.status = 'CANCELLED';
+            }
+          }
+        }
+      }
     }
-    return true;
+
+    // In-memory attendees cancellation
+    if (ordersService.getMemoryAttendees) {
+      const allAtt = ordersService.getMemoryAttendees();
+      for (const att of allAtt) {
+        if (Number(att.event_id) === numId) {
+          att.status = 'CANCELLED';
+        }
+      }
+    }
+
+    // 2. Database refund & cleanup processing
+    let hasDbOrders = false;
+    try {
+      // Find completed orders to count and accumulate refunds
+      const completedRes = await query(`
+        SELECT id, user_id, email, total_gross
+        FROM orders
+        WHERE event_id = $1 AND status = 'COMPLETED'
+      `, [numId]);
+
+      if (completedRes && completedRes.rows && completedRes.rows.length > 0) {
+        hasDbOrders = true;
+        for (const row of completedRes.rows) {
+          const amt = Number(row.total_gross || 0);
+          if (refundedOrdersCount === 0) {
+            refundedAmount += amt;
+            refundedOrdersCount++;
+          }
+          if (row.user_id) notifiedUserIds.add(Number(row.user_id));
+        }
+
+        // Mark completed orders as REFUNDED with 100% refund
+        await query(`
+          UPDATE orders
+          SET status = 'REFUNDED', total_refunded = total_gross, updated_at = NOW()
+          WHERE event_id = $1 AND status = 'COMPLETED'
+        `, [numId]);
+      }
+
+      // Mark other open orders as CANCELLED
+      await query(`
+        UPDATE orders
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE event_id = $1 AND status NOT IN ('REFUNDED', 'CANCELLED')
+      `, [numId]);
+
+      // Invalidate and cancel all attendee tickets
+      await query(`
+        UPDATE attendees
+        SET status = 'CANCELLED', updated_at = NOW()
+        WHERE event_id = $1
+      `, [numId]);
+
+      // Adjust escrow account: 100% refund
+      await query(`
+        UPDATE escrow_accounts
+        SET refunded_amount = gross_revenue, current_balance = 0, updated_at = NOW()
+        WHERE event_id = $1
+      `, [numId]).catch(() => {});
+
+      // Check if any orders ever existed for this event
+      const anyOrdersRes = await query(`SELECT COUNT(*) AS cnt FROM orders WHERE event_id = $1`, [numId]);
+      const anyOrdersCount = Number(anyOrdersRes?.rows?.[0]?.cnt || 0);
+
+      if (anyOrdersCount > 0 || hasDbOrders) {
+        // Soft delete event to preserve historical audit trail & order visibility for buyers
+        await query(`
+          UPDATE events
+          SET deleted_at = NOW(), status = 'CANCELLED', updated_at = NOW()
+          WHERE id = $1
+        `, [numId]);
+      } else {
+        // Complete hard delete for events without orders
+        await query('DELETE FROM event_settings WHERE event_id = $1', [numId]).catch(() => {});
+        await query('DELETE FROM event_favorites WHERE event_id = $1', [numId]).catch(() => {});
+        await query('DELETE FROM promo_codes WHERE event_id = $1', [numId]).catch(() => {});
+        await query('DELETE FROM escrow_accounts WHERE event_id = $1', [numId]).catch(() => {});
+        await query('DELETE FROM ticket_tiers WHERE event_id = $1', [numId]).catch(() => {});
+        await query('DELETE FROM events WHERE id = $1', [numId]);
+      }
+    } catch (dbErr) {
+      console.warn('[EventsService.deleteEvent] Database query error:', dbErr.message);
+    }
+
+    // Always remove from active in-memory events map
+    memoryEvents.delete(numId);
+
+    // Send notifications to buyers
+    if (notificationsService) {
+      for (const uId of notifiedUserIds) {
+        notificationsService.createNotification({
+          userId: uId,
+          eventId: numId,
+          type: 'EVENT_CANCELLED',
+          title: `Sự kiện "${existing.title}" đã bị hủy`,
+          message: `Sự kiện "${existing.title}" đã được ban tổ chức xóa. Đơn hàng của bạn đã được hoàn tiền 100% tự động.`,
+        }).catch(() => {});
+      }
+    }
+
+    return {
+      success: true,
+      message: refundedOrdersCount > 0
+        ? `Đã xóa sự kiện thành công và tự động hoàn tiền 100% cho ${refundedOrdersCount} đơn hàng (${refundedAmount.toLocaleString('vi-VN')} đ).`
+        : 'Đã xóa sự kiện thành công.',
+      refunded_orders_count: refundedOrdersCount,
+      refunded_amount: refundedAmount,
+    };
   }
 
   async getAllEventsWithMetrics() {
@@ -421,6 +603,7 @@ class EventsService {
           )::numeric AS revenue
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
+        WHERE e.deleted_at IS NULL
         GROUP BY e.id
         ORDER BY e.id ASC
       `;
@@ -511,43 +694,7 @@ class EventsService {
   }
 
   async adminDeleteEvent(id) {
-    const numId = Number(id);
-    let found = false;
-
-    // Check existence first
-    const existing = await this.getEventById(numId).catch(() => null);
-    if (!existing && !memoryEvents.has(numId)) {
-      const err = new Error('Event not found');
-      err.statusCode = 404;
-      throw err;
-    }
-
-    try {
-      // Clean up child tables to satisfy Postgres RESTRICT foreign key constraints
-      await query('DELETE FROM attendees WHERE event_id = $1', [numId]).catch(() => {});
-      await query('DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE event_id = $1)', [numId]).catch(() => {});
-      await query('DELETE FROM orders WHERE event_id = $1', [numId]).catch(() => {});
-      await query('DELETE FROM seat_reservations WHERE event_id = $1', [numId]).catch(() => {});
-      await query('DELETE FROM event_favorites WHERE event_id = $1', [numId]).catch(() => {});
-      await query('DELETE FROM promos WHERE event_id = $1', [numId]).catch(() => {});
-      await query('DELETE FROM ticket_tiers WHERE event_id = $1', [numId]).catch(() => {});
-      const res = await query('DELETE FROM events WHERE id = $1 RETURNING id', [numId]);
-      if (res.rowCount > 0) found = true;
-    } catch (err) {
-      console.warn('[EventsService.adminDeleteEvent] DB error:', err.message);
-    }
-
-    if (memoryEvents.has(numId)) {
-      memoryEvents.delete(numId);
-      found = true;
-    }
-
-    if (!found) {
-      const err = new Error('Event not found');
-      err.statusCode = 404;
-      throw err;
-    }
-    return true;
+    return this.deleteEvent({ role: 'ADMIN', account_id: 1 }, id);
   }
 
   async getOrganizerDashboard(user) {
@@ -575,7 +722,7 @@ class EventsService {
           )::int AS checked_in_count
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
-        WHERE ($1 = TRUE OR e.account_id = $2)
+        WHERE ($1 = TRUE OR e.account_id = $2) AND e.deleted_at IS NULL
         GROUP BY e.id
         ORDER BY e.id ASC
       `;
@@ -584,7 +731,8 @@ class EventsService {
         ...r,
         id: Number(r.id),
         account_id: Number(r.account_id),
-        cover: eventCover(r.slug || r.short_id, r.category),
+        cover: r.cover || eventCover(r.slug || r.short_id, r.category),
+        banner: r.banner || r.cover || eventCover(r.slug || r.short_id, r.category),
         tickets_sold: Number(r.tickets_sold),
         gross_revenue: Number(r.gross_revenue),
         attendee_count: Number(r.attendee_count),
@@ -601,6 +749,7 @@ class EventsService {
 
     const list = [];
     for (const ev of memoryEvents.values()) {
+      if (ev.deleted_at) continue;
       if (!isAdmin && Number(ev.account_id) !== accountId) {
         continue;
       }
@@ -614,7 +763,8 @@ class EventsService {
 
       list.push({
         ...ev,
-        cover: eventCover(ev.slug || ev.short_id, ev.category),
+        cover: ev.cover || eventCover(ev.slug || ev.short_id, ev.category),
+        banner: ev.banner || ev.cover || eventCover(ev.slug || ev.short_id, ev.category),
         tickets_sold,
         gross_revenue,
         attendee_count,

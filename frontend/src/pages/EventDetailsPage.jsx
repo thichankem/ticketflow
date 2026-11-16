@@ -20,24 +20,11 @@ export const EventDetailsPage = () => {
   const [promoStatus, setPromoStatus] = useState(null);
   const [reserving, setReserving] = useState(false);
 
-  // PDF viewer modal state with native <dialog> ref
-  const [showPdfModal, setShowPdfModal] = useState(false);
-  const pdfDialogRef = useRef(null);
   const [isFavorited, setIsFavorited] = useState(false);
   const [restockNotice, setRestockNotice] = useState(false);
   const [seatMapImgError, setSeatMapImgError] = useState(false);
 
   const userProvince = localStorage.getItem('tf_user_province') || 'Hà Nội';
-
-  useEffect(() => {
-    const dialog = pdfDialogRef.current;
-    if (!dialog) return;
-    if (showPdfModal) {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      if (dialog.open) dialog.close();
-    }
-  }, [showPdfModal]);
 
   useEffect(() => {
     let isMounted = true;
@@ -151,14 +138,21 @@ export const EventDetailsPage = () => {
     <article className="event-details-layout">
       {/* Hero Header Banner */}
       <header className={`event-banner ${toneClass(event.category)}`}>
-        {event.cover && <img src={event.cover} alt={event.title} className="event-banner-img" />}
+        {(event.banner || event.cover) && (
+          <img
+            src={event.banner || event.cover}
+            alt={event.title}
+            className="event-banner-img"
+            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+          />
+        )}
         <div className="event-banner-copy">
           <div className="banner-badges-row">
             <span className="badge badge-success">{event.status || 'Đang mở bán'}</span>
             <span className="badge badge-category">{event.category || 'Sự kiện'}</span>
             {distInfo && (
               <span className={`badge badge-location ${distInfo.isSameProvince ? 'same' : ''}`}>
-                {distInfo.isSameProvince ? '📍 Cùng tỉnh/thành' : `🚗 ${distInfo.label}`}
+                {distInfo.isSameProvince ? 'Cùng khu vực' : distInfo.label}
               </span>
             )}
           </div>
@@ -166,8 +160,8 @@ export const EventDetailsPage = () => {
           <h1 className="event-details-headline">{event.title}</h1>
 
           <div className="banner-facts">
-            <span>📅 {formatRange(event)}</span>
-            {event.location && <span>📍 {event.location}</span>}
+            <span>{formatRange(event)}</span>
+            {event.location && <span>{event.location}</span>}
           </div>
 
           <div className="banner-actions-row">
@@ -176,22 +170,13 @@ export const EventDetailsPage = () => {
               className={`btn ${isFavorited ? 'btn-danger' : 'btn-secondary'} btn-sm`}
               onClick={handleToggleFavorite}
             >
-              ♥ {isFavorited ? 'Đã thả tim (Đang theo dõi)' : 'Thả tim & Nhận thông báo mở lại vé'}
-            </button>
-
-            {/* PDF Brochure Download/Viewer Button */}
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm flex items-center gap-xs"
-              onClick={() => setShowPdfModal(true)}
-            >
-              <span>📄 Xem & Tải Brochure / Cẩm nang (PDF)</span>
+              {isFavorited ? 'Đã lưu' : 'Lưu sự kiện'}
             </button>
           </div>
 
           {restockNotice && (
             <div className="restock-floating-alert">
-              🔔 Bạn sẽ nhận thông báo tự động ngay khi có vé nhả lại vào kho (từ các đơn hủy hoặc quá hạn 15 phút)!
+              Hệ thống sẽ thông báo khi có vé mở bán.
             </div>
           )}
         </div>
@@ -217,7 +202,7 @@ export const EventDetailsPage = () => {
                   <div key={idx} className="timeline-item">
                     <div className="timeline-time-badge">{item.time}</div>
                     <div className="timeline-body">
-                      <h4>{item.title}</h4>
+                      <h3>{item.title}</h3>
                       <p>{item.desc}</p>
                     </div>
                   </div>
@@ -226,11 +211,11 @@ export const EventDetailsPage = () => {
             </section>
           )}
 
-          {/* Seating Layout & Auto-allocation Map (Phân hệ 2.3) */}
+          {/* Seating Layout Map */}
           <section className="card seatmap-card">
-            <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ chỗ ngồi & Khán phòng')}</h2>
+            <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ chỗ ngồi')}</h2>
             <p className="muted">
-              {t('event.seatmap_desc', 'Sơ đồ bố trí chỗ ngồi trực quan. Hệ thống sẽ tự động gán vị trí ghế liên tiếp (Contiguous Seating) tối ưu nhất cho bạn khi chọn từ 2 vé trở lên.')}
+              {t('event.seatmap_desc', 'Sơ đồ chỗ ngồi. Hệ thống tự động xếp ghế liền kề khi chọn từ 2 vé trở lên.')}
             </p>
             <div className="seat-map-preview-box">
               {event.seat_map_url && !seatMapImgError ? (
@@ -243,7 +228,7 @@ export const EventDetailsPage = () => {
               ) : (
                 <div className="seat-map-stage-diagram">
                   <div className="seat-map-stage-banner">
-                    {t('event.seatmap_stage', 'SÂN KHẤU CHÍNH (MAIN STAGE)')}
+                    {t('event.seatmap_stage', 'SÂN KHẤU CHÍNH')}
                   </div>
                   <div className="seat-map-grid">
                     {['A', 'B', 'C', 'D'].map((row) =>
@@ -258,7 +243,7 @@ export const EventDetailsPage = () => {
                     )}
                   </div>
                   <p className="seat-map-legend-text">
-                    {t('event.seatmap_legend', 'Ghế màu vàng: Hạng VIP · Ghế màu xanh: Hạng Tiêu chuẩn · Hệ thống tự động xếp chỗ liền kề')}
+                    {t('event.seatmap_legend', 'Ghế VIP · Ghế Tiêu chuẩn · Tự động xếp chỗ liền kề')}
                   </p>
                 </div>
               )}
@@ -267,15 +252,13 @@ export const EventDetailsPage = () => {
 
           {/* Refund Policy Information */}
           <section className="card policy-card">
-            <h3 className="policy-title">🛡️ {t('event.policy_title', 'Chính sách hủy vé & Hoàn tiền minh bạch')}</h3>
+            <h3 className="policy-title">{t('event.policy_title', 'Chính sách hoàn hủy vé')}</h3>
             <div className="policy-details">
               <p>
-                • <strong>{t('event.policy_self_service', 'Tự phục vụ trực tuyến:')}</strong> Bạn có thể chủ động hủy vé và nhận hoàn tiền trực tiếp
-                tại trang <em>"Vé của tôi"</em> nếu đáp ứng điều kiện hoàn hủy của sự kiện.
+                • {t('event.policy_self_service', 'Bạn có thể gửi yêu cầu hủy vé tại trang Vé của tôi nếu đáp ứng điều kiện hoàn vé của sự kiện.')}
               </p>
               <p>
-                • <strong>{t('event.policy_escrow', 'Bảo vệ dòng tiền Escrow:')}</strong> 100% dòng tiền giao dịch được sàn bảo chứng an toàn,
-                đảm bảo hoàn tiền 100% tức thì nếu sự kiện bị dời lịch hoặc hủy bỏ.
+                • {t('event.policy_refund', 'Hoàn tiền 100% nếu sự kiện bị hoãn hoặc hủy bỏ.')}
               </p>
             </div>
           </section>
@@ -326,6 +309,7 @@ export const EventDetailsPage = () => {
                           id={`tier-select-${tier.id}`}
                           className="select select-compact"
                           value={currentQty}
+                          aria-label={`Số lượng vé cho hạng vé ${tier.name || tier.title}`}
                           onChange={(e) => updateQuantity(tier, e.target.value)}
                         >
                           <option value="0">0 vé</option>
@@ -389,97 +373,16 @@ export const EventDetailsPage = () => {
               onClick={handleReserve}
             >
               {reserving ? (
-                <span>{t('event.lock_tickets_loading', 'Đang khóa vé & phân bổ ghế...')}</span>
+                <span>{t('event.reserve_btn_submitting', 'Đang xử lý...')}</span>
               ) : totalTicketsSelected === 0 ? (
-                t('event.please_select_ticket', 'Vui lòng chọn vé')
+                t('event.reserve_btn_empty', 'Vui lòng chọn vé')
               ) : (
-                `Giữ ${totalTicketsSelected} vé trong 15 phút`
+                `Đặt ${totalTicketsSelected} vé`
               )}
             </button>
-
-            <p className="atomic-guarantee-note">
-              🔒 <strong>Bảo đảm giữ vé:</strong> {t('event.guarantee_note', 'Sau khi nhấn chọn vé, hệ thống sẽ giữ chỗ an toàn cho bạn trong 15 phút để hoàn tất thanh toán.')}
-            </p>
           </div>
         </aside>
       </div>
-
-      {/* PDF Brochure Viewer Modal using native <dialog> per modern-web-guidance */}
-      <dialog
-        ref={pdfDialogRef}
-        className="native-modal"
-        aria-labelledby="pdf-modal-title"
-        onClose={() => setShowPdfModal(false)}
-        onClick={(e) => {
-          if (e.target === pdfDialogRef.current) setShowPdfModal(false);
-        }}
-      >
-        <div className="modal-dialog brochure-modal">
-          <div className="modal-header">
-            <h3 id="pdf-modal-title">📄 Brochure & Cẩm nang sự kiện (PDF)</h3>
-            <button
-              type="button"
-              className="modal-close-btn"
-              onClick={() => setShowPdfModal(false)}
-              aria-label="Đóng cửa sổ"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="modal-body pdf-preview-body">
-            <div className="pdf-doc-frame">
-              <div className="pdf-doc-header">
-                <div className="pdf-doc-title">TÀI LIỆU CHÍNH THỨC: {event.title}</div>
-                <div className="pdf-doc-sub">Định dạng: Adobe Portable Document Format (.pdf)</div>
-              </div>
-              <div className="pdf-doc-content-preview">
-                <h4>Mục lục tài liệu:</h4>
-                <ul>
-                  <li>1. Giới thiệu tổng quan và sơ đồ lối vào hội trường</li>
-                  <li>2. Lịch trình chi tiết các phiên tham luận và diễn giả</li>
-                  <li>3. Quy định trang phục, cổng soát vé QR và gửi xe</li>
-                  <li>4. Hướng dẫn kết nối Wi-Fi tốc độ cao và tài liệu diễn giả</li>
-                </ul>
-                <div className="pdf-notice">
-                  Tài liệu đã được quét và làm sạch nội dung, an toàn 100% không chứa mã độc.
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="modal-footer">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                const title = event?.title || 'TicketFlow-Event';
-                const date = formatDate(event?.start_date || event?.date);
-                const loc = event?.location_name || event?.location || 'Việt Nam';
-                const pdfContent = `%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R/Resources<<>>/Contents 4 0 R>>endobj 4 0 obj<</Length 120>>stream\nBT /F1 16 Tf 50 780 Td (TICKETFLOW EVENT BROCHURE) Tj /F1 12 Tf 50 750 Td (${title}) Tj 50 720 Td (Date: ${date} - Location: ${loc}) Tj ET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f\n0000000009 00000 n\n0000000056 00000 n\n0000000111 00000 n\n0000000212 00000 n\ntrailer<</Size 5/Root 1 0 R>>\nstartxref\n382\n%%EOF`;
-                const blob = new Blob([pdfContent], { type: 'application/pdf' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-brochure.pdf`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                URL.revokeObjectURL(url);
-                setShowPdfModal(false);
-              }}
-            >
-              ⬇️ Tải tệp PDF về máy
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setShowPdfModal(false)}
-            >
-              Đóng
-            </button>
-          </div>
-        </div>
-      </dialog>
-
     </article>
   );
 };

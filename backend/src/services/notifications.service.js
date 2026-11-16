@@ -137,6 +137,66 @@ class NotificationsService {
     }
     return { success: true };
   }
+
+  /**
+   * Mark all notifications as read for a user
+   */
+  async markAllAsRead(userId) {
+    const numUserId = Number(userId);
+
+    try {
+      await query('UPDATE notifications SET is_read = TRUE WHERE user_id = $1', [numUserId]);
+    } catch {
+      // Fallback
+    }
+
+    for (const notif of memoryNotifications.values()) {
+      if (Number(notif.user_id) === numUserId) {
+        notif.is_read = true;
+      }
+    }
+    return { success: true };
+  }
+
+  /**
+   * Delete a single notification
+   */
+  async deleteNotification(notificationId, userId) {
+    const numId = Number(notificationId);
+    const numUserId = Number(userId);
+
+    try {
+      await query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', [numId, numUserId]);
+    } catch {
+      // Fallback
+    }
+
+    const notif = memoryNotifications.get(numId);
+    if (notif && Number(notif.user_id) === numUserId) {
+      memoryNotifications.delete(numId);
+    }
+    return { success: true };
+  }
+
+  /**
+   * Clear all notifications for a user
+   */
+  async clearAllNotifications(userId) {
+    const numUserId = Number(userId);
+
+    try {
+      await query('DELETE FROM notifications WHERE user_id = $1', [numUserId]);
+    } catch {
+      // Fallback
+    }
+
+    for (const [id, notif] of memoryNotifications.entries()) {
+      if (Number(notif.user_id) === numUserId) {
+        memoryNotifications.delete(id);
+      }
+    }
+    return { success: true };
+  }
 }
 
 export default new NotificationsService();

@@ -9,6 +9,8 @@ router.post('/register', authRateLimiter, authController.register);
 router.post('/login', authRateLimiter, authController.login);
 router.post('/refresh', authController.refresh);
 router.get('/me', authenticateToken, authController.me);
+router.put('/profile', authenticateToken, authController.updateProfile);
+router.put('/password', authenticateToken, authController.changePassword);
 router.post('/logout', authController.logout);
 
 export default router;

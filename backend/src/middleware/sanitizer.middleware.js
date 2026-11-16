@@ -27,7 +27,9 @@ export function sanitizeString(val) {
       .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '')
       .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, '')
       .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, '')
-      .replace(/javascript:[^"'\s]*/gi, '')
+      .replace(/j[\s\x00-\x1f]*a[\s\x00-\x1f]*v[\s\x00-\x1f]*a[\s\x00-\x1f]*s[\s\x00-\x1f]*c[\s\x00-\x1f]*r[\s\x00-\x1f]*i[\s\x00-\x1f]*p[\s\x00-\x1f]*t[\s\x00-\x1f]*:[^"'\s]*/gi, '')
+      .replace(/v[\s\x00-\x1f]*b[\s\x00-\x1f]*s[\s\x00-\x1f]*c[\s\x00-\x1f]*r[\s\x00-\x1f]*i[\s\x00-\x1f]*p[\s\x00-\x1f]*t[\s\x00-\x1f]*:[^"'\s]*/gi, '')
+      .replace(/data[\s\x00-\x1f]*:[\s\x00-\x1f]*text\/(?:html|xml)[^"'\s]*/gi, '')
       .replace(/on\w+\s*=\s*(?:[^\s>]+|"[^"]*"|'[^']*')/gi, '');
   } while (str !== prev);
 
@@ -49,8 +51,16 @@ export function sanitizeString(val) {
         const attrName = m[1].toLowerCase();
         const attrVal = m[2] !== undefined ? m[2] : (m[3] !== undefined ? m[3] : m[4]);
         if (ALLOWED_ATTRS.has(attrName)) {
-          if ((attrName === 'href' || attrName === 'src') && /^\s*(javascript:|data:\s*text\/html)/i.test(attrVal)) {
-            continue;
+          if (attrName === 'href' || attrName === 'src') {
+            const normalized = String(attrVal).replace(/[\s\x00-\x1f]/g, '').toLowerCase();
+            if (
+              normalized.startsWith('javascript:') ||
+              normalized.startsWith('vbscript:') ||
+              normalized.startsWith('data:text/html') ||
+              normalized.startsWith('data:text/xml')
+            ) {
+              continue;
+            }
           }
           cleanAttrs.push(`${attrName}="${attrVal.replace(/"/g, '&quot;')}"`);
         }

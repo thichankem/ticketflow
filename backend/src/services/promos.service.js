@@ -160,11 +160,21 @@ class PromosService {
   async incrementUsage(eventId, code) {
     const cleanCode = code.toUpperCase().trim();
     try {
-      await query(
-        'UPDATE promo_codes SET order_usage_count = order_usage_count + 1 WHERE event_id = $1 AND UPPER(code) = $2',
+      const res = await query(
+        'UPDATE promo_codes SET order_usage_count = order_usage_count + 1 WHERE event_id = $1 AND UPPER(code) = $2 AND order_usage_count < max_allowed_usages RETURNING id, order_usage_count',
         [Number(eventId), cleanCode]
       );
-    } catch {
+      if (res.rowCount === 0) {
+        const checkSql = 'SELECT order_usage_count, max_allowed_usages FROM promo_codes WHERE event_id = $1 AND UPPER(code) = $2';
+        const chk = await query(checkSql, [Number(eventId), cleanCode]);
+        if (chk.rowCount > 0 && chk.rows[0].order_usage_count >= chk.rows[0].max_allowed_usages) {
+          const err = new Error('Promo code usage limit reached');
+          err.statusCode = 422;
+          throw err;
+        }
+      }
+    } catch (dbErr) {
+      if (dbErr.statusCode === 422) throw dbErr;
       for (const p of memoryPromos.values()) {
         if (p.event_id === Number(eventId) && p.code === cleanCode) {
           p.used_count += 1;
@@ -257,6 +267,124 @@ class PromosService {
     }
     list.sort((a, b) => a.id - b.id);
     return list;
+  }
+
+  async updatePromo(eventId, promoId, data, user = null) {
+    const numEventId = Number(eventId);
+    const numPromoId = Number(promoId);
+    const { default: eventsService } = await import('./events.service.js');
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    let existing = null;
+    try {
+      const checkRes = await query('SELECT * FROM promo_codes WHERE id = $1 AND event_id = $2 AND deleted_at IS NULL', [numPromoId, numEventId]);
+      if (checkRes.rowCount > 0) {
+        existing = checkRes.rows[0];
+      }
+    } catch {}
+
+    const memPromo = memoryPromos.get(numPromoId);
+    if (!existing && memPromo && memPromo.event_id === numEventId && memPromo.is_active !== false) {
+      existing = memPromo;
+    }
+
+    if (!existing) {
+      const err = new Error('Promo code not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const {
+      code,
+      discount_type,
+      discount_amount,
+      discount,
+      max_uses,
+      expires_at,
+      expiry,
+    } = data;
+
+    const newCode = code ? stripHtml(code).toUpperCase().trim() : existing.code;
+    const newType = discount_type || existing.discount_type;
+    const rawDiscount = discount_amount !== undefined ? discount_amount : (discount !== undefined ? discount : (existing.discount || existing.discount_amount));
+    const newDiscount = Number(rawDiscount);
+
+    if (newDiscount <= 0 || (newType === 'PERCENTAGE' && newDiscount > 100)) {
+      const err = new Error('Invalid discount amount');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const newMaxUses = max_uses !== undefined ? (max_uses === null ? null : Number(max_uses)) : (existing.max_allowed_usages ?? existing.max_uses ?? null);
+    const newExpiry = expires_at !== undefined ? expires_at : (expiry !== undefined ? expiry : (existing.expiry_date || existing.expiry || null));
+
+    try {
+      const sql = `
+        UPDATE promo_codes
+        SET code = $1, discount_type = $2, discount = $3, max_allowed_usages = $4, expiry_date = $5, updated_at = NOW()
+        WHERE id = $6 AND event_id = $7
+        RETURNING *
+      `;
+      const res = await query(sql, [newCode, newType, newDiscount, newMaxUses, newExpiry, numPromoId, numEventId]);
+      if (res.rowCount > 0) {
+        const row = res.rows[0];
+        const updated = {
+          ...row,
+          id: Number(row.id),
+          event_id: Number(row.event_id),
+          code: row.code,
+          discount_type: row.discount_type,
+          discount: Number(row.discount),
+          discount_amount: Number(row.discount),
+          usages: Number(row.order_usage_count || 0),
+          used_count: Number(row.order_usage_count || 0),
+          max_uses: row.max_allowed_usages ? Number(row.max_allowed_usages) : null,
+          expiry: row.expiry_date,
+        };
+        if (memPromo) Object.assign(memPromo, updated);
+        return updated;
+      }
+    } catch (dbErr) {
+      console.warn('[PromosService.updatePromo] DB error, using fallback:', dbErr.message);
+    }
+
+    if (memPromo) {
+      memPromo.code = newCode;
+      memPromo.discount_type = newType;
+      memPromo.discount_amount = newDiscount;
+      memPromo.discount = newDiscount;
+      memPromo.max_uses = newMaxUses;
+      memPromo.expiry = newExpiry;
+      return {
+        ...memPromo,
+        usages: memPromo.used_count || 0,
+      };
+    }
+
+    const fallbackPromo = {
+      id: numPromoId,
+      event_id: numEventId,
+      code: newCode,
+      discount_type: newType,
+      discount: newDiscount,
+      discount_amount: newDiscount,
+      max_uses: newMaxUses,
+      usages: 0,
+      used_count: 0,
+      expiry: newExpiry,
+    };
+    memoryPromos.set(numPromoId, fallbackPromo);
+    return fallbackPromo;
   }
 
   async deletePromo(eventId, promoId, user = null) {

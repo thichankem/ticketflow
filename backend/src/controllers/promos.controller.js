@@ -32,6 +32,16 @@ class PromosController {
     }
   }
 
+  async update(req, res, next) {
+    try {
+      const { id, promoId } = req.params;
+      const promo = await promosService.updatePromo(id, promoId, req.body, req.user);
+      return res.status(200).json({ promo });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async delete(req, res, next) {
     try {
       const { id, promoId } = req.params;

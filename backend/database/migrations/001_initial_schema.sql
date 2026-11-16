@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(30) DEFAULT 'ATTENDEE' NOT NULL, -- 'ADMIN', 'ORGANIZER', 'ATTENDEE'
     account_id BIGINT REFERENCES accounts(id) ON DELETE SET NULL,
     timezone VARCHAR(64) DEFAULT 'UTC' NOT NULL,
-    locale VARCHAR(10) DEFAULT 'en' NOT NULL,
+    locale VARCHAR(10) DEFAULT 'vi' NOT NULL,
     email_verified_at TIMESTAMP WITH TIME ZONE,
     pending_email VARCHAR(255),
     remember_token VARCHAR(100),

@@ -3,9 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ThemeLangControls } from './ThemeLangControls';
-import { api } from '../services/api';
-import { supabase } from '../services/supabase';
+import NotificationBell from './NotificationBell';
 
 export const AttendeeLayout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -14,15 +12,11 @@ export const AttendeeLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // In-App Notifications State (Phân hệ 2.6)
-  const [notifications, setNotifications] = useState([]);
-  const [showNotifMenu, setShowNotifMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false);
-    setShowNotifMenu(false);
   }, [location.pathname]);
 
   // Close on Escape key
@@ -30,7 +24,6 @@ export const AttendeeLayout = ({ children }) => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         setMobileMenuOpen(false);
-        setShowNotifMenu(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -38,62 +31,6 @@ export const AttendeeLayout = ({ children }) => {
   }, []);
 
   const totalCartCount = cartItems.reduce((sum, it) => sum + it.quantity, 0);
-
-  const loadNotifications = async () => {
-    if (!isAuthenticated) return;
-    try {
-      const res = await api.get('/events/notifications');
-      setNotifications(Array.isArray(res) ? res : res?.notifications || []);
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      loadNotifications();
-      const interval = setInterval(loadNotifications, 30000);
-
-      let channel;
-      if (user?.id && supabase) {
-        channel = supabase
-          .channel(`user-notifications-${user.id}`)
-          .on(
-            'postgres_changes',
-            {
-              event: 'INSERT',
-              schema: 'public',
-              table: 'notifications',
-              filter: `user_id=eq.${user.id}`,
-            },
-            (payload) => {
-              if (payload.new) {
-                setNotifications((prev) => [payload.new, ...prev]);
-              }
-            }
-          )
-          .subscribe();
-      }
-
-      return () => {
-        clearInterval(interval);
-        if (channel) {
-          supabase.removeChannel(channel);
-        }
-      };
-    }
-  }, [isAuthenticated, user?.id]);
-
-  const handleMarkRead = async (notifId) => {
-    try {
-      await api.put(`/events/notifications/${notifId}/read`, {});
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === notifId ? { ...n, is_read: true } : n))
-      );
-    } catch {}
-  };
-
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   const handleLogout = async () => {
     await logout();
@@ -155,71 +92,17 @@ export const AttendeeLayout = ({ children }) => {
               )}
             </NavLink>
 
-            <a href="/my-tickets#support" className="support-nav-link nav-link">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
-                <line x1="12" x2="12.01" y1="17" y2="17" />
-              </svg>
-              <span>{t('nav.support', 'Hỗ Trợ')}</span>
-            </a>
-
-            <ThemeLangControls />
-
             {isAuthenticated ? (
-              <div className="nav-actions notif-bell-container">
-                {/* In-App Notifications Bell (Phân hệ 2.6) */}
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm notif-bell-btn"
-                  onClick={() => setShowNotifMenu(!showNotifMenu)}
-                  title={t('nav.notifications', 'Thông báo restock & sự kiện')}
-                  aria-label={t('nav.notifications', 'Thông báo')}
-                  aria-expanded={showNotifMenu}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+              <div className="nav-actions">
+                <NotificationBell />
+
+                <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Hồ sơ tài khoản">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
                   </svg>
-                  {unreadCount > 0 && (
-                    <span className="notif-badge">{unreadCount}</span>
-                  )}
-                </button>
-
-                {showNotifMenu && (
-                  <div className="notif-dropdown-menu" role="dialog" aria-label="Hộp thư thông báo">
-                    <div className="notif-dropdown-header">
-                      <strong>{t('nav.notifications', 'Thông Báo Hộp Thư')}</strong>
-                      <span className="muted text-xs">{notifications.length} {t('nav.notifications_count', 'tin')}</span>
-                    </div>
-
-                    {notifications.length === 0 ? (
-                      <p className="notif-dropdown-empty">
-                        {t('nav.no_notifications', 'Chưa có thông báo mới nào')}
-                      </p>
-                    ) : (
-                      <div className="notif-list-scroll">
-                        {notifications.map((n) => (
-                          <div
-                            key={n.id}
-                            className={`notif-item ${!n.is_read ? 'is-unread' : ''}`}
-                            onClick={() => handleMarkRead(n.id)}
-                            role="button"
-                            tabIndex={0}
-                          >
-                            <div className="notif-item-title">{n.title}</div>
-                            <div className="notif-item-desc">{n.message}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <span className="user-chip user-chip-attendee" title={`Đăng nhập: ${user.email}`}>
-                  <span className="user-avatar-dot" aria-hidden="true" />
-                  <span className="user-name-text">{user.name}</span>
-                </span>
+                  <span>{t('nav.profile', 'Hồ Sơ')}</span>
+                </NavLink>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
                   {t('nav.logout', 'Đăng Xuất')}
                 </button>
@@ -270,30 +153,35 @@ export const AttendeeLayout = ({ children }) => {
 
             <div className="mobile-drawer-links">
               <NavLink to="/" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                🎪 {t('nav.explore', 'Khám Phá')}
+                {t('nav.explore', 'Khám Phá')}
               </NavLink>
               <NavLink to="/events" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                📅 {t('home.all_heading', 'Tất Cả Sự Kiện')}
+                {t('home.all_heading', 'Tất Cả Sự Kiện')}
               </NavLink>
               <NavLink to="/my-tickets" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                🎟️ {t('nav.my_tickets', 'Vé Của Tôi')}
+                {t('nav.my_tickets', 'Vé Của Tôi')}
               </NavLink>
               <NavLink to="/checkout" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                🛒 {t('nav.cart', 'Giỏ Vé')} {totalCartCount > 0 && `(${totalCartCount})`}
+                {t('nav.cart', 'Giỏ Vé')} {totalCartCount > 0 && `(${totalCartCount})`}
               </NavLink>
-              <a href="/my-tickets#support" className="drawer-link" onClick={() => setMobileMenuOpen(false)}>
-                ❓ {t('nav.support', 'Hỗ Trợ & Khiếu Nại')}
-              </a>
+              {isAuthenticated && (
+                <>
+                  <NavLink to="/notifications" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}
+                  </NavLink>
+                  <NavLink to="/profile" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    {t('nav.profile', 'Hồ Sơ Cá Nhân')}
+                  </NavLink>
+                </>
+              )}
             </div>
 
             <div className="mobile-drawer-footer">
-              <div className="drawer-controls-row">
-                <ThemeLangControls />
-              </div>
-
               {isAuthenticated ? (
                 <div className="drawer-user-info">
-                  <div className="drawer-user-name">👤 {user.name} ({user.role})</div>
+                  <Link to="/profile" className="drawer-user-name" style={{ display: 'block', marginBottom: '8px', color: 'inherit', textDecoration: 'none' }}>
+                    <strong>{user.name}</strong> ({user.role}) &rarr; {t('nav.profile', 'Hồ Sơ')}
+                  </Link>
                   <button type="button" onClick={handleLogout} className="btn btn-secondary btn-block btn-sm">
                     {t('nav.logout', 'Đăng Xuất')}
                   </button>
@@ -320,17 +208,12 @@ export const AttendeeLayout = ({ children }) => {
       <footer className="site-footer attendee-footer">
         <div className="footer-inner">
           <div className="footer-brand-section">
-            <div className="footer-brand">Ticketflow · {t('home.hero_badge', 'Trải Nghiệm Mua Vé Đích Thực')}</div>
-            <p className="footer-desc">
-              {t('home.hero_sub', 'Khóa giữ vé nguyên tử 15 phút · Mỗi người một mã QR độc nhất · Thanh toán trực tuyến an toàn bảo chứng 100% Escrow.')}
-            </p>
+            <div className="footer-brand">Ticketflow</div>
           </div>
           <div className="footer-links">
-            <span className="footer-copyright">© 2026 Ticketflow Platform</span>
-            <span className="divider" aria-hidden="true">·</span>
-            <Link to="/my-tickets" className="footer-link">{t('nav.my_tickets', 'Tra cứu đơn hàng')}</Link>
-            <span className="divider" aria-hidden="true">·</span>
-            <a href="/my-tickets#support" className="footer-link">{t('nav.support', 'Trung tâm trợ giúp')}</a>
+            <span className="footer-copyright">© 2026 Ticketflow</span>
+            <span className="divider" aria-hidden="true">&bull;</span>
+            <Link to="/my-tickets" className="footer-link">{t('nav.my_tickets', 'Vé của tôi')}</Link>
           </div>
         </div>
       </footer>

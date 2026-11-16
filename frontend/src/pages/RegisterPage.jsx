@@ -32,13 +32,11 @@ export const RegisterPage = () => {
     <section className="auth-shell">
       <div className="auth-brand brand-workshop">
         <p className="eyebrow">Ticketflow</p>
-        <h1>Gia Nhập Ticketflow</h1>
-        <p>Nền tảng mua vé và quản lý sự kiện thông minh, hiện đại hàng đầu.</p>
+        <h1>Đăng ký tài khoản</h1>
       </div>
 
       <div className="card auth-card">
-        <h2 className="panel-title">{t('auth.register_title', 'Tạo Tài Khoản Khách Mua Vé')}</h2>
-        <p className="muted">{t('auth.register_sub', 'Đăng ký tài khoản để bắt đầu khám phá và đặt vé sự kiện')}</p>
+        <h2 className="panel-title">{t('auth.register_title', 'Đăng Ký')}</h2>
 
         {error && <div className="alert alert-error">{error}</div>}
 

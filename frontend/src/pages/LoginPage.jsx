@@ -57,13 +57,11 @@ export const LoginPage = () => {
     <section className="auth-shell">
       <div className="auth-brand">
         <p className="eyebrow">Ticketflow</p>
-        <h1>Nền Tảng Đặt Vé Sự Kiện Chuyên Nghiệp</h1>
-        <p>Hệ thống đặt vé trực tuyến an toàn, nhanh chóng và tối ưu trải nghiệm cho khán giả và nhà tổ chức sự kiện.</p>
+        <h1>Đăng nhập</h1>
       </div>
 
       <div className="card auth-card">
-        <h2 className="panel-title">{t('auth.login_title', 'Đăng Nhập Tài Khoản')}</h2>
-        <p className="muted">{t('auth.login_sub', 'Đăng nhập để xem vé, quản lý sự kiện hoặc cài đặt tài khoản')}</p>
+        <h2 className="panel-title">{t('auth.login_title', 'Đăng Nhập')}</h2>
 
         {error && <div className="alert alert-error">{error}</div>}
 
@@ -117,7 +115,7 @@ export const LoginPage = () => {
 
         <div className="auth-demo-box">
           <span className="auth-demo-label">
-            {t('auth.quick_demo', 'Chọn nhanh tài khoản trải nghiệm:')}
+            {t('auth.quick_demo', 'Tài khoản thử nghiệm:')}
           </span>
           <div className="auth-demo-actions">
             <button
@@ -125,27 +123,24 @@ export const LoginPage = () => {
               className="btn btn-secondary btn-sm"
               onClick={() => handleQuickLogin('attendee@ticketflow.local', 'ATTENDEE')}
               disabled={loading}
-              title="Vào Cổng Khách Hàng (Mua vé, giữ chỗ 15p, nhận vé QR)"
             >
-              👤 {t('role.attendee', 'Khách Mua Vé')}
+              {t('role.attendee', 'Khách Mua Vé')}
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => handleQuickLogin('organizer@ticketflow.local', 'ORGANIZER')}
               disabled={loading}
-              title="Vào Studio Ban Tổ Chức (Quản lý sự kiện, vé, doanh thu, escrow)"
             >
-              🎪 {t('role.organizer', 'Ban Tổ Chức')}
+              {t('role.organizer', 'Ban Tổ Chức')}
             </button>
             <button
               type="button"
               className="btn btn-secondary btn-sm"
               onClick={() => handleQuickLogin('admin@ticketflow.local', 'ADMIN')}
               disabled={loading}
-              title="Vào Trung Tâm Quản Trị Sàn (Executive Dashboard, Escrow, GMV)"
             >
-              🛡️ {t('role.admin', 'Quản Trị Sàn')}
+              {t('role.admin', 'Quản Trị Sàn')}
             </button>
           </div>
         </div>

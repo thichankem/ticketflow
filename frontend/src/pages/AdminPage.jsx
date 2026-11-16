@@ -2,11 +2,13 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { money, formatDate, formatDateTime } from '../utils/display';
+import { Modal } from '../components/Modal';
+import { AdminAnalyticsDashboard } from '../components/AdminAnalyticsDashboard';
 
 export const AdminPage = () => {
   const { user: currentUser, isAdmin, loading: authLoading } = useAuth();
 
-  // Active tab state: 'overview' | 'users' | 'events' | 'orders' | 'escrow' | 'helpdesk' | 'diagnostics'
+  // Active tab state: 'overview' | 'users' | 'events' | 'orders' | 'announcements'
   const [activeTab, setActiveTab] = useState('overview');
 
   // Loading & global error states
@@ -19,7 +21,20 @@ export const AdminPage = () => {
   const [users, setUsers] = useState([]);
   const [events, setEvents] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [diagnostics, setDiagnostics] = useState(null);
+  const [announcements, setAnnouncements] = useState([]);
+
+  // Announcements Form & Filter states
+  const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [announcementData, setAnnouncementData] = useState({
+    title: '',
+    message: '',
+    type: 'GENERAL',
+    target_role: 'ALL',
+  });
+  const [announcementSearch, setAnnouncementSearch] = useState('');
+  const [announcementTypeFilter, setAnnouncementTypeFilter] = useState('ALL');
+  const [announcementRoleFilter, setAnnouncementRoleFilter] = useState('ALL');
+  const [isSubmittingAnnouncement, setIsSubmittingAnnouncement] = useState(false);
 
   // Filters & Searches
   const [userSearch, setUserSearch] = useState('');
@@ -34,22 +49,17 @@ export const AdminPage = () => {
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL'); // ALL, PAID, RESERVED, CANCELLED
   const [orderLimit, setOrderLimit] = useState(25);
 
-  // Escrow Payouts State
-  const [payouts, setPayouts] = useState([]);
-  const [loadingPayouts, setLoadingPayouts] = useState(false);
-  const [payoutStatusFilter, setPayoutStatusFilter] = useState('ALL');
-
-  // Helpdesk & Dispute Mediation State
-  const [adminTickets, setAdminTickets] = useState([]);
-  const [loadingAdminTickets, setLoadingAdminTickets] = useState(false);
-  const [adminTicketSearch, setAdminTicketSearch] = useState('');
-  const [adminTicketStatusFilter, setAdminTicketStatusFilter] = useState('ALL');
-  const [selectedAdminTicket, setSelectedAdminTicket] = useState(null);
-  const [adminReplyText, setAdminReplyText] = useState('');
-  const [sendingAdminReply, setSendingAdminReply] = useState(false);
-  const [resolutionNotes, setResolutionNotes] = useState('');
-
   // Notice timer
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [createUserData, setCreateUserData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    phone: '',
+    role: 'ATTENDEE',
+  });
+  const [editingUser, setEditingUser] = useState(null);
+
   const notify = (msg, type = 'success') => {
     setActionNotice({ message: msg, type });
     setTimeout(() => {
@@ -100,16 +110,12 @@ export const AdminPage = () => {
         console.warn('Could not load orders:', err.message);
       }
 
-      // 5. Diagnostics
+      // 5. Fetch announcements (Thông báo chung)
       try {
-        const diagRes = await api.admin.getDiagnostics();
-        setDiagnostics(diagRes);
-      } catch {
-        setDiagnostics({
-          server: { status: 'ONLINE', uptime: '99.98%', environment: 'Production' },
-          database: { status: 'CONNECTED', type: 'PostgreSQL / In-Memory', latency: '4ms' },
-          cache: { status: 'ACTIVE', hitRate: '94.2%', memoryUsed: '14.8 MB' },
-        });
+        const annRes = await api.admin.getAnnouncements();
+        setAnnouncements(Array.isArray(annRes) ? annRes : annRes?.announcements || []);
+      } catch (err) {
+        console.warn('Could not load announcements:', err.message);
       }
     } catch (err) {
       setError(err.message);
@@ -118,46 +124,11 @@ export const AdminPage = () => {
     }
   };
 
-  const loadPayouts = async () => {
-    setLoadingPayouts(true);
-    try {
-      const res = await api.escrow.getAllPayouts();
-      setPayouts(Array.isArray(res) ? res : res?.payouts || []);
-    } catch (err) {
-      console.warn('Could not load payouts:', err.message);
-      setPayouts([]);
-    } finally {
-      setLoadingPayouts(false);
-    }
-  };
-
-  const loadAdminTickets = async () => {
-    setLoadingAdminTickets(true);
-    try {
-      const res = await api.helpdesk.listTickets();
-      setAdminTickets(Array.isArray(res) ? res : res?.tickets || []);
-    } catch (err) {
-      console.warn('Could not load admin tickets:', err.message);
-      setAdminTickets([]);
-    } finally {
-      setLoadingAdminTickets(false);
-    }
-  };
-
   useEffect(() => {
     if (isAdmin) {
       loadData();
     }
   }, [isAdmin]);
-
-  useEffect(() => {
-    if (isAdmin && activeTab === 'escrow') {
-      loadPayouts();
-    }
-    if (isAdmin && activeTab === 'helpdesk') {
-      loadAdminTickets();
-    }
-  }, [isAdmin, activeTab]);
 
   // --- Handlers for User Management ---
   const handleRoleChange = async (userId, newRole) => {
@@ -216,6 +187,34 @@ export const AdminPage = () => {
     }
   };
 
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.admin.createUser(createUserData);
+      const created = res.user || res;
+      setUsers((prev) => [created, ...prev]);
+      notify(`Đã tạo người dùng "${created.name || created.email}" thành công!`);
+      setShowCreateUserModal(false);
+      setCreateUserData({ name: '', email: '', password: '', phone: '', role: 'ATTENDEE' });
+    } catch (err) {
+      notify(`Lỗi tạo người dùng: ${err.message}`, 'error');
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    try {
+      const res = await api.admin.updateUser(editingUser.id, editingUser);
+      const updated = res.user || res;
+      setUsers((prev) => prev.map((u) => (u.id === editingUser.id ? { ...u, ...updated } : u)));
+      notify(`Đã cập nhật thông tin người dùng #${editingUser.id} thành công!`);
+      setEditingUser(null);
+    } catch (err) {
+      notify(`Lỗi cập nhật người dùng: ${err.message}`, 'error');
+    }
+  };
+
   // --- Handlers for Events Control ---
   const handleEventStatusChange = async (eventId, newStatus) => {
     try {
@@ -230,69 +229,15 @@ export const AdminPage = () => {
   };
 
   const handleDeleteEvent = async (eventId, eventTitle) => {
-    if (!window.confirm(`Are you sure you want to permanently delete event "${eventTitle}"?`)) {
+    if (!window.confirm(`⚠️ CẢNH BÁO XÓA SỰ KIỆN: "${eventTitle}"\n\nBạn có chắc chắn muốn xóa vĩnh viễn sự kiện này không?\n\n⚡ Toàn bộ đơn hàng đã mua vé sẽ tự động được HOÀN TIỀN 100% cho khách hàng!`)) {
       return;
     }
     try {
-      await api.admin.deleteEvent(eventId);
+      const res = await api.admin.deleteEvent(eventId);
       setEvents((prev) => prev.filter((ev) => ev.id !== eventId));
-      notify(`Event "${eventTitle}" deleted.`);
+      notify(res?.message || `Sự kiện "${eventTitle}" đã được xóa và tự động hoàn tiền 100% cho người mua.`);
     } catch (err) {
-      notify(`Failed to delete event: ${err.message}`, 'error');
-    }
-  };
-
-  // --- Handlers for Escrow Payouts ---
-  const handleUpdatePayoutStatus = async (payoutId, status) => {
-    try {
-      await api.escrow.updatePayoutStatus(payoutId, status);
-      notify(`Yêu cầu quyết toán #${payoutId} đã chuyển sang trạng thái: ${status}`);
-      await loadPayouts();
-    } catch (err) {
-      notify(`Lỗi cập nhật quyết toán: ${err.message}`, 'error');
-    }
-  };
-
-  // --- Handlers for Helpdesk Dispute Mediation ---
-  const handleOpenAdminTicket = async (ticket) => {
-    try {
-      const detail = await api.helpdesk.getTicket(ticket.id);
-      setSelectedAdminTicket(detail);
-      setResolutionNotes(detail.resolution_notes || '');
-    } catch {
-      setSelectedAdminTicket(ticket);
-      setResolutionNotes(ticket.resolution_notes || '');
-    }
-  };
-
-  const handleSendAdminReply = async (e) => {
-    e.preventDefault();
-    if (!selectedAdminTicket || !adminReplyText.trim()) return;
-    setSendingAdminReply(true);
-    try {
-      await api.helpdesk.addMessage(selectedAdminTicket.id, adminReplyText.trim());
-      notify('Đã gửi phản hồi hòa giải thành công!');
-      const updated = await api.helpdesk.getTicket(selectedAdminTicket.id);
-      setSelectedAdminTicket(updated);
-      setAdminReplyText('');
-      loadAdminTickets();
-    } catch (err) {
-      notify(`Lỗi gửi phản hồi: ${err.message}`, 'error');
-    } finally {
-      setSendingAdminReply(false);
-    }
-  };
-
-  const handleResolveTicket = async (status) => {
-    if (!selectedAdminTicket) return;
-    try {
-      await api.helpdesk.updateStatus(selectedAdminTicket.id, status, resolutionNotes);
-      notify(`Đã cập nhật trạng thái phiếu thành ${status}`);
-      const updated = await api.helpdesk.getTicket(selectedAdminTicket.id);
-      setSelectedAdminTicket(updated);
-      loadAdminTickets();
-    } catch (err) {
-      notify(`Lỗi cập nhật trạng thái phiếu: ${err.message}`, 'error');
+      notify(`Lỗi khi xóa sự kiện: ${err.message}`, 'error');
     }
   };
 
@@ -346,24 +291,60 @@ export const AdminPage = () => {
     });
   }, [orders, orderSearch, orderStatusFilter]);
 
-  const filteredPayouts = useMemo(() => {
-    return payouts.filter((p) => {
-      if (payoutStatusFilter === 'ALL') return true;
-      return p.status === payoutStatusFilter;
-    });
-  }, [payouts, payoutStatusFilter]);
+  // --- Handlers & Filtering for Broadcast Announcements ---
+  const handleCreateAnnouncement = async (e) => {
+    e.preventDefault();
+    if (!announcementData.title.trim()) {
+      notify('Vui lòng nhập tiêu đề thông báo', 'error');
+      return;
+    }
+    if (!announcementData.message.trim()) {
+      notify('Vui lòng nhập nội dung thông báo', 'error');
+      return;
+    }
 
-  const filteredAdminTickets = useMemo(() => {
-    return adminTickets.filter((t) => {
-      const q = adminTicketSearch.toLowerCase();
-      const subject = (t.subject || '').toLowerCase();
-      const email = (t.contact_email || '').toLowerCase();
-      const code = (t.short_id || '').toLowerCase();
-      const matchSearch = !q || subject.includes(q) || email.includes(q) || code.includes(q);
-      const matchStatus = adminTicketStatusFilter === 'ALL' || t.status === adminTicketStatusFilter;
-      return matchSearch && matchStatus;
+    setIsSubmittingAnnouncement(true);
+    try {
+      const res = await api.admin.createAnnouncement(announcementData);
+      const newAnn = res.announcement || {
+        id: Date.now(),
+        ...announcementData,
+        recipients_count: res.recipients_count || 0,
+        created_at: new Date().toISOString(),
+      };
+      setAnnouncements((prev) => [newAnn, ...prev]);
+      setShowAnnouncementModal(false);
+      setAnnouncementData({ title: '', message: '', type: 'GENERAL', target_role: 'ALL' });
+      notify(`Đã phát thông báo thành công tới ${res.recipients_count || 'tất cả'} người nhận!`);
+    } catch (err) {
+      notify(err.message || 'Lỗi khi phát thông báo', 'error');
+    } finally {
+      setIsSubmittingAnnouncement(false);
+    }
+  };
+
+  const handleDeleteAnnouncement = async (id) => {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa thông báo chung này khỏi hệ thống?')) return;
+    try {
+      await api.admin.deleteAnnouncement(id);
+      setAnnouncements((prev) => prev.filter((a) => a.id !== id));
+      notify('Đã xóa thông báo chung!');
+    } catch (err) {
+      notify(err.message || 'Lỗi khi xóa thông báo', 'error');
+    }
+  };
+
+  const filteredAnnouncements = useMemo(() => {
+    return announcements.filter((a) => {
+      const matchSearch =
+        !announcementSearch ||
+        a.title?.toLowerCase().includes(announcementSearch.toLowerCase()) ||
+        a.message?.toLowerCase().includes(announcementSearch.toLowerCase());
+      const matchType = announcementTypeFilter === 'ALL' || a.type === announcementTypeFilter;
+      const matchRole = announcementRoleFilter === 'ALL' || a.target_role === announcementRoleFilter;
+      return matchSearch && matchType && matchRole;
     });
-  }, [adminTickets, adminTicketSearch, adminTicketStatusFilter]);
+  }, [announcements, announcementSearch, announcementTypeFilter, announcementRoleFilter]);
 
   const displayedUsers = filteredUsers.slice(0, userLimit);
   const displayedEvents = filteredEvents.slice(0, eventLimit);
@@ -403,7 +384,6 @@ export const AdminPage = () => {
           </span>
         </div>
         <h1>Platform Administration</h1>
-        <p>Comprehensive controls for accounts, events, escrow financial settlement, disputes, and system health.</p>
       </header>
 
       {/* Action Notification Alert */}
@@ -454,90 +434,28 @@ export const AdminPage = () => {
 
         <button
           type="button"
-          className={`tab-btn ${activeTab === 'escrow' ? 'active' : ''}`}
-          onClick={() => setActiveTab('escrow')}
+          className={`tab-btn ${activeTab === 'announcements' ? 'active' : ''}`}
+          onClick={() => setActiveTab('announcements')}
         >
-          <span>🛡️ Escrow & Quyết toán</span>
-          {payouts.length > 0 && <span className="tab-count">{payouts.length}</span>}
-        </button>
-
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'helpdesk' ? 'active' : ''}`}
-          onClick={() => setActiveTab('helpdesk')}
-        >
-          <span>💬 Hòa giải Tranh chấp</span>
-          {adminTickets.length > 0 && <span className="tab-count">{adminTickets.length}</span>}
-        </button>
-
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === 'diagnostics' ? 'active' : ''}`}
-          onClick={() => setActiveTab('diagnostics')}
-        >
-          <span>System Diagnostics</span>
-          <span className="pulse-dot pulsing-dot pulse-dot-sm" />
+          <span>📢 Thông Báo Chung</span>
+          <span className="tab-count">{announcements.length}</span>
         </button>
       </nav>
 
-      {/* TAB 1: Platform Overview */}
+      {/* TAB 1: Platform Overview & Super Admin Analytics Dashboard */}
       {activeTab === 'overview' && (
-        <div className="stack">
-          {/* KPI Cards Grid */}
-          <div className="kpi-grid">
-            <article className="card kpi">
-              <span className="muted">Gross Revenue</span>
-              <strong>{money(grossSales)}</strong>
-              <span className="note good mt-035 d-block">
-                ↑ 100% Online Payment
-              </span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Total Orders</span>
-              <strong>{totalOrders}</strong>
-              <span className="muted text-xs">
-                Completed & verified
-              </span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Refund Rate</span>
-              <strong className={`stat-delta ${parseFloat(refundRate) > 5 ? "text-danger" : "text-good"}`}>
-                {refundRate}
-              </strong>
-              <span className="muted text-xs">
-                {totalRefundedOrders} refunded / cancelled
-              </span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Live Events</span>
-              <strong>{totalEvents}</strong>
-              <span className="muted text-xs">
-                Catalogue listings
-              </span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Platform Users</span>
-              <strong>{totalUsers}</strong>
-              <span className="muted text-xs">
-                Attendees & Organizers
-              </span>
-            </article>
-
-            <article className="card kpi">
-              <span className="muted">Escrow & Commission</span>
-              <strong>{money(platformCommission)}</strong>
-              <span className="note good text-xs">
-                5% Platform revenue
-              </span>
-            </article>
-          </div>
+        <div className="stack gap-md">
+          {/* Executive Analytics Dashboard with 4 Required Charts & Detailed Stats */}
+          <AdminAnalyticsDashboard
+            events={events}
+            users={users}
+            orders={orders}
+            stats={stats}
+            onRefresh={loadData}
+          />
 
           {/* Quick Summary Grid */}
-          <div className="split">
+          <div className="split mt-sm">
             <section className="card flex-1">
               <h2 className="panel-title">Operational Quick Jump</h2>
               <p className="muted text-sm">
@@ -568,38 +486,38 @@ export const AdminPage = () => {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => setActiveTab('escrow')}
+                  onClick={() => setActiveTab('announcements')}
                 >
-                  🛡️ Review Payouts & Escrow
+                  📢 Phát Thông Báo Chung
                 </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
-                  onClick={() => setActiveTab('helpdesk')}
+                  onClick={handleExportAuditReport}
                 >
-                  💬 Mediate Support Disputes
+                  📥 Export Financial Audit
                 </button>
               </div>
             </section>
 
             <section className="card dialog-inner w-modal-380">
-              <h2 className="panel-title">System Health Pulse</h2>
+              <h2 className="panel-title">Platform Summary</h2>
               <div className="stack gap-sm mt-sm">
                 <div className="flex justify-between items-center">
-                  <span className="muted">Application Server</span>
-                  <span className="badge badge-success">Online (99.98%)</span>
+                  <span className="muted">Total Users</span>
+                  <strong>{totalUsers}</strong>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="muted">Database Status</span>
-                  <span className="badge badge-success">Connected</span>
+                  <span className="muted">Live Events</span>
+                  <strong>{events.length}</strong>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="muted">Rate Limiter</span>
-                  <span className="badge badge-primary">25 req/min active</span>
+                  <span className="muted">Total Orders</span>
+                  <strong>{orders.length}</strong>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="muted">Reservation TTL</span>
-                  <span className="badge badge-primary">15 Minutes</span>
+                  <span className="muted">Operational Status</span>
+                  <span className="badge badge-success">Active</span>
                 </div>
               </div>
             </section>
@@ -610,12 +528,15 @@ export const AdminPage = () => {
       {/* TAB 2: User Management */}
       {activeTab === 'users' && (
         <section className="card">
-          <div className="toolbar">
+          <div className="toolbar flex flex-wrap justify-between items-center gap-2">
             <div className="search-input-wrapper">
+              <label htmlFor="admin-users-search" className="sr-only">Tìm kiếm người dùng</label>
               <input
+                id="admin-users-search"
                 type="text"
                 className="input"
                 placeholder="Search user by name, email, or ID..."
+                aria-label="Search user by name, email, or ID..."
                 value={userSearch}
                 onChange={(e) => setUserSearch(e.target.value)}
               />
@@ -636,7 +557,148 @@ export const AdminPage = () => {
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              className="btn btn-primary btn-sm ml-auto"
+              onClick={() => setShowCreateUserModal(true)}
+            >
+              ➕ Thêm Người Dùng
+            </button>
           </div>
+
+          {/* Modal Popup: Thêm Người Dùng Mới */}
+          <Modal
+            isOpen={showCreateUserModal}
+            onClose={() => setShowCreateUserModal(false)}
+            title="➕ Thêm Người Dùng Mới Vào Hệ Thống"
+            subtitle="Tạo tài khoản mới với vai trò Khách hàng, Ban tổ chức hoặc Quản trị viên"
+          >
+            <form onSubmit={handleCreateUser} className="stack gap-sm">
+              <div className="form-group mb-0">
+                <label className="text-sm font-semibold">Họ và tên *</label>
+                <input
+                  type="text"
+                  className="input"
+                  required
+                  placeholder="Nguyễn Văn A"
+                  value={createUserData.name}
+                  onChange={(e) => setCreateUserData({ ...createUserData, name: e.target.value })}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="text-sm font-semibold">Email *</label>
+                <input
+                  type="email"
+                  className="input"
+                  required
+                  placeholder="email@example.com"
+                  value={createUserData.email}
+                  onChange={(e) => setCreateUserData({ ...createUserData, email: e.target.value })}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="text-sm font-semibold">Mật khẩu</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Mặc định: Ticketflow@123"
+                  value={createUserData.password}
+                  onChange={(e) => setCreateUserData({ ...createUserData, password: e.target.value })}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="text-sm font-semibold">Số điện thoại</label>
+                <input
+                  type="tel"
+                  className="input"
+                  placeholder="0912345678"
+                  value={createUserData.phone}
+                  onChange={(e) => setCreateUserData({ ...createUserData, phone: e.target.value })}
+                />
+              </div>
+              <div className="form-group mb-0">
+                <label className="text-sm font-semibold">Vai trò (Role)</label>
+                <select
+                  className="select"
+                  value={createUserData.role}
+                  onChange={(e) => setCreateUserData({ ...createUserData, role: e.target.value })}
+                >
+                  <option value="ATTENDEE">Khách Mua Vé (Attendee)</option>
+                  <option value="ORGANIZER">Ban Tổ Chức (Organizer)</option>
+                  <option value="ADMIN">Quản Trị Viên (Admin)</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-xs mt-md">
+                <button type="button" className="btn btn-secondary flex-1" onClick={() => setShowCreateUserModal(false)}>
+                  Hủy
+                </button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  ✓ Tạo Người Dùng
+                </button>
+              </div>
+            </form>
+          </Modal>
+
+          {/* Modal Popup: Chỉnh Sửa Thông Tin Người Dùng */}
+          <Modal
+            isOpen={!!editingUser}
+            onClose={() => setEditingUser(null)}
+            title={`✏️ Chỉnh Sửa Người Dùng #${editingUser?.id || ''}`}
+            subtitle="Cập nhật thông tin định danh và phân quyền tài khoản người dùng"
+          >
+            {editingUser && (
+              <form onSubmit={handleUpdateUser} className="stack gap-sm">
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Họ và tên</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editingUser.name || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Email</label>
+                  <input
+                    type="email"
+                    className="input"
+                    value={editingUser.email || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Số điện thoại</label>
+                  <input
+                    type="tel"
+                    className="input"
+                    value={editingUser.phone || ''}
+                    onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="text-sm font-semibold">Vai trò (Role)</label>
+                  <select
+                    className="select"
+                    value={editingUser.role || 'ATTENDEE'}
+                    onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                  >
+                    <option value="ATTENDEE">Khách Mua Vé (Attendee)</option>
+                    <option value="ORGANIZER">Ban Tổ Chức (Organizer)</option>
+                    <option value="ADMIN">Quản Trị Viên (Admin)</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-xs mt-md">
+                  <button type="button" className="btn btn-secondary flex-1" onClick={() => setEditingUser(null)}>
+                    Hủy
+                  </button>
+                  <button type="submit" className="btn btn-primary flex-1">
+                    Lưu Thay Đổi
+                  </button>
+                </div>
+              </form>
+            )}
+          </Modal>
 
           <div className="table-responsive">
             <table className="data-table">
@@ -702,22 +764,47 @@ export const AdminPage = () => {
                               <option value="ADMIN">Admin</option>
                             </select>
 
-                            <button
-                              type="button"
-                              className={`btn btn-xs ${isSuspended ? 'btn-secondary' : 'btn-danger'}`}
-                              onClick={() => handleToggleUserStatus(u.id, isSuspended ? 'SUSPENDED' : 'ACTIVE')}
-                            >
-                              {isSuspended ? 'Reactivate' : 'Suspend'}
-                            </button>
+                            {u.id === 1 || u.id === currentUser?.id ? (
+                              <span className="badge badge-subtle" title="Tài khoản Quản trị gốc">
+                                Root Admin
+                              </span>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="btn btn-xs btn-secondary"
+                                  title="Chỉnh sửa thông tin"
+                                  onClick={() =>
+                                    setEditingUser({
+                                      id: u.id,
+                                      name: u.name || '',
+                                      email: u.email || '',
+                                      phone: u.phone || '',
+                                      role: u.role || 'ATTENDEE',
+                                    })
+                                  }
+                                >
+                                  ✏️
+                                </button>
 
-                            <button
-                              type="button"
-                              className="btn btn-xs btn-danger"
-                              title="Delete User"
-                              onClick={() => handleDeleteUser(u.id, u.name)}
-                            >
-                              ✕
-                            </button>
+                                <button
+                                  type="button"
+                                  className={`btn btn-xs ${isSuspended ? 'btn-secondary' : 'btn-danger'}`}
+                                  onClick={() => handleToggleUserStatus(u.id, isSuspended ? 'SUSPENDED' : 'ACTIVE')}
+                                >
+                                  {isSuspended ? 'Reactivate' : 'Suspend'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  className="btn btn-xs btn-danger"
+                                  title="Delete User"
+                                  onClick={() => handleDeleteUser(u.id, u.name)}
+                                >
+                                  ✕
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -758,10 +845,13 @@ export const AdminPage = () => {
         <section className="card">
           <div className="toolbar">
             <div className="search-input-wrapper">
+              <label htmlFor="admin-events-search" className="sr-only">Tìm kiếm sự kiện</label>
               <input
+                id="admin-events-search"
                 type="text"
                 className="input"
                 placeholder="Search event title or organizer..."
+                aria-label="Search event title or organizer..."
                 value={eventSearch}
                 onChange={(e) => setEventSearch(e.target.value)}
               />
@@ -897,10 +987,13 @@ export const AdminPage = () => {
         <section className="card">
           <div className="toolbar">
             <div className="search-input-wrapper">
+              <label htmlFor="admin-orders-search" className="sr-only">Tìm kiếm đơn hàng</label>
               <input
+                id="admin-orders-search"
                 type="text"
                 className="input"
                 placeholder="Search by Order ID, Short ID, or Customer email..."
+                aria-label="Search by Order ID, Short ID, or Customer email..."
                 value={orderSearch}
                 onChange={(e) => setOrderSearch(e.target.value)}
               />
@@ -1024,132 +1117,171 @@ export const AdminPage = () => {
         </section>
       )}
 
-      {/* TAB 5: Escrow Ledger & Payout Approval (Phân hệ 2.14) */}
-      {activeTab === 'escrow' && (
+      {/* TAB 5: Platform Broadcast Announcements (Thông Báo Chung) */}
+      {activeTab === 'announcements' && (
         <section className="card">
-          <div className="toolbar">
-            <h2 className="panel-title m-0">
-              🛡️ Sổ Cái Escrow & Phê Duyệt Quyết Toán Doanh Thu
-            </h2>
-
-            <div className="filter-pills">
-              <span className="muted text-xs mr-02">
-                Trạng thái:
-              </span>
-              {['ALL', 'REQUESTED', 'APPROVED', 'DISBURSED', 'REJECTED'].map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  className={`filter-pill ${payoutStatusFilter === st ? 'active' : ''}`}
-                  onClick={() => setPayoutStatusFilter(st)}
-                >
-                  {st === 'ALL' ? 'Tất cả' : st}
-                </button>
-              ))}
+          <div className="panel-header flex flex-wrap justify-between items-center gap-md pb-md border-b mb-md">
+            <div>
+              <h2 className="panel-title m-0">📢 Quản Lý Thông Báo Chung Toàn Sàn</h2>
+              <p className="muted text-sm mt-xs">
+                Soạn thảo và phát thông báo tức thời đến tất cả người dùng, ban tổ chức hoặc khách mua vé.
+              </p>
             </div>
-
-            <button type="button" className="btn btn-secondary btn-sm" onClick={loadPayouts}>
-              Làm mới
+            <button
+              type="button"
+              className="btn btn-primary btn-sm flex items-center gap-xs"
+              onClick={() => setShowAnnouncementModal(true)}
+            >
+              <span>➕ Tạo Thông Báo Mới</span>
             </button>
           </div>
 
-          <p className="muted text-sm mb-125">
-            Đối soát và giải ngân doanh thu bán vé đã trừ 5% hoa hồng sàn sau khi sự kiện kết thúc qua thời hạn đóng băng (Cooling-off Period).
-          </p>
+          {/* Quick Metrics */}
+          <div className="kpi-grid mb-md">
+            <article className="card kpi">
+              <span className="muted">Tổng Thông Báo Đã Phát</span>
+              <strong>{announcements.length}</strong>
+              <span className="note good text-xs">Vận hành toàn sàn</span>
+            </article>
+            <article className="card kpi">
+              <span className="muted">Lượt Người Nhận Tiếp Cận</span>
+              <strong>{announcements.reduce((acc, a) => acc + (a.recipients_count || 0), 0)}</strong>
+              <span className="note good text-xs">Phân phối In-app Box</span>
+            </article>
+            <article className="card kpi">
+              <span className="muted">Đối Tượng Phủ Sóng</span>
+              <strong>3 Nhóm Người Dùng</strong>
+              <span className="muted text-xs">Toàn sàn / BTC / Khách vé</span>
+            </article>
+          </div>
 
+          {/* Filters & Search Toolbar */}
+          <div className="toolbar flex flex-wrap justify-between items-center gap-2 mb-md">
+            <div className="search-input-wrapper flex-1">
+              <label htmlFor="admin-announcement-search" className="sr-only">Tìm kiếm thông báo</label>
+              <input
+                id="admin-announcement-search"
+                type="text"
+                className="input"
+                placeholder="Tìm kiếm theo tiêu đề hoặc nội dung thông báo..."
+                aria-label="Tìm kiếm theo tiêu đề hoặc nội dung thông báo..."
+                value={announcementSearch}
+                onChange={(e) => setAnnouncementSearch(e.target.value)}
+              />
+            </div>
+            <div className="flex gap-2 flex-wrap items-center">
+              <select
+                className="select select-sm"
+                value={announcementTypeFilter}
+                onChange={(e) => setAnnouncementTypeFilter(e.target.value)}
+                aria-label="Lọc theo loại thông báo"
+              >
+                <option value="ALL">Tất cả loại thông báo</option>
+                <option value="GENERAL">Thông báo chung</option>
+                <option value="MAINTENANCE">Bảo trì hệ thống</option>
+                <option value="POLICY">Cập nhật chính sách</option>
+                <option value="PROMO">Sự kiện & Ưu đãi</option>
+              </select>
+              <select
+                className="select select-sm"
+                value={announcementRoleFilter}
+                onChange={(e) => setAnnouncementRoleFilter(e.target.value)}
+                aria-label="Lọc theo đối tượng"
+              >
+                <option value="ALL">Tất cả đối tượng</option>
+                <option value="ORGANIZER">Chỉ Ban Tổ Chức</option>
+                <option value="ATTENDEE">Chỉ Khách Mua Vé</option>
+              </select>
+              {(announcementSearch || announcementTypeFilter !== 'ALL' || announcementRoleFilter !== 'ALL') && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => {
+                    setAnnouncementSearch('');
+                    setAnnouncementTypeFilter('ALL');
+                    setAnnouncementRoleFilter('ALL');
+                  }}
+                >
+                  Xóa lọc
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Announcements Table */}
           <div className="table-responsive">
-            <table className="data-table">
+            <table className="table">
               <thead>
                 <tr>
-                  <th>Mã quyết toán</th>
-                  <th>Sự kiện / BTC</th>
-                  <th>Doanh thu Gross</th>
-                  <th>Hoa hồng sàn (5%)</th>
-                  <th>Thực nhận (Net)</th>
-                  <th>Tài khoản thụ hưởng</th>
-                  <th>Trạng thái</th>
-                  <th>Ngày yêu cầu</th>
-                  <th className="text-right">Phê duyệt & Giải ngân</th>
+                  <th scope="col">Mã</th>
+                  <th scope="col">Phân Loại</th>
+                  <th scope="col">Tiêu Đề & Nội Dung</th>
+                  <th scope="col">Đối Tượng Nhận</th>
+                  <th scope="col">Số Người Nhận</th>
+                  <th scope="col">Thời Gian Gửi</th>
+                  <th scope="col" className="text-right">Thao Tác</th>
                 </tr>
               </thead>
               <tbody>
-                {loadingPayouts ? (
+                {filteredAnnouncements.length === 0 ? (
                   <tr>
-                    <td colSpan="9" className="td-empty-state">
-                      <p className="muted">Đang tải danh sách yêu cầu quyết toán...</p>
-                    </td>
-                  </tr>
-                ) : filteredPayouts.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="td-empty-state">
-                      <p className="muted">Không có yêu cầu quyết toán nào cần xử lý.</p>
+                    <td colSpan={7} className="text-center py-8 text-muted">
+                      <div className="empty-state p-4">
+                        <span className="text-2xl d-block mb-2">📢</span>
+                        <p className="font-semibold">Chưa có thông báo chung nào phù hợp</p>
+                        <p className="text-xs text-muted mt-1">Bấm nút "Tạo Thông Báo Mới" để phát thông báo toàn sàn.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredPayouts.map((p) => {
-                    const statusKey = (p.status || 'REQUESTED').toUpperCase();
+                  filteredAnnouncements.map((a) => {
+                    let typeBadgeClass = 'badge-primary';
+                    let typeLabel = 'Thông Báo Chung';
+                    if (a.type === 'MAINTENANCE') {
+                      typeBadgeClass = 'badge-warning';
+                      typeLabel = 'Bảo Trì Hệ Thống';
+                    } else if (a.type === 'POLICY') {
+                      typeBadgeClass = 'badge-role-admin';
+                      typeLabel = 'Chính Sách';
+                    } else if (a.type === 'PROMO') {
+                      typeBadgeClass = 'badge-success';
+                      typeLabel = 'Ưu Đãi & Sự Kiện';
+                    }
+
+                    let roleLabel = '🌐 Toàn Bộ Người Dùng';
+                    if (a.target_role === 'ORGANIZER') roleLabel = '🏢 Ban Tổ Chức';
+                    if (a.target_role === 'ATTENDEE') roleLabel = '🎟️ Khách Mua Vé';
+
                     return (
-                      <tr key={p.id}>
-                        <td><strong>#PAY-{p.id}</strong></td>
+                      <tr key={a.id}>
                         <td>
-                          <div className="font-semibold">{p.event_title || `Sự kiện #${p.event_id}`}</div>
-                          <span className="muted text-xs">
-                            {p.account_name || `Account #${p.account_id || 1}`}
-                          </span>
-                        </td>
-                        <td>{money(p.requested_amount)}</td>
-                        <td><strong className="note">{money(p.commission_amount)}</strong></td>
-                        <td><strong className="note good">{money(p.net_amount || p.requested_amount)}</strong></td>
-                        <td>
-                          <div>{p.bank_name}</div>
-                          <span className="muted text-xs">
-                            STK: {p.bank_account_number} ({p.bank_account_name})
-                          </span>
+                          <span className="code-badge">#{a.id}</span>
                         </td>
                         <td>
-                          <span className={`badge badge-status-${statusKey.toLowerCase()}`}>
-                            {statusKey}
-                          </span>
+                          <span className={`badge ${typeBadgeClass}`}>{typeLabel}</span>
+                        </td>
+                        <td className="max-w-md">
+                          <strong className="d-block text-sm">{a.title}</strong>
+                          <p className="muted text-xs line-clamp-2 mt-035">{a.message}</p>
+                        </td>
+                        <td>
+                          <span className="badge badge-secondary">{roleLabel}</span>
+                        </td>
+                        <td>
+                          <strong>{a.recipients_count || 0}</strong> <span className="muted text-xs">người</span>
                         </td>
                         <td className="muted text-xs">
-                          {formatDate(p.created_at)}
+                          {formatDateTime(a.created_at) || formatDate(a.created_at)}
                         </td>
-                        <td>
-                          <div className="table-actions actions-row table-actions-right-compact">
-                            {statusKey === 'REQUESTED' && (
-                              <button
-                                type="button"
-                                className="btn btn-xs btn-primary"
-                                onClick={() => handleUpdatePayoutStatus(p.id, 'APPROVED')}
-                              >
-                                Duyệt quyết toán
-                              </button>
-                            )}
-
-                            {statusKey === 'APPROVED' && (
-                              <button
-                                type="button"
-                                className="btn btn-xs btn-primary btn btn-primary btn-sm btn-action-good"
-                                onClick={() => handleUpdatePayoutStatus(p.id, 'DISBURSED')}
-                              >
-                                Giải ngân tiền
-                              </button>
-                            )}
-
-                            {(statusKey === 'REQUESTED' || statusKey === 'APPROVED') && (
-                              <button
-                                type="button"
-                                className="btn btn-xs btn-danger"
-                                onClick={() => handleUpdatePayoutStatus(p.id, 'REJECTED')}
-                              >
-                                Từ chối
-                              </button>
-                            )}
-
-                            {statusKey === 'DISBURSED' && (
-                              <span className="badge badge-success">Đã hoàn tất</span>
-                            )}
-                          </div>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-danger hover:bg-danger-light"
+                            onClick={() => handleDeleteAnnouncement(a.id)}
+                            title="Xóa thông báo này"
+                          >
+                            🗑️ Xóa
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1161,340 +1293,102 @@ export const AdminPage = () => {
         </section>
       )}
 
-      {/* TAB 6: Dispute Mediation & Support Tickets (Phân hệ 2.16) */}
-      {activeTab === 'helpdesk' && (
-        <div className="stack">
-          <div className="toolbar">
-            <div className="search-input-wrapper">
-              <input
-                type="text"
-                className="input"
-                placeholder="Tìm khiếu nại theo tiêu đề, email, mã phiếu..."
-                value={adminTicketSearch}
-                onChange={(e) => setAdminTicketSearch(e.target.value)}
-              />
+      {/* Modal Tạo Thông Báo Chung Mới (Popup đơn giản, tuân thủ quy tắc) */}
+      <Modal
+        isOpen={showAnnouncementModal}
+        onClose={() => setShowAnnouncementModal(false)}
+        title="📢 Phát Thông Báo Chung Toàn Sàn"
+      >
+        <form onSubmit={handleCreateAnnouncement} className="stack gap-md">
+          <div className="form-group">
+            <label htmlFor="announcement-title" className="form-label font-semibold">
+              Tiêu đề thông báo <span className="text-danger">*</span>
+            </label>
+            <input
+              id="announcement-title"
+              type="text"
+              className="input w-full"
+              placeholder="VD: Bảo trì nâng cấp hệ thống thanh toán ngày 16/11"
+              value={announcementData.title}
+              onChange={(e) => setAnnouncementData({ ...announcementData, title: e.target.value })}
+              required
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-sm">
+            <div className="form-group">
+              <label htmlFor="announcement-type" className="form-label font-semibold">
+                Loại thông báo
+              </label>
+              <select
+                id="announcement-type"
+                className="select w-full"
+                value={announcementData.type}
+                onChange={(e) => setAnnouncementData({ ...announcementData, type: e.target.value })}
+              >
+                <option value="GENERAL">📢 Thông báo chung</option>
+                <option value="MAINTENANCE">⚠️ Bảo trì hệ thống</option>
+                <option value="POLICY">📜 Cập nhật chính sách</option>
+                <option value="PROMO">🎁 Ưu đãi & Sự kiện</option>
+              </select>
             </div>
 
-            <div className="filter-pills">
-              <span className="muted text-xs mr-02">
-                Trạng thái:
-              </span>
-              {['ALL', 'OPEN', 'IN_PROGRESS', 'WAITING', 'RESOLVED', 'CLOSED'].map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  className={`filter-pill ${adminTicketStatusFilter === st ? 'active' : ''}`}
-                  onClick={() => setAdminTicketStatusFilter(st)}
-                >
-                  {st === 'ALL' ? 'Tất cả' : st}
-                </button>
-              ))}
+            <div className="form-group">
+              <label htmlFor="announcement-target-role" className="form-label font-semibold">
+                Đối tượng nhận thông báo
+              </label>
+              <select
+                id="announcement-target-role"
+                className="select w-full"
+                value={announcementData.target_role}
+                onChange={(e) => setAnnouncementData({ ...announcementData, target_role: e.target.value })}
+              >
+                <option value="ALL">🌐 Tất cả người dùng (All Users)</option>
+                <option value="ORGANIZER">🏢 Chỉ Ban Tổ Chức (Organizers)</option>
+                <option value="ATTENDEE">🎟️ Chỉ Khách Mua Vé (Attendees)</option>
+              </select>
             </div>
+          </div>
 
-            <button type="button" className="btn btn-secondary btn-sm" onClick={loadAdminTickets}>
-              Làm mới
+          <div className="form-group">
+            <label htmlFor="announcement-message" className="form-label font-semibold">
+              Nội dung thông báo chi tiết <span className="text-danger">*</span>
+            </label>
+            <textarea
+              id="announcement-message"
+              className="input w-full"
+              rows={4}
+              placeholder="Nhập nội dung thông báo đầy đủ sẽ được gửi tới hộp thư của người nhận..."
+              value={announcementData.message}
+              onChange={(e) => setAnnouncementData({ ...announcementData, message: e.target.value })}
+              required
+            />
+          </div>
+
+          <div className="alert alert-info text-xs">
+            ℹ️ Thông báo này sẽ được tự động phân phối tức thì đến hộp thư in-app của tất cả người dùng thuộc nhóm đối tượng đã chọn.
+          </div>
+
+          <div className="flex justify-end gap-sm pt-sm border-t">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowAnnouncementModal(false)}
+              disabled={isSubmittingAnnouncement}
+            >
+              Hủy
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={isSubmittingAnnouncement}
+            >
+              {isSubmittingAnnouncement ? 'Đang phát thông báo...' : '🚀 Phát Thông Báo Ngay'}
             </button>
           </div>
-
-          <div className="split">
-            {/* Tickets Table */}
-            <section className="card flex-1">
-              <h2 className="panel-title">Tất cả Phiếu Yêu cầu & Tranh chấp Trên Sàn</h2>
-              {loadingAdminTickets ? (
-                <div className="loading-state">Đang tải phiếu hỗ trợ...</div>
-              ) : filteredAdminTickets.length === 0 ? (
-                <div className="empty-state">
-                  <p className="muted">Không tìm thấy phiếu khiếu nại nào phù hợp.</p>
-                </div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Mã phiếu</th>
-                        <th>Chủ đề / Vấn đề</th>
-                        <th>Khách hàng</th>
-                        <th>Độ ưu tiên</th>
-                        <th>Trạng thái</th>
-                        <th>Thời gian</th>
-                        <th className="text-right">Hòa giải</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredAdminTickets.map((t) => (
-                        <tr key={t.id}>
-                          <td><strong>{t.short_id || `#TCK-${t.id}`}</strong></td>
-                          <td>
-                            <div className="font-semibold">{t.subject}</div>
-                            <span className="muted text-xs">{t.category}</span>
-                          </td>
-                          <td>
-                            <div>{t.contact_name}</div>
-                            <span className="muted text-xs">{t.contact_email}</span>
-                          </td>
-                          <td>
-                            <span className={`badge ${t.priority === 'URGENT' || t.priority === 'HIGH' ? 'badge-danger' : 'badge-primary'}`}>
-                              {t.priority}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`badge badge-status-${(t.status || 'OPEN').toLowerCase()}`}>
-                              {t.status}
-                            </span>
-                          </td>
-                          <td className="muted text-xs">
-                            {formatDate(t.created_at)}
-                          </td>
-                          <td>
-                            <div className="table-actions justify-end">
-                              <button
-                                type="button"
-                                className="btn btn-xs btn-primary"
-                                onClick={() => handleOpenAdminTicket(t)}
-                              >
-                                Mở đối thoại
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-
-            {/* Admin Mediation Panel */}
-            {selectedAdminTicket && (
-              <section className="card dialog-inner w-modal-440">
-                <div className="flex justify-between items-center mb-075">
-                  <h2 className="panel-title m-0">
-                    Hòa giải {selectedAdminTicket.short_id || `#${selectedAdminTicket.id}`}
-                  </h2>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-xs"
-                    onClick={() => setSelectedAdminTicket(null)}
-                  >
-                    ✕ Đóng
-                  </button>
-                </div>
-
-                <div className="stack gap-xs border-b-line pb-075 mb-md">
-                  <div className="font-bold text-base-plus">{selectedAdminTicket.subject}</div>
-                  <div className="flex gap-xs flex-wrap">
-                    <span className="badge badge-info">{selectedAdminTicket.category}</span>
-                    <span className="badge badge-danger">{selectedAdminTicket.priority}</span>
-                    <span className={`badge badge-status-${(selectedAdminTicket.status || 'OPEN').toLowerCase()}`}>
-                      {selectedAdminTicket.status}
-                    </span>
-                  </div>
-                  <p className="dispute-summary-preview">
-                    {selectedAdminTicket.description}
-                  </p>
-                  {selectedAdminTicket.evidence_url && (
-                    <div className="text-xs">
-                      Bằng chứng đính kèm:{' '}
-                      <a href={selectedAdminTicket.evidence_url} target="_blank" rel="noopener noreferrer">
-                        Xem tài liệu
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                {/* Conversation Thread */}
-                <h3 className="text-sm mb-sm">Lịch sử Đối thoại 3 Bên:</h3>
-                <div className="stack gap-xs dispute-history-scroll">
-                  {(!selectedAdminTicket.messages || selectedAdminTicket.messages.length === 0) ? (
-                    <p className="muted text-xs">Chưa có tin nhắn phản hồi nào.</p>
-                  ) : (
-                    selectedAdminTicket.messages.map((m) => (
-                      <div
-                        key={m.id}
-                        className={`ticket-bubble ${
-                          m.sender_role === 'ADMIN'
-                            ? 'ticket-bubble-admin'
-                            : m.sender_role === 'ORGANIZER'
-                            ? 'ticket-bubble-organizer'
-                            : 'ticket-bubble-default'
-                        }`}>
-                        <div className="flex justify-between text-xs mb-02">
-                          <strong>{m.sender_name} ({m.sender_role})</strong>
-                          <span className="muted">{formatDateTime(m.created_at)}</span>
-                        </div>
-                        <div>{m.message}</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* Send Reply Form */}
-                <form onSubmit={handleSendAdminReply} className="mb-125">
-                  <div className="form-group">
-                    <label htmlFor="adminReplyMsg">Phát biểu với tư cách Hòa giải viên Sàn:</label>
-                    <textarea
-                      id="adminReplyMsg"
-                      className="textarea"
-                      rows="2"
-                      required
-                      placeholder="Nhập nội dung phán quyết hoặc yêu cầu bổ sung thông tin..."
-                      value={adminReplyText}
-                      onChange={(e) => setAdminReplyText(e.target.value)}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn btn-secondary btn-block btn-sm"
-                    disabled={sendingAdminReply || !adminReplyText.trim()}
-                  >
-                    {sendingAdminReply ? 'Đang gửi...' : 'Gửi Ý Kiến Hòa Giải'}
-                  </button>
-                </form>
-
-                {/* Dispute Resolution Actions */}
-                <div className="border-t-line pt-075">
-                  <label htmlFor="resNotes" className="font-semibold text-sm d-block mb-035">
-                    Kết luận hòa giải & Ghi chú xử lý:
-                  </label>
-                  <input
-                    id="resNotes"
-                    type="text"
-                    className="input input-sm mb-sm"
-                    placeholder="Ghi chú kết quả hòa giải..."
-                    value={resolutionNotes}
-                    onChange={(e) => setResolutionNotes(e.target.value)}
-                  />
-
-                  <div className="flex gap-xs">
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm flex-1"
-                      onClick={() => handleResolveTicket('RESOLVED')}
-                    >
-                      ✓ Giải Quyết Xong (Resolved)
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleResolveTicket('CLOSED')}
-                    >
-                      Đóng Phiếu (Closed)
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 7: System Diagnostics */}
-      {activeTab === 'diagnostics' && (
-        <div className="stack">
-          <div className="diagnostics-grid">
-            <article className="diagnostics-card">
-              <div className="diagnostics-header">
-                <h3>Application Server</h3>
-                <span className="pulse-dot" />
-              </div>
-              <div className="stack gap-xs">
-                <div className="flex justify-between">
-                  <span className="muted">Status</span>
-                  <span className="badge badge-success">
-                    {diagnostics?.server?.status || 'ONLINE'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Environment</span>
-                  <span>{diagnostics?.server?.environment || 'Node.js / Express'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Reported Uptime</span>
-                  <strong>{diagnostics?.server?.uptime || '99.98%'}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">API Protocol</span>
-                  <span>HTTP/1.1 REST + JSON</span>
-                </div>
-              </div>
-            </article>
-
-            <article className="diagnostics-card">
-              <div className="diagnostics-header">
-                <h3>Database Engine</h3>
-                <span className="pulse-dot" />
-              </div>
-              <div className="stack gap-xs">
-                <div className="flex justify-between">
-                  <span className="muted">Connection</span>
-                  <span className="badge badge-success">
-                    {diagnostics?.database?.status || 'CONNECTED'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Backend Storage</span>
-                  <span>{diagnostics?.database?.type || 'PostgreSQL / Memory Mirror'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Query Latency</span>
-                  <strong>{diagnostics?.database?.latency || '< 5ms'}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">ACID / Locking</span>
-                  <span className="badge badge-primary">Atomic Row-Locks</span>
-                </div>
-              </div>
-            </article>
-
-            <article className="diagnostics-card">
-              <div className="diagnostics-header">
-                <h3>Cache & Queue</h3>
-                <span className="pulse-dot" />
-              </div>
-              <div className="stack gap-xs">
-                <div className="flex justify-between">
-                  <span className="muted">Reservation Cache</span>
-                  <span className="badge badge-success">
-                    {diagnostics?.cache?.status || 'ACTIVE'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Cache Hit Rate</span>
-                  <strong>{diagnostics?.cache?.hitRate || '94.2%'}</strong>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Memory Footprint</span>
-                  <span>{diagnostics?.cache?.memoryUsed || '14.8 MB'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="muted">Throttle Gate</span>
-                  <span>25 req / IP / min</span>
-                </div>
-              </div>
-            </article>
-          </div>
-
-          <div className="card">
-            <h2 className="panel-title">Diagnostic Telemetry & Security Controls</h2>
-            <p className="muted text-sm">
-              Real-time indicators verify XSS sanitization (DOMPurify), JWT dual-token rotation (15m access / 7d refresh), Escrow custody isolation, and row-level anti-overselling locks.
-            </p>
-            <div className="flex gap-sm mt-md">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => {
-                  loadData();
-                  notify('Diagnostics telemetry refreshed.');
-                }}
-              >
-                Refresh Diagnostics
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </form>
+      </Modal>
     </section>
   );
 };

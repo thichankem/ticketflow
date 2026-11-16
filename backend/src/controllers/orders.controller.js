@@ -23,7 +23,8 @@ class OrdersController {
   async getById(req, res, next) {
     try {
       const { id } = req.params;
-      const order = await ordersService.getOrderById(id, req.user);
+      const sessionToken = req.headers['x-order-token'] || req.query.token;
+      const order = await ordersService.getOrderById(id, req.user, sessionToken);
       return res.status(200).json({ order });
     } catch (err) {
       next(err);
@@ -33,12 +34,15 @@ class OrdersController {
   async checkout(req, res, next) {
     try {
       const { id } = req.params;
-      const { buyer, attendees, payment_method, payment_intent_id } = req.body;
+      const { buyer, attendees, payment_method, payment_intent_id, order_token } = req.body;
+      const sessionToken = req.headers['x-order-token'] || order_token;
       const result = await ordersService.checkoutOrder(id, {
         buyer,
         attendees,
         payment_method,
         payment_intent_id,
+        user: req.user || null,
+        sessionToken,
       });
       return res.status(200).json(result);
     } catch (err) {
@@ -49,34 +53,9 @@ class OrdersController {
   async cancel(req, res, next) {
     try {
       const { id } = req.params;
-      const result = await ordersService.cancelOrder(id, req.user);
+      const sessionToken = req.headers['x-order-token'] || req.query.token || req.body?.order_token;
+      const result = await ordersService.cancelOrder(id, req.user, sessionToken);
       return res.status(200).json(result);
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async checkIn(req, res, next) {
-    try {
-      const eventId = req.params.id || req.body.event_id;
-      if (!eventId) {
-        return res.status(400).json({ error: 'event_id is required for check-in' });
-      }
-      const event = await eventsService.getEventById(eventId);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-      if (req.user && req.user.role !== 'ADMIN' && Number(event.account_id) !== Number(req.user.account_id)) {
-        return res.status(403).json({ error: 'Forbidden: Event does not belong to user account' });
-      }
-      const { barcode, qr_hash, attendee_id } = req.body;
-      const scanCode = qr_hash || barcode;
-      const result = await ordersService.checkInAttendee(eventId, { barcode: scanCode, qr_hash, attendee_id });
-      return res.status(200).json({
-        success: true,
-        message: result.message || 'Check-in thành công',
-        attendee: result.attendee,
-      });
     } catch (err) {
       next(err);
     }
@@ -92,14 +71,37 @@ class OrdersController {
     }
   }
 
-  async toggleCheckIn(req, res, next) {
+  async createAttendee(req, res, next) {
     try {
-      const { id, attendeeId } = req.params;
-      const attendee = await ordersService.toggleAttendeeCheckIn(id, attendeeId, req.user);
-      return res.status(200).json({
-        message: 'Attendee check-in toggled successfully',
+      const { id } = req.params;
+      const attendee = await ordersService.createGuestAttendee(id, req.body, req.user);
+      return res.status(201).json({
+        message: 'Guest attendee ticket created successfully',
         attendee,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateAttendee(req, res, next) {
+    try {
+      const { id, attendeeId } = req.params;
+      const attendee = await ordersService.updateAttendee(id, attendeeId, req.body, req.user);
+      return res.status(200).json({
+        message: 'Attendee updated successfully',
+        attendee,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async deleteAttendee(req, res, next) {
+    try {
+      const { id, attendeeId } = req.params;
+      const result = await ordersService.deleteAttendee(id, attendeeId, req.user);
+      return res.status(200).json(result);
     } catch (err) {
       next(err);
     }
@@ -175,10 +177,10 @@ class OrdersController {
   async transferTicket(req, res, next) {
     try {
       const { attendeeId } = req.params;
-      const { new_email, new_name } = req.body;
+      const { new_email, target_email, new_name, recipient_name } = req.body || {};
       const result = await ordersService.transferTicket(attendeeId, {
-        new_email,
-        new_name,
+        new_email: new_email || target_email,
+        new_name: new_name || recipient_name,
         user: req.user,
       });
       return res.status(200).json(result);

@@ -8,6 +8,7 @@ async function cleanMockData() {
   // Deletion order respecting foreign key constraints
   const tables = [
     'seat_reservations',
+    'announcements',
     'notifications',
     'support_messages',
     'support_tickets',

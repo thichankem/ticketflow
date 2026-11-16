@@ -63,7 +63,7 @@ export async function seedDatabase() {
     console.log('[CLEAN] Clearing existing database tables...');
     await client.query(`
       TRUNCATE TABLE 
-        seat_reservations, event_favorites, notifications, support_messages, 
+        seat_reservations, event_favorites, announcements, notifications, support_messages, 
         support_tickets, payouts, attendees, order_items, orders, 
         promo_codes, ticket_tiers, event_settings, events, 
         account_users, organizers, users, accounts 
@@ -85,7 +85,7 @@ export async function seedDatabase() {
     `);
 
     // 3. Users (Seed 56 users: 1..6 canonical + 50 extra production users)
-    console.log('[SEED] Populating 56 users (Admin, Organizers, Attendees, Scanner)...');
+    console.log('[SEED] Populating 56 users (Admin, Organizers, Attendees)...');
     await client.query(`
       INSERT INTO users (id, first_name, last_name, email, password, role, account_id, email_verified_at, created_at, updated_at)
       VALUES 
@@ -95,7 +95,7 @@ export async function seedDatabase() {
         (4, 'Dev', 'Admin', 'admin@ticketflow.test', $2, 'ADMIN', 1, NOW(), NOW(), NOW()),
         (5, 'Dev', 'Organizer', 'organizer@ticketflow.test', $2, 'ORGANIZER', 2, NOW(), NOW(), NOW()),
         (6, 'Dev', 'Attendee', 'attendee@ticketflow.test', $2, 'ATTENDEE', 3, NOW(), NOW(), NOW()),
-        (7, 'Gate', 'Scanner', 'scanner@ticketflow.local', $1, 'SCANNER', 2, NOW(), NOW(), NOW());
+        (7, 'Gate', 'Staff', 'scanner@ticketflow.local', $1, 'ATTENDEE', 2, NOW(), NOW(), NOW());
     `, [passLocalHash, passBootstrapHash]);
 
     // Insert additional users 8 through 56
@@ -552,10 +552,7 @@ export async function seedDatabase() {
         let checkedInAt = null;
 
         if (status === 'COMPLETED') {
-          if (attId % 2 === 0) {
-            attStatus = 'CHECKED_IN';
-            checkedInAt = new Date(Date.now() - (attId * 10 * 60 * 1000)).toISOString();
-          }
+          attStatus = 'ACTIVE';
         } else if (status === 'REFUNDED' || status === 'CANCELLED') {
           attStatus = 'CANCELLED';
         }
@@ -597,16 +594,6 @@ export async function seedDatabase() {
       }
     }
 
-    // 13. Populate Escrow Payouts
-    console.log('[SEED] Populating escrow payouts...');
-    await client.query(`
-      INSERT INTO payouts (id, account_id, event_id, requested_amount, commission_rate, commission_amount, net_amount, bank_name, bank_account_number, bank_account_name, status, notes, reviewed_by, reviewed_at, disbursed_at, created_at, updated_at)
-      VALUES
-        (1, 2, 1, 12000000.00, 5.00, 600000.00, 11400000.00, 'Vietcombank', '0011001234567', 'GLOBAL EVENTS PRODUCER ORG', 'DISBURSED', 'Đã quyết toán thành công sau thời gian làm mát 5 ngày', 1, NOW() - INTERVAL '2 days', NOW() - INTERVAL '1 day', NOW() - INTERVAL '3 days', NOW()),
-        (2, 2, 2, 8500000.00, 5.00, 425000.00, 8075000.00, 'Techcombank', '19033456789012', 'GLOBAL EVENTS PRODUCER ORG', 'APPROVED', 'Đã duyệt yêu cầu quyết toán, đang chờ lệnh chi ngân hàng', 1, NOW() - INTERVAL '1 hour', NULL, NOW() - INTERVAL '1 day', NOW()),
-        (3, 2, 3, 4500000.00, 5.00, 225000.00, 4275000.00, 'MB Bank', '0987654321', 'GLOBAL EVENTS PRODUCER ORG', 'REQUESTED', 'Yêu cầu quyết toán định kỳ tháng 11', NULL, NULL, NULL, NOW() - INTERVAL '2 hours', NOW());
-    `);
-
     // 14. Populate Support Tickets & Messages (Disputes & Helpdesk)
     console.log('[SEED] Populating helpdesk support tickets and dispute threads...');
     await client.query(`
@@ -633,7 +620,7 @@ export async function seedDatabase() {
       VALUES
         (1, 3, 1, 'RESTOCK', '🔔 Vé có sẵn trở lại: Vietnam Tech Summit 2026', 'Hạng vé VIP vừa có người hủy đặt chỗ. Hãy nhanh tay đặt ngay trước khi hết!', false, NOW() - INTERVAL '2 hours'),
         (2, 3, 2, 'SCHEDULE_CHANGE', 'Thông báo đổi lịch: Indie Music Fest 2026', 'Ban tổ chức vừa cập nhật thời gian biểu diễn mới. Vui lòng kiểm tra chi tiết vé.', true, NOW() - INTERVAL '1 day'),
-        (3, 2, 1, 'SYSTEM', 'Quyết toán Escrow thành công', 'Khoản thanh toán 11.400.000 VND đã được giải ngân về tài khoản Vietcombank của bạn.', false, NOW() - INTERVAL '1 day'),
+        (3, 2, 1, 'SYSTEM', 'Cập nhật hệ thống', 'Dữ liệu bán vé sự kiện đã được đồng bộ chính xác.', false, NOW() - INTERVAL '1 day'),
         (4, 3, 1, 'REFUND', 'Xác nhận hoàn tiền đơn hàng', 'Đơn hàng của bạn đã được hoàn lại thành công theo chính sách sự kiện.', false, NOW() - INTERVAL '5 hours');
     `);
 
@@ -665,7 +652,17 @@ export async function seedDatabase() {
       ON CONFLICT (event_id, seat_key) DO NOTHING;
     `);
 
-    // 18. Synchronize All Relational Database Sequences
+    // 18. Populate Platform Broadcast Announcements
+    console.log('[SEED] Populating platform broadcast announcements...');
+    await client.query(`
+      INSERT INTO announcements (id, title, message, type, target_role, recipients_count, created_by, created_at)
+      VALUES
+        (1, 'Chào mừng đến với nền tảng Ticketflow 2026', 'Hệ thống bán vé trực tuyến bảo mật, chống đầu cơ và thanh toán 100% online đã chính thức vận hành.', 'GENERAL', 'ALL', 56, 1, NOW() - INTERVAL '5 days'),
+        (2, 'Cập nhật chính sách hoàn hủy vé sự kiện', 'Chính sách hoàn tiền tự động 100% khi sự kiện dời ngày hoặc hủy bỏ đã có hiệu lực trên toàn sàn.', 'POLICY', 'ALL', 56, 1, NOW() - INTERVAL '2 days')
+      ON CONFLICT (id) DO NOTHING;
+    `);
+
+    // 19. Synchronize All Relational Database Sequences
     console.log('[SEED] Synchronizing PostgreSQL sequence generators...');
     await client.query(`
       SELECT setval('users_id_seq', (SELECT COALESCE(MAX(id), 1) FROM users));
@@ -680,6 +677,7 @@ export async function seedDatabase() {
       SELECT setval('payouts_id_seq', (SELECT COALESCE(MAX(id), 1) FROM payouts));
       SELECT setval('support_tickets_id_seq', (SELECT COALESCE(MAX(id), 1) FROM support_tickets));
       SELECT setval('support_messages_id_seq', (SELECT COALESCE(MAX(id), 1) FROM support_messages));
+      SELECT setval('announcements_id_seq', (SELECT COALESCE(MAX(id), 1) FROM announcements));
       SELECT setval('notifications_id_seq', (SELECT COALESCE(MAX(id), 1) FROM notifications));
       SELECT setval('event_favorites_id_seq', (SELECT COALESCE(MAX(id), 1) FROM event_favorites));
       SELECT setval('seat_reservations_id_seq', (SELECT COALESCE(MAX(id), 1) FROM seat_reservations));
@@ -694,7 +692,7 @@ export async function seedDatabase() {
     console.log(`- ${currentTierId - 180} Ticket Tiers with real prices, quotas, and limits`);
     console.log(`- ${currentPromoId - 190} Active Promo Codes`);
     console.log(`- 85 Orders across COMPLETED, REFUNDED, RESERVED, CANCELLED`);
-    console.log(`- ${attendeeCount} Attendees with QR barcodes, seats, and check-in statuses`);
+    console.log(`- ${attendeeCount} Attendees with QR codes and seat assignments`);
     console.log('============================================================');
   } catch (error) {
     await client.query('ROLLBACK');

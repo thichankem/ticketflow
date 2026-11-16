@@ -4,7 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { money } from '../utils/display';
-import { QrCodeSvg, BarcodeSvg } from '../utils/qr';
+import { QrCodeSvg } from '../utils/qr';
 
 export const CheckoutPage = () => {
   const navigate = useNavigate();
@@ -43,6 +43,7 @@ export const CheckoutPage = () => {
           price: item.tier.price,
           name: i === 0 ? (buyerName || '') : '',
           email: i === 0 ? (buyerEmail || '') : '',
+          ticket_code: `TKF-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 900 + 100)}`,
           barcode: `TKF-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 900 + 100)}`,
         });
       }
@@ -101,7 +102,8 @@ export const CheckoutPage = () => {
         name: att.name?.trim() || `${buyerName} (Người tham dự ${i + 1})`,
         email: att.email?.trim() || buyerEmail,
         ticket_tier_id: att.ticket_tier_id,
-        barcode: att.barcode,
+        ticket_code: att.ticket_code || att.barcode,
+        barcode: att.barcode || att.ticket_code,
       }));
 
       const res = await finalizeCheckout(
@@ -155,22 +157,19 @@ export const CheckoutPage = () => {
         <div className="receipt-container">
           <div className="receipt-header">
             <div className="receipt-icon-circle">✓</div>
-            <span className="badge badge-success">Thanh toán trực tuyến thành công</span>
-            <h1 className="receipt-title">Chúc mừng! Bạn đã sở hữu vé thành công.</h1>
+            <span className="badge badge-success">Thanh toán thành công</span>
+            <h1 className="receipt-title">Đặt vé thành công</h1>
             <p className="receipt-subtitle">
-              Mã tra cứu đơn hàng: <strong>{orderCode}</strong> · Đã xác thực bảo chứng Escrow
+              Mã đơn hàng: <strong>{orderCode}</strong>
             </p>
           </div>
 
           <div className="receipt-notice-bar">
-            <span>✉️ Biên lai điện tử và vé đã được gửi tức thì đến email: <strong>{buyerEmail}</strong></span>
+            <span>Vé đã được gửi đến email: <strong>{buyerEmail}</strong></span>
           </div>
 
           <div className="tickets-issued-section">
-            <h2 className="section-title">Danh sách Vé điện tử & Mã QR Check-in vào cổng</h2>
-            <p className="section-subtitle">
-              Mỗi người tham dự sở hữu một mã QR độc nhất kèm vị trí chỗ ngồi cụ thể. Vui lòng xuất trình tại cửa kiểm soát.
-            </p>
+            <h2 className="section-title">Vé điện tử</h2>
 
             <div className="tickets-grid">
               {attendees?.map((att, idx) => (
@@ -193,23 +192,19 @@ export const CheckoutPage = () => {
                         </span>
                       </div>
                       <div className="ticket-field">
-                        <span className="field-label">MÃ VÉ ĐIỆN TỬ</span>
-                        <span className="field-value seat-highlight">{att.barcode || `TKF-${orderCode}-${idx + 1}`}</span>
+                        <span className="field-label">MÃ VÉ</span>
+                        <span className="field-value seat-highlight">{att.ticket_code || att.barcode || `TKF-${orderCode}-${idx + 1}`}</span>
                       </div>
                       <div className="ticket-field">
                         <span className="field-label">TRẠNG THÁI</span>
-                        <span className="badge badge-success">Hợp lệ · Sẵn sàng check-in</span>
+                        <span className="badge badge-success">Vé hợp lệ</span>
                       </div>
                     </div>
 
                     <div className="ticket-qr-col">
-                      <QrCodeSvg value={att.barcode || `TKF-${orderCode}-${idx}`} size={130} />
+                      <QrCodeSvg value={att.ticket_code || att.barcode || `TKF-${orderCode}-${idx}`} size={130} />
                       <div className="qr-caption">Quét QR tại cổng</div>
                     </div>
-                  </div>
-
-                  <div className="ticket-barcode-footer">
-                    <BarcodeSvg value={att.barcode || `TKF-${orderCode}-${idx}`} height={42} />
                   </div>
                 </div>
               ))}
@@ -218,10 +213,10 @@ export const CheckoutPage = () => {
 
           <div className="receipt-actions">
             <Link to={`/receipt/${order?.id}`} className="btn btn-secondary">
-              🧾 Xem & In Biên lai điện tử
+              Xem biên lai
             </Link>
             <Link to="/my-tickets" className="btn btn-primary btn-lg">
-              🎟️ Quản lý đơn hàng trong "Vé của tôi"
+              Vé của tôi
             </Link>
             <Link to="/" className="btn btn-secondary">
               Quay lại trang sự kiện
@@ -236,35 +231,26 @@ export const CheckoutPage = () => {
   if (!activeOrder && cartItems.length === 0) {
     return (
       <section className="card empty-state empty-state-card">
-        <div className="empty-icon">🛒</div>
-        <h2>{t('checkout.empty_title', 'Giỏ vé của bạn đang trống')}</h2>
+        <h2>{t('checkout.empty_title', 'Giỏ vé đang trống')}</h2>
         <p className="muted">
-          {t('checkout.empty_desc', 'Bạn chưa chọn vé hoặc phiên giữ chỗ đã hết hạn. Hãy chọn vé tại trang chi tiết sự kiện để giữ chỗ.')}
+          {t('checkout.empty_desc', 'Bạn chưa chọn vé hoặc phiên đặt vé đã hết hạn.')}
         </p>
-        <Link to="/" className="btn btn-primary">{t('checkout.empty_btn', 'Khám phá các sự kiện')}</Link>
+        <Link to="/" className="btn btn-primary">{t('checkout.empty_btn', 'Khám phá sự kiện')}</Link>
       </section>
     );
   }
 
   return (
     <section className="checkout-layout">
-      {/* 15-Minute Countdown Timer & Progress Bar */}
+      {/* Countdown Timer & Progress Bar */}
       {remainingSeconds > 0 && (
         <div className={`hold-timer-card ${remainingSeconds < 180 ? 'timer-urgent' : ''}`}>
           <div className="timer-header-flex">
             <div className="timer-status">
               <span className="pulse-indicator" />
               <div>
-                <strong>{t('checkout.exclusive_hold', 'Vé & Chỗ ngồi đang được giữ độc quyền cho bạn')}</strong>
-                <span className="timer-desc">
-                  {t('checkout.exclusive_hold_desc', 'Chỗ ngồi đã được khóa an toàn. Vui lòng hoàn tất thanh toán trước khi hết giờ.')}
-                </span>
+                <strong>Thời gian thanh toán còn lại: <span className="clock-digits">{formatTimer(remainingSeconds)}</span></strong>
               </div>
-            </div>
-
-            <div className="timer-clock-badge">
-              <span className="clock-icon">⏱️</span>
-              <span className="clock-digits">{formatTimer(remainingSeconds)}</span>
             </div>
 
             <button type="button" className="btn btn-secondary btn-sm" onClick={handleCancel}>
@@ -272,7 +258,7 @@ export const CheckoutPage = () => {
             </button>
           </div>
 
-          {/* Animated Progress Bar */}
+          {/* Progress Bar */}
           <div className="timer-progress-track">
             <progress
               className={`timer-progress-bar ${
@@ -280,7 +266,7 @@ export const CheckoutPage = () => {
               }`}
               value={progressPercent}
               max={100}
-              aria-label="Thời gian giữ chỗ còn lại"
+              aria-label="Thời gian thanh toán còn lại"
             />
           </div>
         </div>
@@ -291,13 +277,10 @@ export const CheckoutPage = () => {
       <div className="checkout-split">
         {/* Main Form */}
         <form onSubmit={handleSubmitCheckout} className="card checkout-main-form">
-          <h1 className="panel-title">{t('checkout.title', 'Thông tin Người mua & Người tham dự')}</h1>
-          <p className="panel-subtitle">
-            {t('checkout.subtitle', 'Hệ thống chỉ chấp nhận thanh toán trực tuyến tức thì 100% để đảm bảo giải phóng vé giữ chỗ tự động và chống đầu cơ.')}
-          </p>
+          <h1 className="panel-title">{t('checkout.title', 'Thông tin đặt vé')}</h1>
 
           <fieldset className="form-fieldset">
-            <legend className="fieldset-legend">{t('checkout.step_buyer', '1. Thông tin người đặt vé (Chủ đơn hàng)')}</legend>
+            <legend className="fieldset-legend">{t('checkout.step_buyer', '1. Thông tin người đặt vé')}</legend>
             <div className="form-row-2">
               <div className="form-group">
                 <label htmlFor="buyerName">{t('checkout.buyer_name', 'Họ và tên *')}</label>
@@ -314,7 +297,7 @@ export const CheckoutPage = () => {
               </div>
 
               <div className="form-group">
-                <label htmlFor="buyerEmail">{t('checkout.buyer_email', 'Email nhận vé & hóa đơn *')}</label>
+                <label htmlFor="buyerEmail">{t('checkout.buyer_email', 'Email nhận vé *')}</label>
                 <input
                   id="buyerEmail"
                   type="email"
@@ -332,7 +315,7 @@ export const CheckoutPage = () => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="buyerPhone">{t('checkout.buyer_phone', 'Số điện thoại liên hệ *')}</label>
+              <label htmlFor="buyerPhone">{t('checkout.buyer_phone', 'Số điện thoại *')}</label>
               <input
                 id="buyerPhone"
                 type="tel"
@@ -351,9 +334,6 @@ export const CheckoutPage = () => {
             <legend className="fieldset-legend">
               {t('checkout.step_attendees', '2. Danh sách người tham dự')} ({attendeeForms.length} vé)
             </legend>
-            <p className="fieldset-help">
-              Mỗi vé sẽ được phát hành mã QR và mã vạch độc nhất cho từng người tham dự.
-            </p>
 
             <div className="attendee-subforms-stack">
               {attendeeForms.map((att, idx) => (
@@ -363,7 +343,7 @@ export const CheckoutPage = () => {
                     <span className="attendee-tier-name">{att.tier_name}</span>
                     {(activeOrder?.seats && activeOrder.seats[idx]) && (
                       <span className="badge badge-primary seat-highlight-badge">
-                        💺 Ghế: {activeOrder.seats[idx]}
+                        Ghế: {activeOrder.seats[idx]}
                       </span>
                     )}
                   </div>
@@ -383,7 +363,7 @@ export const CheckoutPage = () => {
                       />
                     </div>
                     <div className="form-group">
-                      <label htmlFor={`att-email-${idx}`}>Email người đi (để nhận vé riêng):</label>
+                      <label htmlFor={`att-email-${idx}`}>Email người đi:</label>
                       <input
                         id={`att-email-${idx}`}
                         type="email"
@@ -404,15 +384,15 @@ export const CheckoutPage = () => {
             </div>
           </fieldset>
 
-          {/* Payment Method - Online-only Selection */}
+          {/* Payment Method Selection */}
           <fieldset className="form-fieldset">
             <legend className="fieldset-legend">
-              {t('checkout.step_payment', '3. Phương thức thanh toán trực tuyến (Online-only)')}
+              {t('checkout.step_payment', '3. Phương thức thanh toán')}
             </legend>
 
             {total === 0 ? (
               <div className="alert alert-success">
-                🎉 {t('checkout.complete_free', 'Đơn hàng của bạn có tổng trị giá 0 đ (Vé miễn phí). Bạn sẽ nhận vé ngay lập tức mà không cần thanh toán!')}
+                {t('checkout.free_alert', 'Đơn hàng của bạn có tổng trị giá 0 đ (Vé miễn phí). Bạn sẽ nhận vé ngay lập tức mà không cần thanh toán!')}
               </div>
             ) : (
               <div className="payment-options-grid">
@@ -425,8 +405,8 @@ export const CheckoutPage = () => {
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   />
                   <div className="payment-method-body">
-                    <div className="payment-title">💳 {t('checkout.pay_card', 'Thẻ Quốc tế (Visa / Master / JCB)')}</div>
-                    <div className="payment-desc">Cổng thanh toán bảo mật chuẩn 3D-Secure quốc tế</div>
+                    <div className="payment-title">{t('checkout.card_title', 'Thẻ quốc tế (Visa / MasterCard / JCB)')}</div>
+                    <div className="payment-desc">{t('checkout.card_desc', 'Thanh toán qua thẻ tín dụng hoặc ghi nợ')}</div>
                   </div>
                 </label>
 
@@ -439,8 +419,8 @@ export const CheckoutPage = () => {
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   />
                   <div className="payment-method-body">
-                    <div className="payment-title">📱 {t('checkout.pay_vnpay', 'Cổng VNPay QR / Ví VNPay')}</div>
-                    <div className="payment-desc">Quét mã QR bằng App 30+ Ngân hàng hàng đầu</div>
+                    <div className="payment-title">{t('checkout.vnpay_title', 'VNPay')}</div>
+                    <div className="payment-desc">{t('checkout.vnpay_desc', 'Quét mã QR hoặc ví VNPay')}</div>
                   </div>
                 </label>
 
@@ -453,8 +433,8 @@ export const CheckoutPage = () => {
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   />
                   <div className="payment-method-body">
-                    <div className="payment-title">👛 {t('checkout.pay_momo', 'Ví điện tử MoMo')}</div>
-                    <div className="payment-desc">Thanh toán siêu tốc liên kết ví MoMo</div>
+                    <div className="payment-title">{t('checkout.momo_title', 'Ví MoMo')}</div>
+                    <div className="payment-desc">{t('checkout.momo_desc', 'Thanh toán qua ứng dụng MoMo')}</div>
                   </div>
                 </label>
 
@@ -467,8 +447,8 @@ export const CheckoutPage = () => {
                     onChange={(e) => setPaymentMethod(e.target.value)}
                   />
                   <div className="payment-method-body">
-                    <div className="payment-title">🏦 {t('checkout.pay_napas', 'Chuyển khoản QR Napas 247')}</div>
-                    <div className="payment-desc">Tự động khớp lệnh tức thì 24/7 qua mã QR động</div>
+                    <div className="payment-title">{t('checkout.napas_title', 'Chuyển khoản Napas 247')}</div>
+                    <div className="payment-desc">{t('checkout.napas_desc', 'Quét mã QR chuyển khoản')}</div>
                   </div>
                 </label>
               </div>
@@ -482,18 +462,13 @@ export const CheckoutPage = () => {
             disabled={submitting}
           >
             {submitting ? (
-              <span>{t('checkout.pay_connecting', 'Đang kết nối cổng thanh toán an toàn...')}</span>
+              <span>{t('checkout.submit_processing', 'Đang xử lý thanh toán...')}</span>
             ) : total === 0 ? (
-              t('checkout.complete_free', 'Hoàn tất đăng ký vé miễn phí (0 đ) ngay')
+              t('checkout.submit_free', 'Xác nhận đăng ký vé miễn phí')
             ) : (
-              `${t('checkout.pay_online_btn', 'Thanh toán trực tuyến & Nhận vé ngay')} (${money(total)})`
+              `${t('checkout.submit_pay', 'Thanh toán')} (${money(total)})`
             )}
           </button>
-
-          <p className="escrow-safe-guarantee">
-            🔒 <strong>Dòng tiền bảo chứng Escrow:</strong> 100% thanh toán được tạm giữ an toàn bởi sàn Ticketflow
-            và chỉ giải ngân cho ban tổ chức sau khi sự kiện kết thúc thành công.
-          </p>
         </form>
 
         {/* Sidebar Summary */}
@@ -518,23 +493,14 @@ export const CheckoutPage = () => {
 
             {discountAmount > 0 && (
               <div className="stub-line note good">
-                <span>Ưu đãi giảm giá:</span>
+                <span>{t('event.summary_discount', 'Mã giảm giá')}:</span>
                 <span>−{money(discountAmount)}</span>
               </div>
             )}
 
             <div className="total-due-row">
-              <div className="total-label">{t('checkout.total_due', 'Tổng tiền thanh toán:')}</div>
+              <div className="total-label">{t('checkout.total_due', 'Tổng thanh toán:')}</div>
               <div className="total-amount">{money(total)}</div>
-            </div>
-
-            <div className="stub-perforated-edge" />
-
-            <div className="security-badges-list">
-              <div className="sec-item">🛡️ Bảo đảm giữ chỗ 15 phút</div>
-              <div className="sec-item">💺 Tự động xếp ghế liền kề</div>
-              <div className="sec-item">📲 QR code độc nhất chống vé trùng</div>
-              <div className="sec-item">🔄 Tự phục vụ hoàn tiền theo chính sách</div>
             </div>
           </div>
         </aside>

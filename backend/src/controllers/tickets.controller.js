@@ -4,7 +4,8 @@ class TicketsController {
   async list(req, res, next) {
     try {
       const { id } = req.params;
-      const tiers = await ticketsService.listByEventId(id, true);
+      const includeHidden = req.user?.role === 'ORGANIZER' || req.user?.role === 'ADMIN';
+      const tiers = await ticketsService.listByEventId(id, includeHidden);
       return res.status(200).json({ tiers });
     } catch (err) {
       next(err);

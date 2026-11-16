@@ -77,6 +77,45 @@ class HelpdeskController {
       next(err);
     }
   }
+
+  async deleteTicket(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = await helpdeskService.deleteTicket(id, req.user);
+      return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  createFaq(req, res, next) {
+    try {
+      const faq = helpdeskService.createFaq(req.body);
+      return res.status(201).json({ message: 'Tạo FAQ thành công', faq });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  updateFaq(req, res, next) {
+    try {
+      const { id } = req.params;
+      const faq = helpdeskService.updateFaq(id, req.body);
+      return res.status(200).json({ message: 'Cập nhật FAQ thành công', faq });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  deleteFaq(req, res, next) {
+    try {
+      const { id } = req.params;
+      const result = helpdeskService.deleteFaq(id);
+      return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 export default new HelpdeskController();

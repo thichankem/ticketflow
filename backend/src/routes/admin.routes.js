@@ -13,6 +13,8 @@ router.post('/users/:id/suspend', adminController.suspendUser);
 
 // User Management Endpoints
 router.get('/users', adminController.getUsers);
+router.post('/users', adminController.createUser);
+router.put('/users/:id', adminController.updateUser);
 router.put('/users/:id/role', adminController.updateUserRole);
 router.post('/users/:id/toggle-status', adminController.toggleUserStatus);
 router.delete('/users/:id', adminController.deleteUser);
@@ -27,14 +29,13 @@ router.post('/events/:id/mass-refund', adminController.massRefund);
 // Platform Orders Endpoint
 router.get('/orders', adminController.getOrders);
 
-// Diagnostics & System Health (Phân hệ 2.14 / Quản trị viên sàn)
-router.get('/diagnostics', adminController.getDiagnostics);
+// Broadcast Announcements (REQ-ADM-09: Thông Báo Chung Toàn Sàn)
+router.get('/announcements', adminController.getAnnouncements);
+router.post('/announcements', adminController.createAnnouncement);
+router.delete('/announcements/:id', adminController.deleteAnnouncement);
 
-// Dispute Refund Arbitration (SPEC.md Section 5.6 & DEF-API-02)
+// Helpdesk Dispute Refund Override (SPEC.md Section 5.6)
 router.post('/helpdesk/tickets/:id/dispute-refund', adminController.disputeRefund);
-
-// Escrow Payout Approval (SPEC.md Section 5.5)
-router.post('/escrow/payouts/:id/approve', adminController.approvePayout);
 
 // Export Financial Audit Report (Phân hệ 2.14 & SPEC.md Section 5.5)
 router.get('/export/audit', adminController.exportAuditReport);

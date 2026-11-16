@@ -1,4 +1,16 @@
 import jwt from 'jsonwebtoken';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config();
+
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_ACCESS_SECRET && !process.env.JWT_SECRET) {
+  console.warn('[SECURITY WARNING] Running in production mode without explicit JWT_SECRET or JWT_ACCESS_SECRET configured.');
+}
 
 export const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'ticketflow-access-secret-key-2026';
 export const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'ticketflow-refresh-secret-key-2026';

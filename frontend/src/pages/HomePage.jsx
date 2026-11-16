@@ -8,7 +8,7 @@ import SliderSection from '../components/SliderSection';
 
 export const HomePage = () => {
   const navigate = useNavigate();
-  const { t, lang } = useLanguage();
+  const { t } = useLanguage();
   const [events, setEvents] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +54,7 @@ export const HomePage = () => {
       const isFav = prev.includes(eventId);
       const next = isFav ? prev.filter((id) => id !== eventId) : [...prev, eventId];
       localStorage.setItem('tf_favorites', JSON.stringify(next));
-      showToast(isFav ? 'Đã xóa sự kiện khỏi danh sách quan tâm' : '❤️ Đã lưu sự kiện! Hệ thống sẽ thông báo khi vé mở bán.');
+      showToast(isFav ? 'Đã bỏ lưu sự kiện' : 'Đã lưu sự kiện');
       return next;
     });
   };
@@ -128,6 +128,9 @@ export const HomePage = () => {
 
   return (
     <div className="home-container">
+      {/* Accessible Document Heading Level 1 (UI-003) */}
+      <h1 className="sr-only">Ticketflow — Nền Tảng Đặt Vé &amp; Quản Lý Sự Kiện Trực Tuyến</h1>
+
       {/* Toast Notification */}
       {notificationState && (
         <div className="toast-floating flex items-center gap-sm">
@@ -136,16 +139,19 @@ export const HomePage = () => {
       )}
 
       {/* Quick Search & Location Bar */}
-      <form onSubmit={handleSearchSubmit} className="hero-search-wrapper mb-175">
+      <form onSubmit={handleSearchSubmit} className="hero-search-wrapper mb-175" role="search" aria-label="Tìm kiếm sự kiện">
         <div className="hero-search-field">
-          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <circle cx="11" cy="11" r="8" />
             <line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
+          <label htmlFor="home-search-input" className="sr-only">Tìm kiếm sự kiện</label>
           <input
+            id="home-search-input"
             type="search"
             className="hero-search-input"
             placeholder={t('home.search_placeholder', 'Tìm sự kiện theo tên, nghệ sĩ, ca sĩ, ban nhạc hoặc địa điểm...')}
+            aria-label={t('home.search_placeholder', 'Tìm sự kiện theo tên, nghệ sĩ, ca sĩ, ban nhạc hoặc địa điểm...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -188,18 +194,16 @@ export const HomePage = () => {
       </nav>
 
       {/* ====================================================================
-          PHẦN 1: GỢI Ý CHO BẠN (SỰ KIỆN NỔI BẬT & ĐẶC SẮC)
+          PHẦN 1: GỢI Ý (SỰ KIỆN NỔI BẬT)
           ==================================================================== */}
       {recommendations.length > 0 && !search && (
         <SliderSection
           id="section-recommendations"
-          badge="Dành riêng cho bạn"
-          title="Gợi ý cho bạn"
-          subtitle="Khám phá những sự kiện đặc sắc và được yêu thích nhất thời điểm hiện tại."
+          title="Gợi ý sự kiện"
           cardBasis="default"
           actionButton={
             <Link to="/events" className="tkb-view-all-link">
-              Xem tất cả gợi ý →
+              Xem tất cả →
             </Link>
           }
         >
@@ -210,12 +214,13 @@ export const HomePage = () => {
             return (
               <article key={`rec-slide-${event.id}`} className="tkb-card">
                 <div className={`tkb-card-cover ${toneClass(event.category)}`}>
-                  {event.cover ? (
-                    <img src={event.cover} alt={event.title} loading="lazy" />
-                  ) : (
-                    <div className="placeholder-cover-icon">
-                      🎵
-                    </div>
+                  {(event.cover || event.banner) && (
+                    <img
+                      src={event.cover || event.banner}
+                      alt={event.title}
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+                    />
                   )}
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">{event.category || 'Nổi bật'}</span>
@@ -223,8 +228,8 @@ export const HomePage = () => {
                       type="button"
                       className={`tkb-fav-btn ${isFav ? 'active' : ''}`}
                       onClick={(e) => toggleFavorite(event.id, e)}
-                      title={isFav ? 'Bỏ thích' : 'Thả tim để nhận thông báo'}
-                      aria-label="Thả tim sự kiện"
+                      title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
+                      aria-label="Lưu sự kiện"
                     >
                       ♥
                     </button>
@@ -242,10 +247,10 @@ export const HomePage = () => {
 
                   <div className="tkb-card-meta">
                     <span className="tkb-meta-item">
-                      📅 {formatDate(eventStart(event))}
+                      {formatDate(eventStart(event))}
                     </span>
                     <span className="tkb-meta-item">
-                      📍 {event.location ? event.location.split(',')[0] : 'Toàn quốc'}
+                      {event.location ? event.location.split(',')[0] : 'Toàn quốc'}
                     </span>
                   </div>
 
@@ -264,16 +269,12 @@ export const HomePage = () => {
       {/* Clean Empty State when no events exist */}
       {events.length === 0 && (
         <section className="card empty-state-card">
-          <div className="empty-state-card-icon">🎪</div>
           <h2 className="empty-state-card-heading">
-            Chưa có sự kiện nào được đăng tải
+            Chưa có sự kiện nào
           </h2>
-          <p className="muted empty-state-card-desc">
-            Hệ thống hiện tại chưa có sự kiện nào đang mở bán. Hãy quay lại sau hoặc đăng ký trở thành Nhà tổ chức để khởi tạo sự kiện đầu tiên của bạn!
-          </p>
-          <div className="flex justify-center gap-sm flex-wrap">
+          <div className="flex justify-center gap-sm flex-wrap mt-md">
             <Link to="/organizer" className="btn btn-primary empty-state-card-btn">
-              + Tạo sự kiện ngay
+              Tạo sự kiện
             </Link>
             <Link to="/events" className="btn btn-secondary empty-state-card-btn">
               Khám phá sự kiện
@@ -283,14 +284,12 @@ export const HomePage = () => {
       )}
 
       {/* ====================================================================
-          PHẦN 2: SỰ KIỆN SẮP TỚI (SẮP MỞ BÁN / MỚI MỞ BÁN - 3:4 PORTRAIT CARDS)
+          PHẦN 2: SỰ KIỆN SẮP TỚI
           ==================================================================== */}
       {upcomingEvents.length > 0 && (
         <SliderSection
           id="section-upcoming"
-          badge="⏰ Lịch mở bán sớm"
-          title="Sự kiện sắp tới & Sắp mở bán"
-          subtitle="Cập nhật lịch mở bán vé sớm của các liveshow, đại nhạc hội và sự kiện quy mô lớn."
+          title="Sự kiện sắp diễn ra"
           cardBasis="portrait"
           actionButton={
             <div className="tkb-tabs">
@@ -299,7 +298,7 @@ export const HomePage = () => {
                 className={`tkb-tab-btn ${upcomingTab === 'coming_soon' ? 'active' : ''}`}
                 onClick={() => setUpcomingTab('coming_soon')}
               >
-                {t('home.upcoming_heading', 'Sắp mở bán')}
+                {t('home.upcoming_heading', 'Sắp diễn ra')}
               </button>
               <button
                 type="button"
@@ -314,33 +313,34 @@ export const HomePage = () => {
           {upcomingEvents.map((event, idx) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
             const countdowns = [
-              'Mở bán: 10:00 Ngày mai',
-              'Mở bán: 20:00 - 18/11',
+              '10:00 Ngày mai',
+              '20:00 - 18/11',
               'Sau 2 ngày nữa',
               'Cuối tuần này',
               'Còn 5 ngày',
-              'Mở bán sớm cho VIP',
+              'Mở bán sớm',
             ];
             const countdownText = countdowns[idx % countdowns.length];
 
             return (
               <article key={`upcoming-${event.id}`} className="tkb-portrait-card">
                 <img
-                  src={event.cover || 'https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400&h=600&fit=crop'}
+                  src={event.cover || event.banner || '/images/events/summit.svg'}
                   alt={event.title}
                   className="tkb-portrait-bg"
                   loading="lazy"
+                  onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
                 />
                 <div className="tkb-portrait-overlay" />
 
                 <div className="tkb-portrait-badge">
                   <span className="tkb-pulsing-dot" />
-                  {upcomingTab === 'coming_soon' ? 'SẮP MỞ BÁN' : 'VỪA MỞ BÁN'}
+                  {upcomingTab === 'coming_soon' ? 'SẮP DIỄN RA' : 'ĐANG MỞ BÁN'}
                 </div>
 
                 <div className="tkb-portrait-content">
                   <div className="tkb-countdown-tag">
-                    ⏰ {upcomingTab === 'coming_soon' ? countdownText : 'Đang mở cổng bán'}
+                    {upcomingTab === 'coming_soon' ? countdownText : 'Đang mở bán'}
                   </div>
                   <h3 className="tkb-portrait-title">
                     <Link to={`/events/${event.id}`} className="text-white no-underline">
@@ -348,14 +348,14 @@ export const HomePage = () => {
                     </Link>
                   </h3>
                   <div className="tkb-portrait-price">
-                    {from === null ? 'Giá dự kiến từ 250.000 đ' : from === 0 ? 'MIỄN PHÍ' : `Từ ${money(from)}`}
+                    {from === null ? 'Đang cập nhật' : from === 0 ? 'MIỄN PHÍ' : `Từ ${money(from)}`}
                   </div>
                   <button
                     type="button"
                     className="tkb-btn-notify"
-                    onClick={() => showToast(`🔔 Đã đặt nhắc nhở cho sự kiện "${event.title}"! Chúng tôi sẽ gửi thông báo 15 phút trước giờ mở bán.`)}
+                    onClick={() => showToast(`Đã lưu thông báo cho sự kiện "${event.title}".`)}
                   >
-                    🔔 Đặt nhắc nhở mở bán
+                    Nhận thông báo
                   </button>
                 </div>
               </article>
@@ -365,18 +365,16 @@ export const HomePage = () => {
       )}
 
       {/* ====================================================================
-          PHẦN 4: DANH MỤC ĐẶC SẮC THEO THỂ LOẠI (NHẠC SỐNG & SÂN KHẤU)
+          PHẦN 3: NHẠC SỐNG & CONCERT
           ==================================================================== */}
       {musicEvents.length > 0 && (
         <SliderSection
           id="section-music"
-          badge="🎵 Âm nhạc đỉnh cao"
           title="Nhạc sống & Concert"
-          subtitle="Những đêm nhạc bùng nổ, live concert và festival âm nhạc sôi động nhất."
           cardBasis="default"
           actionButton={
             <Link to="/events?category=Music" className="tkb-view-all-link">
-              Xem tất cả Nhạc sống →
+              Xem tất cả →
             </Link>
           }
         >
@@ -386,14 +384,21 @@ export const HomePage = () => {
             return (
               <article key={`music-${event.id}`} className="tkb-card">
                 <div className={`tkb-card-cover ${toneClass(event.category)}`}>
-                  {event.cover && <img src={event.cover} alt={event.title} loading="lazy" />}
+                  {(event.cover || event.banner) && (
+                    <img
+                      src={event.cover || event.banner}
+                      alt={event.title}
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+                    />
+                  )}
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">Nhạc sống</span>
                     <button
                       type="button"
                       className={`tkb-fav-btn ${isFav ? 'active' : ''}`}
                       onClick={(e) => toggleFavorite(event.id, e)}
-                      aria-label="Thả tim"
+                      aria-label="Lưu sự kiện"
                     >
                       ♥
                     </button>
@@ -407,8 +412,8 @@ export const HomePage = () => {
                     <Link to={`/events/${event.id}`}>{event.title}</Link>
                   </h3>
                   <div className="tkb-card-meta">
-                    <span className="tkb-meta-item">📅 {formatDate(eventStart(event))}</span>
-                    <span className="tkb-meta-item">📍 {event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
+                    <span className="tkb-meta-item">{formatDate(eventStart(event))}</span>
+                    <span className="tkb-meta-item">{event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
                   </div>
                   <div className="tkb-card-action">
                     <Link to={`/events/${event.id}`} className="tkb-btn-book">
@@ -425,13 +430,11 @@ export const HomePage = () => {
       {theaterEvents.length > 0 && (
         <SliderSection
           id="section-theater"
-          badge="🎭 Nghệ thuật & Sân khấu"
-          title="Sân khấu & Nghệ thuật kịch nói"
-          subtitle="Vở kịch đặc sắc, triển lãm hội họa và các chương trình nghệ thuật kinh điển."
+          title="Sân khấu & Nghệ thuật"
           cardBasis="default"
           actionButton={
             <Link to="/events?category=Design" className="tkb-view-all-link">
-              Xem tất cả Sân khấu →
+              Xem tất cả →
             </Link>
           }
         >
@@ -441,14 +444,21 @@ export const HomePage = () => {
             return (
               <article key={`theater-${event.id}`} className="tkb-card">
                 <div className={`tkb-card-cover ${toneClass(event.category)}`}>
-                  {event.cover && <img src={event.cover} alt={event.title} loading="lazy" />}
+                  {(event.cover || event.banner) && (
+                    <img
+                      src={event.cover || event.banner}
+                      alt={event.title}
+                      loading="lazy"
+                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+                    />
+                  )}
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">Nghệ thuật</span>
                     <button
                       type="button"
                       className={`tkb-fav-btn ${isFav ? 'active' : ''}`}
                       onClick={(e) => toggleFavorite(event.id, e)}
-                      aria-label="Thả tim"
+                      aria-label="Lưu sự kiện"
                     >
                       ♥
                     </button>
@@ -462,8 +472,8 @@ export const HomePage = () => {
                     <Link to={`/events/${event.id}`}>{event.title}</Link>
                   </h3>
                   <div className="tkb-card-meta">
-                    <span className="tkb-meta-item">📅 {formatDate(eventStart(event))}</span>
-                    <span className="tkb-meta-item">📍 {event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
+                    <span className="tkb-meta-item">{formatDate(eventStart(event))}</span>
+                    <span className="tkb-meta-item">{event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
                   </div>
                   <div className="tkb-card-action">
                     <Link to={`/events/${event.id}`} className="tkb-btn-book">
@@ -478,21 +488,17 @@ export const HomePage = () => {
       )}
 
       {/* ====================================================================
-          CTA KHÁM PHÁ TOÀN BỘ SỰ KIỆN (DẪN SANG TRANG /events)
+          CTA KHÁM PHÁ TOÀN BỘ SỰ KIỆN
           ==================================================================== */}
       <section className="home-discovery-banner">
-        <div className="home-discovery-icon">🎟️</div>
         <h2 className="home-discovery-heading">
-          {t('home.all_heading', 'Khám phá toàn bộ sự kiện đang mở bán')}
+          Tất cả sự kiện đang mở bán
         </h2>
-        <p className="home-discovery-subtext">
-          {t('home.all_sub', 'Hàng trăm đêm nhạc bùng nổ, lễ hội văn hóa, giải chạy marathon và workshop hấp dẫn trên khắp các tỉnh thành đang chờ đón bạn.')}
-        </p>
         <Link
           to="/events"
           className="btn btn-primary home-discovery-cta"
         >
-          <span>{t('home.view_all', 'Xem tất cả sự kiện')}</span>
+          <span>Xem tất cả sự kiện</span>
           <span>→</span>
         </Link>
       </section>

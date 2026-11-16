@@ -126,6 +126,8 @@ export const api = {
   admin: {
     getStats: () => apiFetch('/admin/stats'),
     getUsers: () => apiFetch('/admin/users'),
+    createUser: (data) => apiFetch('/admin/users', { method: 'POST', body: data }),
+    updateUser: (id, data) => apiFetch(`/admin/users/${id}`, { method: 'PUT', body: data }),
     updateUserRole: (id, role) => apiFetch(`/admin/users/${id}/role`, { method: 'PUT', body: { role } }),
     toggleUserStatus: (id) => apiFetch(`/admin/users/${id}/toggle-status`, { method: 'POST' }),
     suspendUser: (id) => apiFetch(`/admin/users/${id}/suspend`, { method: 'POST' }),
@@ -134,8 +136,42 @@ export const api = {
     updateEventStatus: (id, status) => apiFetch(`/admin/events/${id}/status`, { method: 'PUT', body: { status } }),
     deleteEvent: (id) => apiFetch(`/admin/events/${id}`, { method: 'DELETE' }),
     getOrders: () => apiFetch('/admin/orders'),
-    getDiagnostics: () => apiFetch('/admin/diagnostics'),
     exportAuditReport: () => api.downloadCsv(`${API_BASE_URL}/admin/export/audit`, 'platform_financial_audit.csv'),
+    getAnnouncements: () => apiFetch('/admin/announcements'),
+    createAnnouncement: (data) => apiFetch('/admin/announcements', { method: 'POST', body: data }),
+    deleteAnnouncement: (id) => apiFetch(`/admin/announcements/${id}`, { method: 'DELETE' }),
+  },
+
+  // Broadcast Announcements (Public / In-App)
+  announcements: {
+    list: () => apiFetch('/events/announcements'),
+  },
+
+  // In-App Notifications APIs
+  notifications: {
+    list: () => apiFetch('/events/notifications'),
+    markRead: (id) => apiFetch(`/events/notifications/${id}/read`, { method: 'PUT' }),
+    markAllRead: () => apiFetch('/events/notifications/read-all', { method: 'PUT' }),
+    delete: (id) => apiFetch(`/events/notifications/${id}`, { method: 'DELETE' }),
+    clearAll: () => apiFetch('/events/notifications', { method: 'DELETE' }),
+  },
+
+  // Helpdesk & Dispute APIs
+  helpdesk: {
+    getFaqs: (category) => apiFetch(`/helpdesk/faqs${category ? `?category=${category}` : ''}`),
+    createFaq: (data) => apiFetch('/helpdesk/faqs', { method: 'POST', body: data }),
+    updateFaq: (id, data) => apiFetch(`/helpdesk/faqs/${id}`, { method: 'PUT', body: data }),
+    deleteFaq: (id) => apiFetch(`/helpdesk/faqs/${id}`, { method: 'DELETE' }),
+    listTickets: (params) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return apiFetch(`/helpdesk/tickets${q}`);
+    },
+    getTicket: (id) => apiFetch(`/helpdesk/tickets/${id}`),
+    createTicket: (data) => apiFetch('/helpdesk/tickets', { method: 'POST', body: data }),
+    addMessage: (id, message) => apiFetch(`/helpdesk/tickets/${id}/messages`, { method: 'POST', body: { message } }),
+    updateStatus: (id, status, notes) =>
+      apiFetch(`/helpdesk/tickets/${id}/status`, { method: 'PUT', body: { status, resolution_notes: notes } }),
+    deleteTicket: (id) => apiFetch(`/helpdesk/tickets/${id}`, { method: 'DELETE' }),
   },
 
   // Events & Organizer APIs
@@ -149,6 +185,7 @@ export const api = {
     create: (data) => apiFetch('/events', { method: 'POST', body: data }),
     update: (id, data) => apiFetch(`/events/${id}`, { method: 'PUT', body: data }),
     delete: (id) => apiFetch(`/events/${id}`, { method: 'DELETE' }),
+    uploadImage: (data) => apiFetch('/events/upload-image', { method: 'POST', body: data }),
 
     // Organizer Dashboard
     getOrganizerDashboard: () => apiFetch('/events/organizer/dashboard'),
@@ -166,12 +203,14 @@ export const api = {
     // Promos
     getPromos: (id) => apiFetch(`/events/${id}/promos`),
     createPromo: (id, data) => apiFetch(`/events/${id}/promos`, { method: 'POST', body: data }),
+    updatePromo: (id, promoId, data) => apiFetch(`/events/${id}/promos/${promoId}`, { method: 'PUT', body: data }),
     deletePromo: (id, promoId) => apiFetch(`/events/${id}/promos/${promoId}`, { method: 'DELETE' }),
 
     // Attendees & Orders
     getAttendees: (id) => apiFetch(`/events/${id}/attendees`),
-    toggleCheckin: (id, attendeeId) => apiFetch(`/events/${id}/attendees/${attendeeId}/toggle-checkin`, { method: 'POST' }),
-    checkInBarcode: (id, barcode, attendee_id) => apiFetch(`/events/${id}/attendees/check-in`, { method: 'POST', body: { barcode, attendee_id } }),
+    createAttendee: (id, data) => apiFetch(`/events/${id}/attendees`, { method: 'POST', body: data }),
+    updateAttendee: (id, attendeeId, data) => apiFetch(`/events/${id}/attendees/${attendeeId}`, { method: 'PUT', body: data }),
+    deleteAttendee: (id, attendeeId) => apiFetch(`/events/${id}/attendees/${attendeeId}`, { method: 'DELETE' }),
     getOrders: (id) => apiFetch(`/events/${id}/orders`),
   },
 
@@ -195,27 +234,11 @@ export const api = {
     getReceipt: (id) => apiFetch(`/orders/${id}/receipt`),
   },
 
-  // Escrow & Payout Management APIs (Phân hệ 2.14)
-  escrow: {
-    getEventSummary: (eventId) => apiFetch(`/escrow/events/${eventId}`),
-    requestPayout: (eventId, data) => apiFetch(`/escrow/events/${eventId}/payout-request`, { method: 'POST', body: data }),
-    getAllPayouts: () => apiFetch('/escrow/payouts'),
-    updatePayoutStatus: (payoutId, status, notes = '') =>
-      apiFetch(`/escrow/payouts/${payoutId}/status`, { method: 'PUT', body: { status, notes } }),
-  },
-
-  // Helpdesk & Dispute Mediation APIs (Phân hệ 2.16)
-  helpdesk: {
-    getFaqs: (category) => apiFetch(`/helpdesk/faqs${category ? `?category=${category}` : ''}`),
-    createTicket: (data) => apiFetch('/helpdesk/tickets', { method: 'POST', body: data }),
-    getTicket: (id) => apiFetch(`/helpdesk/tickets/${id}`),
-    listTickets: (params = {}) => {
-      const q = new URLSearchParams(params).toString();
-      return apiFetch(`/helpdesk/tickets${q ? `?${q}` : ''}`);
-    },
-    addMessage: (ticketId, message) => apiFetch(`/helpdesk/tickets/${ticketId}/messages`, { method: 'POST', body: { message } }),
-    updateStatus: (ticketId, status, resolution_notes) =>
-      apiFetch(`/helpdesk/tickets/${ticketId}/status`, { method: 'PUT', body: { status, resolution_notes } }),
+  // Auth & Profile APIs
+  auth: {
+    getProfile: () => apiFetch('/auth/me'),
+    updateProfile: (data) => apiFetch('/auth/profile', { method: 'PUT', body: data }),
+    changePassword: (data) => apiFetch('/auth/password', { method: 'PUT', body: data }),
   },
 };
 

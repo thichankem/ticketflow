@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { money, formatDate, formatDateTime } from '../utils/display';
-import { QrCodeSvg, BarcodeSvg } from '../utils/qr';
+import { QrCodeSvg } from '../utils/qr';
 
 export const MyTicketsPage = () => {
   const { user } = useAuth();
@@ -29,27 +29,15 @@ export const MyTicketsPage = () => {
   const [transferForm, setTransferForm] = useState({ new_name: '', new_email: '' });
   const [transferring, setTransferring] = useState(false);
 
-  // Support & Helpdesk State (Phân hệ 2.15)
-  const [showSupportModal, setShowSupportModal] = useState(false);
-  const supportDialogRef = useRef(null);
-  const [supportForm, setSupportForm] = useState({
-    subject: '',
-    category: 'PAYMENT',
-    priority: 'MEDIUM',
-    description: '',
-    contact_name: user?.name || '',
-    contact_email: user?.email || '',
-    orderId: '',
-  });
-  const [submittingSupport, setSubmittingSupport] = useState(false);
-  const [supportSuccess, setSupportSuccess] = useState(null);
-  const [activeFaq, setActiveFaq] = useState(null);
-
   useEffect(() => {
     const dialog = refundDialogRef.current;
     if (!dialog) return;
     if (refundTargetOrder) {
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) {
+        dialog.showModal();
+        const focusTarget = dialog.querySelector('.modal-close-btn') || dialog.querySelector('button');
+        if (focusTarget) focusTarget.focus();
+      }
     } else {
       if (dialog.open) dialog.close();
     }
@@ -59,67 +47,15 @@ export const MyTicketsPage = () => {
     const dialog = transferDialogRef.current;
     if (!dialog) return;
     if (transferTargetAttendee) {
-      if (!dialog.open) dialog.showModal();
+      if (!dialog.open) {
+        dialog.showModal();
+        const firstInput = dialog.querySelector('input') || dialog.querySelector('.modal-close-btn');
+        if (firstInput) firstInput.focus();
+      }
     } else {
       if (dialog.open) dialog.close();
     }
   }, [transferTargetAttendee]);
-
-  useEffect(() => {
-    const dialog = supportDialogRef.current;
-    if (!dialog) return;
-    if (showSupportModal) {
-      if (!dialog.open) dialog.showModal();
-    } else {
-      if (dialog.open) dialog.close();
-    }
-  }, [showSupportModal]);
-
-  const defaultFaqs = [
-    {
-      q: 'Quy trình giữ chỗ 15 phút và thanh toán hoạt động như thế nào?',
-      a: 'Khi bạn bấm chọn vé, hệ thống sẽ tự động khóa số lượng vé và vị trí chỗ ngồi độc quyền cho bạn trong 15 phút. Bạn chỉ cần hoàn tất thanh toán trực tuyến 100% qua thẻ hoặc ví điện tử trước khi hết giờ. Nếu quá 15 phút chưa thanh toán, vé sẽ được tự động giải phóng lại kho.'
-    },
-    {
-      q: 'Làm thế nào để hủy vé và nhận tiền hoàn?',
-      a: 'Tại danh sách đơn hàng ở trên, nếu đơn hàng của bạn thỏa mãn chính sách hoàn hủy của sự kiện (thường là trong vòng 3-7 ngày kể từ lúc đặt và trước ngày sự kiện tối thiểu 3 ngày), bạn chỉ cần nhấn nút "Hủy & Hoàn vé" để hệ thống tự động hoàn tiền trực tuyến.'
-    },
-    {
-      q: 'Làm thế nào để chuyển nhượng vé cho người khác?',
-      a: 'Bạn nhấn nút "Chuyển nhượng" tại vé muốn tặng hoặc sang nhượng, điền họ tên và email người nhận. Hệ thống sẽ vô hiệu mã QR cũ và cấp mã QR độc nhất mới cho người nhận để phòng tránh gian lận quay vòng vé.'
-    },
-    {
-      q: 'Tôi có thể xuất trình vé bằng điện thoại tại cổng không?',
-      a: 'Hoàn toàn được! Bạn chỉ cần mở mục "Vé của tôi" hoặc tải tệp vé điện tử về điện thoại và xuất trình mã QR độc nhất tại cửa vào để nhân viên ban tổ chức quét mã check-in trực tiếp.'
-    }
-  ];
-
-  const handleCreateSupportTicket = async (e) => {
-    e.preventDefault();
-    setSubmittingSupport(true);
-    try {
-      await api.helpdesk.createTicket({
-        ...supportForm,
-        contact_name: supportForm.contact_name || user?.name || 'Khách mua vé',
-        contact_email: supportForm.contact_email || user?.email,
-      });
-      setSupportSuccess('Đã gửi yêu cầu hỗ trợ thành công! Ban tổ chức hoặc Admin sàn sẽ phản hồi sớm nhất qua email của bạn.');
-      setShowSupportModal(false);
-      setSupportForm({
-        subject: '',
-        category: 'PAYMENT',
-        priority: 'MEDIUM',
-        description: '',
-        contact_name: user?.name || '',
-        contact_email: user?.email || '',
-        orderId: '',
-      });
-    } catch (err) {
-      alert(`Lỗi gửi yêu cầu hỗ trợ: ${err.message}`);
-    } finally {
-      setSubmittingSupport(false);
-    }
-  };
 
   const loadOrders = async () => {
     setLoading(true);
@@ -180,11 +116,7 @@ export const MyTicketsPage = () => {
     if (!refundTargetOrder) return;
     setRefunding(true);
     try {
-      try {
-        await (api.orders.refund ? api.orders.refund(refundTargetOrder.id, { reason: refundReason }) : api.post(`/orders/${refundTargetOrder.id}/cancel`, { reason: refundReason }));
-      } catch {
-        // Fallback gracefully for simulation
-      }
+      await (api.orders.refund ? api.orders.refund(refundTargetOrder.id, { reason: refundReason }) : api.post(`/orders/${refundTargetOrder.id}/cancel`, { reason: refundReason }));
 
       // Update local state
       setOrders((prev) =>
@@ -206,7 +138,7 @@ export const MyTicketsPage = () => {
       setRefundNotice(`Đã hủy vé và kích hoạt hoàn tiền thành công cho đơn #${refundTargetOrder.orderShortId || refundTargetOrder.id}. Tiền sẽ được hoàn về tài khoản thanh toán ban đầu của bạn.`);
       setRefundTargetOrder(null);
     } catch (err) {
-      alert(`Lỗi khi yêu cầu hoàn tiền: ${err.message}`);
+      alert(`Lỗi khi yêu cầu hoàn tiền: ${err.message || 'Chính sách sự kiện không cho phép hoàn hủy vé vào thời điểm này.'}`);
     } finally {
       setRefunding(false);
     }
@@ -250,14 +182,7 @@ export const MyTicketsPage = () => {
   return (
     <div className="my-tickets-page-container">
       <header className="page-head">
-        <div className="flex items-center gap-sm">
-          <span className="badge badge-accent">Vé điện tử của tôi</span>
-          <span className="muted text-sm">
-            {user?.name ? `${user.name} (${user.email})` : 'Khách mua vé'}
-          </span>
-        </div>
-        <h1>Vé & Đơn hàng đã đặt</h1>
-        <p>Quản lý mã QR vào cổng, vị trí chỗ ngồi, chuyển nhượng vé và tự phục vụ hủy vé/hoàn tiền trực tuyến.</p>
+        <h1>Vé của tôi</h1>
       </header>
 
       {refundNotice && (
@@ -288,10 +213,13 @@ export const MyTicketsPage = () => {
         </nav>
 
         <div className="search-box-compact min-w-260">
+          <label htmlFor="mytickets-search-input" className="sr-only">Tìm kiếm vé và đơn hàng</label>
           <input
+            id="mytickets-search-input"
             type="search"
             className="input input-sm"
             placeholder={t('mytickets.search_placeholder', 'Tìm theo mã đơn, sự kiện, người tham dự...')}
+            aria-label={t('mytickets.search_placeholder', 'Tìm theo mã đơn, sự kiện, người tham dự...')}
             value={orderSearch}
             onChange={(e) => setOrderSearch(e.target.value)}
           />
@@ -350,7 +278,7 @@ export const MyTicketsPage = () => {
                     Đặt lúc: {formatDateTime(order.created_at)}
                   </span>
                   <span className={`badge ${isRefunded ? 'badge-danger' : 'badge-success'}`}>
-                    {isRefunded ? 'Đã hủy / Đã hoàn tiền' : 'Đã thanh toán (Escrow bảo chứng)'}
+                    {isRefunded ? 'Đã hoàn tiền' : 'Đã thanh toán'}
                   </span>
                 </div>
 
@@ -360,9 +288,9 @@ export const MyTicketsPage = () => {
                   <Link
                     to={`/receipt/${order.id}`}
                     className="btn btn-secondary btn-sm"
-                    title="Xem biên lai điện tử bảo chứng Escrow"
+                    title="Xem biên lai"
                   >
-                    🧾 Biên lai điện tử
+                    Biên lai
                   </Link>
 
                   {/* Self-service Refund / Cancel Button */}
@@ -371,9 +299,8 @@ export const MyTicketsPage = () => {
                       type="button"
                       className="btn btn-secondary btn-sm refund-trigger-btn"
                       onClick={() => setRefundTargetOrder(order)}
-                      title="Chính sách hoàn tiền: Hủy trước sự kiện ít nhất 3 ngày để được hoàn 100%"
                     >
-                      🛡️ Hủy vé & Hoàn tiền
+                      Hủy vé
                     </button>
                   )}
                 </div>
@@ -382,18 +309,18 @@ export const MyTicketsPage = () => {
               {/* Event Title Banner */}
               <div className="order-event-title-banner">
                 <h3>{order.event_title || 'Sự kiện Ticketflow'}</h3>
-                {order.event_location && <div className="event-loc">📍 {order.event_location}</div>}
+                {order.event_location && <div className="event-loc">{order.event_location}</div>}
               </div>
 
-              {/* Tickets List with QR & Barcode */}
+              {/* Tickets List with QR */}
               <div className="order-tickets-list">
                 {order.attendees?.map((att, idx) => (
                   <div key={att.id || idx} className={`ticket-row-item ${isRefunded ? 'ticket-cancelled' : ''}`}>
                     <div className="ticket-details-box">
                       <div className="ticket-badge-row">
                         <span className="badge badge-primary">{att.tier_name || 'Vé tiêu chuẩn'}</span>
-                        <span className={`status-pill ${att.status === 'CHECKED_IN' ? 'checked-in' : 'ready'}`}>
-                          {att.status === 'CHECKED_IN' ? '✅ Đã Check-in vào cửa' : '🟢 Sẵn sàng check-in'}
+                        <span className={`status-pill ${att.status === 'CANCELLED' ? 'cancelled' : 'ready'}`}>
+                          {att.status === 'CANCELLED' ? 'Đã hủy' : 'Vé hợp lệ'}
                         </span>
                       </div>
 
@@ -405,11 +332,11 @@ export const MyTicketsPage = () => {
                       </div>
                       <div className="ticket-seat-assignment">
                         <strong>Vị trí chỗ ngồi:</strong>{' '}
-                        <span className="seat-badge">{att.seat || `Hàng A - Ghế A0${idx + 1}`}</span>
+                        <span className="seat-badge">{att.seat || 'Ghế tự do (Open Seating)'}</span>
                       </div>
 
                       {/* Transfer Ticket Action Button */}
-                      {!isRefunded && att.status !== 'CHECKED_IN' && (
+                      {!isRefunded && att.status !== 'CANCELLED' && (
                         <div className="mt-075">
                           <button
                             type="button"
@@ -419,20 +346,15 @@ export const MyTicketsPage = () => {
                               setTransferForm({ new_name: '', new_email: '' });
                             }}
                           >
-                            🔄 Chuyển nhượng vé
+                            Chuyển nhượng
                           </button>
                         </div>
                       )}
                     </div>
 
                     <div className="ticket-qr-container">
-                      <QrCodeSvg value={att.barcode || `TKF-${order.id}-${idx}`} size={120} />
-                      <div className="qr-door-label">Mã QR Check-in</div>
-                    </div>
-
-                    <div className="ticket-barcode-container">
-                      <BarcodeSvg value={att.barcode || `TKF-${order.id}-${idx}`} width={200} height={42} />
-                      <span className="barcode-desc">Xuất trình tại cổng soát vé</span>
+                      <QrCodeSvg value={att.qr_hash || att.ticket_code || att.barcode || `TKF-${order.id}-${idx}`} size={120} />
+                      <div className="qr-door-label">Mã QR Vé Điện Tử</div>
                     </div>
                   </div>
                 ))}
@@ -480,7 +402,7 @@ export const MyTicketsPage = () => {
         {refundTargetOrder && (
           <div className="modal-dialog refund-modal">
             <div className="modal-header">
-              <h3 id="refund-modal-title">🛡️ Xác nhận Yêu cầu Hủy vé & Hoàn tiền Trực tuyến</h3>
+              <h3 id="refund-modal-title">Xác nhận hủy vé & hoàn tiền</h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -493,13 +415,13 @@ export const MyTicketsPage = () => {
 
             <div className="modal-body">
               <div className="refund-policy-summary">
-                <h4>Chi tiết Chính sách Hoàn vé Tự động:</h4>
+                <h4>Thông tin hoàn vé:</h4>
                 <ul>
                   <li>• Đơn hàng: <strong>{refundTargetOrder.orderShortId || refundTargetOrder.id}</strong></li>
-                  <li>• Tổng tiền hoàn: <strong>{money(refundTargetOrder.total)} (Hoàn 100%)</strong></li>
+                  <li>• Tổng tiền hoàn: <strong>{money(refundTargetOrder.total)}</strong></li>
                   <li>• Điều kiện thời gian: Thực hiện trước ngày diễn ra sự kiện ít nhất 3 ngày.</li>
-                  <li>• Phương thức hoàn: Hoàn trực tiếp về tài khoản/thẻ ban đầu qua cổng thanh toán trực tuyến.</li>
-                  <li>• Thu hồi vé: Toàn bộ mã QR và chỗ ngồi sẽ bị vô hiệu hóa và nhả lại vào kho sự kiện.</li>
+                  <li>• Phương thức hoàn: Hoàn về tài khoản thanh toán ban đầu.</li>
+                  <li>• Thu hồi vé: Mã QR và chỗ ngồi sẽ bị vô hiệu hóa sau khi hủy.</li>
                 </ul>
               </div>
 
@@ -555,7 +477,7 @@ export const MyTicketsPage = () => {
         {transferTargetAttendee && (
           <div className="modal-dialog">
             <div className="modal-header">
-              <h3 id="transfer-modal-title">🔄 Chuyển nhượng vé tham dự</h3>
+              <h3 id="transfer-modal-title">Chuyển nhượng vé</h3>
               <button
                 type="button"
                 className="modal-close-btn"
@@ -624,169 +546,6 @@ export const MyTicketsPage = () => {
             </form>
           </div>
         )}
-      </dialog>
-
-      {/* Section Support & FAQ (Phân hệ 2.15) */}
-      <section id="support" className="card support-helpdesk-box form-mt-lg">
-        <div className="support-header-row">
-          <div>
-            <h2 className="panel-title m-0">🎧 Trung Tâm Trợ Giúp & Giải Quyết Khiếu Nại</h2>
-            <p className="muted mt-xs">
-              Tra cứu nhanh câu hỏi thường gặp hoặc gửi phiếu hỗ trợ trực tiếp đến Ban tổ chức và Ban quản trị sàn Ticketflow.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => setShowSupportModal(true)}
-          >
-            ✉️ Gửi Yêu Cầu Hỗ Trợ
-          </button>
-        </div>
-
-        {supportSuccess && (
-          <div className="alert alert-success mb-md">
-            {supportSuccess}
-          </div>
-        )}
-
-        <div className="faq-accordion-list">
-          {defaultFaqs.map((faq, idx) => (
-            <div
-              key={idx}
-              className="faq-item card"
-              onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
-            >
-              <div className="faq-question-row">
-                <span>❓ {faq.q}</span>
-                <span className="faq-toggle-icon">{activeFaq === idx ? '−' : '+'}</span>
-              </div>
-              {activeFaq === idx && (
-                <p className="faq-answer-text">
-                  {faq.a}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Support Ticket Modal with native <dialog> */}
-      <dialog
-        ref={supportDialogRef}
-        className="native-modal"
-        aria-labelledby="support-modal-title"
-        onClose={() => setShowSupportModal(false)}
-        onClick={(e) => {
-          if (e.target === supportDialogRef.current) setShowSupportModal(false);
-        }}
-      >
-        <div className="modal-dialog">
-          <div className="modal-header">
-            <h3 id="support-modal-title">✉️ Gửi Phiếu Yêu Cầu Hỗ Trợ (Support Ticket)</h3>
-            <button
-              type="button"
-              className="modal-close-btn"
-              onClick={() => setShowSupportModal(false)}
-              aria-label="Đóng cửa sổ"
-            >
-              ✕
-            </button>
-          </div>
-
-          <form onSubmit={handleCreateSupportTicket}>
-            <div className="modal-body">
-              <div className="form-group">
-                <label htmlFor="supSubject">Tiêu đề yêu cầu *</label>
-                <input
-                  id="supSubject"
-                  type="text"
-                  required
-                  className="input"
-                  placeholder="Ví dụ: Sự cố thanh toán vé / Yêu cầu đổi thông tin"
-                  value={supportForm.subject}
-                  onChange={(e) => setSupportForm({ ...supportForm, subject: e.target.value })}
-                />
-              </div>
-
-              <div className="form-row-2 form-mt-sm">
-                <div className="form-group">
-                  <label htmlFor="supCat">Phân loại sự cố *</label>
-                  <select
-                    id="supCat"
-                    className="select"
-                    value={supportForm.category}
-                    onChange={(e) => setSupportForm({ ...supportForm, category: e.target.value })}
-                  >
-                    <option value="PAYMENT">Thanh toán & Giao dịch</option>
-                    <option value="TICKET_ISSUE">Sự cố vé & Mã QR</option>
-                    <option value="REFUND_REQUEST">Khiếu nại hoàn tiền</option>
-                    <option value="CHECKIN_ISSUE">Sự cố soát vé cổng</option>
-                    <option value="OTHER">Vấn đề khác</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="supPri">Mức độ ưu tiên</label>
-                  <select
-                    id="supPri"
-                    className="select"
-                    value={supportForm.priority}
-                    onChange={(e) => setSupportForm({ ...supportForm, priority: e.target.value })}
-                  >
-                    <option value="LOW">Thấp (Tư vấn chung)</option>
-                    <option value="MEDIUM">Bình thường</option>
-                    <option value="HIGH">Cao</option>
-                    <option value="URGENT">Khẩn cấp (Trong ngày sự kiện)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group form-mt-sm">
-                <label htmlFor="supOrder">Mã đơn hàng liên quan (Nếu có)</label>
-                <input
-                  id="supOrder"
-                  type="text"
-                  className="input"
-                  placeholder="Ví dụ: ORD-1001"
-                  value={supportForm.orderId}
-                  onChange={(e) => setSupportForm({ ...supportForm, orderId: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group form-mt-sm">
-                <label htmlFor="supDesc">Mô tả chi tiết sự cố *</label>
-                <textarea
-                  id="supDesc"
-                  required
-                  rows={4}
-                  className="input"
-                  placeholder="Mô tả cụ thể sự cố bạn gặp phải để ban tổ chức và sàn hỗ trợ xử lý nhanh nhất..."
-                  value={supportForm.description}
-                  onChange={(e) => setSupportForm({ ...supportForm, description: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="modal-footer">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={submittingSupport}
-              >
-                {submittingSupport ? 'Đang gửi...' : 'Gửi Phiếu Yêu Cầu'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                disabled={submittingSupport}
-                onClick={() => setShowSupportModal(false)}
-              >
-                Đóng
-              </button>
-            </div>
-          </form>
-        </div>
       </dialog>
     </div>
   );

@@ -1,8 +1,8 @@
 import { supabase } from '../config/supabase.js';
 
 export const ALLOWED_MIME_TYPES = {
-  'event-docs': ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'],
-  'helpdesk-evidence': ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
+  'event-docs': ['image/png', 'image/jpeg', 'image/webp'],
+  'event-images': ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'],
 };
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
@@ -10,21 +10,36 @@ export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 class StorageService {
   /**
    * Uploads a file buffer or base64 payload to the specified Supabase Storage bucket.
+   * Strictly enforces image MIME types (disallows video and PDF).
    *
-   * @param {string} bucket - Target bucket ('event-docs' | 'helpdesk-evidence')
+   * @param {string} bucket - Target bucket ('event-docs' | 'event-images' | 'helpdesk-evidence')
    * @param {string} filePath - Path / file name inside bucket
    * @param {Buffer|Uint8Array|string} fileData - File buffer or base64 string
-   * @param {string} mimeType - File MIME type (e.g. 'application/pdf')
+   * @param {string} mimeType - File MIME type (e.g. 'image/webp')
    * @returns {Promise<{ key: string, publicUrl?: string, path: string }>}
    */
-  async uploadFile(bucket, filePath, fileData, mimeType = 'application/pdf') {
+  async uploadFile(bucket, filePath, fileData, mimeType = 'image/webp') {
     if (!bucket || !filePath) {
       throw new Error('Bucket and filePath are required');
     }
 
-    const allowed = ALLOWED_MIME_TYPES[bucket] || ALLOWED_MIME_TYPES['event-docs'];
-    if (!allowed.includes(mimeType.toLowerCase())) {
-      const err = new Error(`File type ${mimeType} is not permitted in bucket ${bucket}`);
+    const cleanMime = mimeType.toLowerCase();
+
+    // Explicit rejection for video and PDF formats
+    if (cleanMime.startsWith('video/')) {
+      const err = new Error('Không cho phép tải video lên. Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPEG, WebP).');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (cleanMime === 'application/pdf') {
+      const err = new Error('Không hỗ trợ tệp PDF nữa. Vui lòng chỉ tải lên hình ảnh.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const allowed = ALLOWED_MIME_TYPES[bucket] || ALLOWED_MIME_TYPES['event-images'];
+    if (!allowed.includes(cleanMime)) {
+      const err = new Error(`File type ${mimeType} is not permitted in bucket ${bucket}. Only images (PNG, JPEG, WebP) are allowed.`);
       err.statusCode = 400;
       throw err;
     }

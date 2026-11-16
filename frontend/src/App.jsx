@@ -15,8 +15,11 @@ const MyTicketsPage = lazy(() => import('./pages/MyTicketsPage'));
 const ReceiptPage = lazy(() => import('./pages/ReceiptPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const OrganizerPage = lazy(() => import('./pages/OrganizerPage'));
+const CreateEventPage = lazy(() => import('./pages/CreateEventPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 /**
  * Access gate guard for RBAC isolation
@@ -36,10 +39,11 @@ const RoleGate = ({ allowedRoles, title, children }) => {
   return (
     <div className="role-denied-shell">
       <div className="card role-denied-card">
-        <div className="denied-icon">🔒</div>
-        <h2>Khu Vực Giới Hạn Theo Vai Trò</h2>
+        <h2>Giới hạn quyền truy cập</h2>
         <p className="muted">
-          Bạn đang truy cập không gian làm việc dành cho <strong>{title}</strong>.
+          {currentRole === 'ADMIN'
+            ? 'Quản trị viên sàn (Super Admin) không có quyền truy cập vào giao diện Ban tổ chức sự kiện.'
+            : `Không gian làm việc dành cho ${title}.`}
         </p>
 
         <div className="role-diff-info">
@@ -52,13 +56,19 @@ const RoleGate = ({ allowedRoles, title, children }) => {
         </div>
 
         <div className="denied-actions">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => switchDemoRole(targetDemoRole)}
-          >
-            Chuyển Sang Không Gian {targetDemoRole}
-          </button>
+          {currentRole === 'ADMIN' ? (
+            <Link to="/admin" className="btn btn-primary">
+              Quay Về Bảng Quản Trị Sàn
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => switchDemoRole(targetDemoRole)}
+            >
+              Chuyển Sang Không Gian {targetDemoRole}
+            </button>
+          )}
           <Link to="/" className="btn btn-secondary">
             Quay Về Trang Chủ
           </Link>
@@ -71,7 +81,7 @@ const RoleGate = ({ allowedRoles, title, children }) => {
 export function App() {
   return (
     <>
-      <RoleSwitcherBar />
+      {import.meta.env.DEV && <RoleSwitcherBar />}
       <Suspense fallback={<div className="page-suspense-fallback" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>}>
         <Routes>
         {/* ============================================================== */}
@@ -157,6 +167,18 @@ export function App() {
             </AttendeeLayout>
           }
         />
+        <Route
+          path="/profile"
+          element={<ProfilePage />}
+        />
+        <Route
+          path="/notifications"
+          element={
+            <RoleGate allowedRoles={['ATTENDEE', 'ORGANIZER', 'ADMIN']} title="Thông Báo Hộp Thư">
+              <NotificationsPage />
+            </RoleGate>
+          }
+        />
 
         {/* ============================================================== */}
         {/* ROLE 2: EVENT ORGANIZER STUDIO INTERFACES                     */}
@@ -165,8 +187,28 @@ export function App() {
           path="/organizer"
           element={
             <OrganizerLayout>
-              <RoleGate allowedRoles={['ORGANIZER', 'ADMIN']} title="Ban Tổ Chức Sự Kiện">
+              <RoleGate allowedRoles={['ORGANIZER']} title="Ban Tổ Chức Sự Kiện">
                 <OrganizerPage />
+              </RoleGate>
+            </OrganizerLayout>
+          }
+        />
+        <Route
+          path="/organizer/events/new"
+          element={
+            <OrganizerLayout>
+              <RoleGate allowedRoles={['ORGANIZER']} title="Ban Tổ Chức Sự Kiện">
+                <CreateEventPage />
+              </RoleGate>
+            </OrganizerLayout>
+          }
+        />
+        <Route
+          path="/organizer/create"
+          element={
+            <OrganizerLayout>
+              <RoleGate allowedRoles={['ORGANIZER']} title="Ban Tổ Chức Sự Kiện">
+                <CreateEventPage />
               </RoleGate>
             </OrganizerLayout>
           }

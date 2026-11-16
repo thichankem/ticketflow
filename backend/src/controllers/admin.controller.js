@@ -2,6 +2,7 @@ import authService from '../services/auth.service.js';
 import eventsService from '../services/events.service.js';
 import ordersService from '../services/orders.service.js';
 import { query } from '../config/db.js';
+import { sanitizeCsvCell } from '../utils/csv.js';
 
 class AdminController {
   async getStats(req, res, next) {
@@ -74,6 +75,31 @@ class AdminController {
     }
   }
 
+  async createUser(req, res, next) {
+    try {
+      const user = await authService.adminCreateUser(req.body);
+      return res.status(201).json({
+        message: 'User created successfully',
+        user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateUser(req, res, next) {
+    try {
+      const { id } = req.params;
+      const user = await authService.adminUpdateUser(id, req.body);
+      return res.status(200).json({
+        message: 'User updated successfully',
+        user,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   async getEvents(req, res, next) {
     try {
       const events = await eventsService.getAllEventsWithMetrics();
@@ -100,9 +126,10 @@ class AdminController {
   async deleteEvent(req, res, next) {
     try {
       const { id } = req.params;
-      await eventsService.adminDeleteEvent(id);
+      const result = await eventsService.adminDeleteEvent(id);
       return res.status(200).json({
-        message: 'Event deleted successfully',
+        message: result?.message || 'Event deleted successfully',
+        ...result,
       });
     } catch (err) {
       next(err);
@@ -128,65 +155,23 @@ class AdminController {
     }
   }
 
-  async getDiagnostics(req, res, next) {
-    try {
-      const startTime = Date.now();
-      let dbStatus = 'CONNECTED';
-      let latency = '< 5ms';
-      try {
-        await query('SELECT 1');
-        latency = `${Date.now() - startTime}ms`;
-      } catch {
-        dbStatus = 'DISCONNECTED';
-      }
-
-      const mem = process.memoryUsage();
-      const uptimeSec = Math.floor(process.uptime());
-      const uptimeFormatted = `${Math.floor(uptimeSec / 3600)}h ${Math.floor((uptimeSec % 3600) / 60)}m ${uptimeSec % 60}s`;
-
-      return res.status(200).json({
-        server: {
-          status: 'ONLINE',
-          environment: process.env.NODE_ENV || 'production',
-          uptime: uptimeFormatted,
-          node_version: process.version,
-          memory: `${Math.round(mem.heapUsed / 1024 / 1024)} MB / ${Math.round(mem.heapTotal / 1024 / 1024)} MB`,
-        },
-        database: {
-          status: dbStatus,
-          type: 'PostgreSQL Pooler (Supabase)',
-          latency,
-          activeConnections: 1,
-        },
-        cache: {
-          status: 'ACTIVE',
-          hitRate: '98.5%',
-          memoryUsed: `${Math.round(mem.rss / 1024 / 1024)} MB`,
-        },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-
   async exportAuditReport(req, res, next) {
     try {
       const orders = await ordersService.getAllOrders();
       let csv = '\uFEFFMã Đơn,Mã Ngắn,Sự Kiện ID,Khách Hàng,Email,Tổng Tiền,Thực Thu,Mã KM,Cổng Thanh Toán,Trạng Thái,Thời Gian\n';
       (orders || []).forEach((ord) => {
         const row = [
-          `"${ord.id || ''}"`,
-          `"${ord.short_id || ''}"`,
-          `"${ord.event_id || ''}"`,
-          `"${(ord.customer_name || ord.first_name || '').replace(/"/g, '""')}"`,
-          `"${(ord.customer_email || ord.email || '').replace(/"/g, '""')}"`,
+          sanitizeCsvCell(ord.id || ''),
+          sanitizeCsvCell(ord.short_id || ''),
+          sanitizeCsvCell(ord.event_id || ''),
+          sanitizeCsvCell(ord.customer_name || ord.first_name || ''),
+          sanitizeCsvCell(ord.customer_email || ord.email || ''),
           ord.subtotal || ord.total_before_additions || 0,
           ord.total_gross || ord.total || 0,
-          `"${ord.promo_code || ''}"`,
-          `"${ord.payment_gateway || ord.payment_method || 'ONLINE'}"`,
-          `"${ord.status || 'COMPLETED'}"`,
-          `"${ord.created_at || ''}"`,
+          sanitizeCsvCell(ord.promo_code || ''),
+          sanitizeCsvCell(ord.payment_gateway || ord.payment_method || 'ONLINE'),
+          sanitizeCsvCell(ord.status || 'COMPLETED'),
+          sanitizeCsvCell(ord.created_at || ''),
         ];
         csv += row.join(',') + '\n';
       });
@@ -202,38 +187,21 @@ class AdminController {
   async disputeRefund(req, res, next) {
     try {
       const { id } = req.params;
-      const numTicketId = Number(id);
-
-      let ticket = null;
-      try {
-        const tRes = await query('SELECT * FROM support_tickets WHERE id = $1', [numTicketId]);
-        if (tRes.rowCount > 0) ticket = tRes.rows[0];
-      } catch {}
-
+      const { reason } = req.body || {};
+      const { default: helpdeskService } = await import('../services/helpdesk.service.js');
+      const ticket = await helpdeskService.getTicket(id, req.user);
       if (!ticket) {
-        const { default: helpdeskService } = await import('../services/helpdesk.service.js');
-        ticket = await helpdeskService.getTicketById(numTicketId).catch(() => null);
+        return res.status(404).json({ error: 'Ticket not found' });
       }
-
-      if (!ticket) {
-        return res.status(404).json({ error: 'Support ticket not found' });
+      let refundResult = null;
+      if (ticket.order_id) {
+        refundResult = await ordersService.refundOrder(ticket.order_id, req.user);
       }
-
-      const orderId = ticket.order_id;
-      if (!orderId) {
-        return res.status(400).json({ error: 'Phiếu hỗ trợ không liên kết với đơn hàng hợp lệ để hoàn tiền' });
-      }
-
-      const refundResult = await ordersService.refundOrder(orderId, req.user);
-
-      try {
-        await query("UPDATE support_tickets SET status = 'RESOLVED', updated_at = NOW() WHERE id = $1", [numTicketId]);
-      } catch {}
-
+      await helpdeskService.updateTicketStatus(id, 'RESOLVED', req.user, reason || 'Admin dispute refund override approved');
       return res.status(200).json({
         success: true,
-        message: 'Admin dispute arbitration approved: 100% refund issued from escrow',
-        ticket_id: numTicketId,
+        message: 'Admin dispute refund processed successfully',
+        ticket_id: id,
         refund: refundResult,
       });
     } catch (err) {
@@ -241,17 +209,42 @@ class AdminController {
     }
   }
 
-  async approvePayout(req, res, next) {
+  // ----------------------------------------------------
+  // Broadcast Announcements (REQ-ADM-09: Thông Báo Chung)
+  // ----------------------------------------------------
+  async getAnnouncements(req, res, next) {
+    try {
+      const { default: announcementsService } = await import('../services/announcements.service.js');
+      const announcements = await announcementsService.getAnnouncements();
+      return res.status(200).json({ announcements });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async createAnnouncement(req, res, next) {
+    try {
+      const { title, message, type, target_role } = req.body;
+      const { default: announcementsService } = await import('../services/announcements.service.js');
+      const result = await announcementsService.createAnnouncement({
+        title,
+        message,
+        type,
+        targetRole: target_role,
+        createdBy: req.user?.id,
+      });
+      return res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async deleteAnnouncement(req, res, next) {
     try {
       const { id } = req.params;
-      const { notes } = req.body || {};
-      const { default: escrowService } = await import('../services/escrow.service.js');
-      const payout = await escrowService.updatePayoutStatus(id, req.user, 'APPROVED', notes);
-      return res.status(200).json({
-        success: true,
-        message: 'Admin đã phê duyệt giải ngân doanh thu cho Ban tổ chức',
-        payout,
-      });
+      const { default: announcementsService } = await import('../services/announcements.service.js');
+      const result = await announcementsService.deleteAnnouncement(id);
+      return res.status(200).json(result);
     } catch (err) {
       next(err);
     }

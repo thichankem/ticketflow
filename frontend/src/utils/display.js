@@ -7,30 +7,30 @@ export function eventEnd(event) {
 }
 
 export function formatDate(value) {
-  if (!value) return 'Date TBA';
+  if (!value) return 'Chưa có ngày';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Date TBA';
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  if (Number.isNaN(date.getTime())) return 'Chưa có ngày';
+  return date.toLocaleDateString('vi-VN', { month: 'numeric', day: 'numeric', year: 'numeric' });
 }
 
 export function formatDateTime(value) {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  return date.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export function formatRange(event) {
   const start = formatDateTime(eventStart(event));
   const end = formatDateTime(eventEnd(event));
   if (start && end) return `${start} – ${end}`;
-  return start || end || 'Schedule TBA';
+  return start || end || 'Chưa có lịch';
 }
 
 export function money(amount, currency = null) {
   const num = Number(amount);
-  if (num === 0) return 'FREE';
-  if (amount == null || Number.isNaN(num)) return 'N/A';
+  if (num === 0) return 'MIỄN PHÍ';
+  if (amount == null || Number.isNaN(num)) return 'Liên hệ';
 
   const curr = String(currency || '').toUpperCase();
   if (curr === 'USD') {

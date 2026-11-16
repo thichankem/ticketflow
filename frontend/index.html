@@ -3,27 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="light dark" />
+    <meta name="color-scheme" content="light" />
     <script>
       try {
-        const theme = localStorage.getItem('tf_theme') || 'system';
-        const metaEl = document.querySelector('meta[name="color-scheme"]');
-        if (theme === 'dark') {
-          if (metaEl) metaEl.content = 'dark';
-          document.documentElement.setAttribute('data-theme', 'dark');
-        } else if (theme === 'light') {
-          if (metaEl) metaEl.content = 'light';
-          document.documentElement.setAttribute('data-theme', 'light');
-        } else {
-          if (metaEl) metaEl.content = 'light dark';
-          document.documentElement.removeAttribute('data-theme');
-        }
-        const lang = localStorage.getItem('tf_lang') || 'vi';
-        document.documentElement.lang = lang;
+        localStorage.removeItem('tf_theme');
+        localStorage.removeItem('tf_lang');
+        document.documentElement.removeAttribute('data-theme');
       } catch {}
     </script>
-    <title>Ticketflow</title>
+    <title>Ticketflow — Sàn Đặt Vé Sự Kiện Trực Tuyến</title>
     <link rel="icon" type="image/svg+xml" href="/ticketflow-mark.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

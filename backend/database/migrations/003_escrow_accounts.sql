@@ -67,6 +67,8 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS refund_policy JSONB DEFAULT '{"allow
 ALTER TABLE events ADD COLUMN IF NOT EXISTS commission_rate NUMERIC(4, 2) DEFAULT 5.00;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS blog_content JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS pdf_attachments JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS cover TEXT;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS banner TEXT;
 
 -- Backfill existing legacy events with standard defaults and location synchronization
 UPDATE events 

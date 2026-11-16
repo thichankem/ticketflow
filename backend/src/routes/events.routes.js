@@ -13,14 +13,24 @@ router.get('/organizer/dashboard', authenticateToken, requireRole('ORGANIZER', '
 
 // User In-App Notifications (Must be before /:id)
 router.get('/notifications', authenticateToken, eventsController.getNotifications);
+router.put('/notifications/read-all', authenticateToken, eventsController.markAllNotificationsRead);
+router.delete('/notifications/clear-all', authenticateToken, eventsController.clearNotifications);
+router.delete('/notifications', authenticateToken, eventsController.clearNotifications);
 router.put('/notifications/:id/read', authenticateToken, eventsController.markNotificationRead);
+router.delete('/notifications/:id', authenticateToken, eventsController.deleteNotification);
+
+// Platform Broadcast Announcements
+router.get('/announcements', eventsController.getAnnouncements);
 
 // Recommendations (Must be before /:id)
 router.get('/recommendations', eventsController.recommendations);
 
+// Image Upload with Auto-Formatting & Size Compression
+router.post('/upload-image', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.uploadImage);
+
 // Public event routes
 router.get('/', eventsController.list);
-router.get('/:id', eventsController.getById);
+router.get('/:id', optionalAuthenticateToken, eventsController.getById);
 
 // Virtual Waiting Room (Phân hệ 2.7)
 router.get('/:id/queue', eventsController.getQueueStatus);
@@ -49,7 +59,7 @@ router.post('/:id/attachments', authenticateToken, requireRole('ORGANIZER', 'ADM
 router.get('/:id/attachments/:attachmentId', eventsController.getAttachment);
 
 // Ticket Tiers
-router.get('/:id/tiers', ticketsController.list);
+router.get('/:id/tiers', optionalAuthenticateToken, ticketsController.list);
 router.post('/:id/tiers', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ticketsController.create);
 router.put('/:id/tiers/:tierId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ticketsController.update);
 router.delete('/:id/tiers/:tierId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ticketsController.delete);
@@ -57,15 +67,17 @@ router.delete('/:id/tiers/:tierId', authenticateToken, requireRole('ORGANIZER', 
 // Promos
 router.get('/:id/promos', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), promosController.list);
 router.post('/:id/promos', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), promosController.create);
+router.put('/:id/promos/:promoId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), promosController.update);
 router.delete('/:id/promos/:promoId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), promosController.delete);
 router.post('/:id/promos/validate', promosController.validate);
 
 // Event Orders
 router.get('/:id/orders', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.getOrdersByEvent);
 
-// Attendee Check-In & Listing (Accessible by Organizer & Admin)
+// Attendee Roster & Management (Accessible by Organizer & Admin)
 router.get('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.getAttendees);
-router.post('/:id/attendees/:attendeeId/toggle-checkin', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.toggleCheckIn);
-router.post('/:id/attendees/check-in', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.checkIn);
+router.post('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.createAttendee);
+router.put('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.updateAttendee);
+router.delete('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.deleteAttendee);
 
 export default router;
