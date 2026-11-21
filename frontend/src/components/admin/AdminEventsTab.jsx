@@ -10,8 +10,8 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   // Modals
-  const [massRefundTarget, setMassRefundTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [massRefundTarget, setMassRefundTarget] = useState(null);
   const [processing, setProcessing] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
@@ -22,17 +22,22 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
     setCurrentPage(1);
   }, [search, statusFilter]);
 
+  // Admin does not have permission to view DRAFT events (DRAFT belongs exclusively to Organizer)
+  const nonDraftEvents = useMemo(() => {
+    return events.filter((ev) => (ev.status || '').toUpperCase() !== 'DRAFT');
+  }, [events]);
+
   const statusCounts = useMemo(() => {
-    const counts = { ALL: events.length, LIVE: 0, DRAFT: 0, PAUSED: 0, CANCELLED: 0 };
-    events.forEach((ev) => {
-      const st = (ev.status || 'DRAFT').toUpperCase();
+    const counts = { ALL: nonDraftEvents.length, LIVE: 0, PAUSED: 0, ENDED: 0, CANCELLED: 0 };
+    nonDraftEvents.forEach((ev) => {
+      const st = (ev.status || '').toUpperCase();
       if (counts[st] !== undefined) counts[st]++;
     });
     return counts;
-  }, [events]);
+  }, [nonDraftEvents]);
 
   const filteredEvents = useMemo(() => {
-    return events.filter((ev) => {
+    return nonDraftEvents.filter((ev) => {
       const q = search.toLowerCase();
       const matchesSearch =
         !q ||
@@ -40,12 +45,12 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
         (ev.organizer_name || '').toLowerCase().includes(q) ||
         String(ev.id).includes(q);
 
-      const statusKey = (ev.status || 'DRAFT').toUpperCase();
+      const statusKey = (ev.status || '').toUpperCase();
       const matchesStatus = statusFilter === 'ALL' || statusKey === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
-  }, [events, search, statusFilter]);
+  }, [nonDraftEvents, search, statusFilter]);
 
   const totalPages = Math.ceil(filteredEvents.length / pageSize) || 1;
   const paginatedEvents = useMemo(() => {
@@ -82,10 +87,8 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
     if (!massRefundTarget) return;
     setProcessing(true);
     try {
-      const res = await api.post(`/admin/events/${massRefundTarget.id}/mass-refund`, {});
-      notify(
-        res?.message || `Đã kích hoạt hoàn tiền hàng loạt 100% cho sự kiện "${massRefundTarget.title}"!`
-      );
+      const res = await api.client.post(`/admin/events/${massRefundTarget.id}/mass-refund`);
+      notify(`Đã hoàn tiền cho ${res.data?.refunded_orders || 0} đơn hàng.`);
       setMassRefundTarget(null);
       onReload();
     } catch (err) {
@@ -99,59 +102,61 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
     <section className="admin-table-card">
       {/* Search & Filters */}
       <div className="admin-toolbar">
-        <div className="admin-search-wrapper">
-          <label htmlFor="admin-events-search" className="sr-only">Tìm theo tên sự kiện, BTC, ID</label>
-          <span className="admin-search-icon" aria-hidden="true">
-            <Icon name="search" size="xs" ariaHidden />
-          </span>
-          <input
-            id="admin-events-search"
-            type="text"
-            className="admin-search-input"
-            placeholder="Tìm theo tên sự kiện, BTC, ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            aria-label="Tìm kiếm sự kiện"
-          />
-          {search && (
-            <button
-              type="button"
-              className="admin-search-clear"
-              onClick={() => setSearch('')}
-              aria-label="Xóa từ khóa tìm kiếm"
-            >
-              <Icon name="x" size="xs" ariaHidden />
-            </button>
-          )}
-        </div>
+        <div className="admin-toolbar-left">
+          <div className="admin-search-wrapper">
+            <label htmlFor="admin-events-search" className="sr-only">Tìm theo tên sự kiện, BTC, ID</label>
+            <span className="admin-search-icon" aria-hidden="true">
+              <Icon name="search" size="xs" ariaHidden />
+            </span>
+            <input
+              id="admin-events-search"
+              type="text"
+              className="admin-search-input"
+              placeholder="Tìm theo tên sự kiện, BTC, ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Tìm kiếm sự kiện"
+            />
+            {search && (
+              <button
+                type="button"
+                className="admin-search-clear"
+                onClick={() => setSearch('')}
+                aria-label="Xóa từ khóa tìm kiếm"
+              >
+                <Icon name="x" size="xs" ariaHidden />
+              </button>
+            )}
+          </div>
 
-        <div className="filter-pills flex items-center gap-xs flex-wrap">
-          <span className="muted text-xs mr-xs font-semibold">Trạng thái:</span>
-          {['ALL', 'LIVE', 'DRAFT', 'PAUSED', 'CANCELLED'].map((st) => (
-            <button
-              key={st}
-              type="button"
-              className={`filter-pill ${statusFilter === st ? 'active' : ''}`}
-              onClick={() => setStatusFilter(st)}
-            >
-              {st === 'ALL' ? 'Tất cả' : st} ({statusCounts[st] || 0})
-            </button>
-          ))}
+          <div className="filter-pills flex items-center gap-xs flex-wrap">
+            <span className="muted text-xs mr-xs font-semibold">Trạng thái:</span>
+            {['ALL', 'LIVE', 'PAUSED', 'ENDED', 'CANCELLED'].map((st) => (
+              <button
+                key={st}
+                type="button"
+                className={`filter-pill ${statusFilter === st ? 'active' : ''}`}
+                onClick={() => setStatusFilter(st)}
+              >
+                {st === 'ALL' ? 'Tất cả' : st} ({statusCounts[st] || 0})
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Events Table */}
       <div className="table-responsive admin-table-container">
-        <table className="data-table admin-modern-table" style={{ minWidth: '1050px' }}>
+        <table className="data-table admin-modern-table" style={{ width: '100%', minWidth: '860px' }}>
           <thead>
             <tr>
-              <th style={{ width: '70px' }}>ID</th>
-              <th style={{ minWidth: '260px' }}>Tên sự kiện</th>
-              <th style={{ minWidth: '180px' }}>Ban tổ chức</th>
-              <th style={{ width: '130px' }}>Hạng vé</th>
-              <th style={{ width: '130px' }}>Trạng thái</th>
-              <th style={{ width: '130px' }}>Thời gian</th>
-              <th style={{ width: '260px' }} className="text-right">Thao tác quản trị</th>
+              <th style={{ width: '50px' }}>ID</th>
+              <th style={{ minWidth: '200px' }}>Tên sự kiện</th>
+              <th style={{ width: '130px' }}>Ban tổ chức</th>
+              <th style={{ width: '100px' }}>Hạng vé</th>
+              <th style={{ width: '110px' }}>Trạng thái</th>
+              <th style={{ width: '95px' }}>Thời gian</th>
+              <th style={{ width: '250px' }} className="text-right">Thao tác quản trị</th>
             </tr>
           </thead>
           <tbody>
@@ -189,7 +194,7 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
                       </div>
                     </td>
                     <td>
-                      <span className="badge badge-info text-xs inline-flex items-center gap-1">
+                      <span className="badge badge-info text-xs inline-flex items-center gap-1" style={{ whiteSpace: 'nowrap' }}>
                         <Icon name="ticket" size="2xs" ariaHidden />
                         <span>{tiersCount} hạng vé</span>
                       </span>
@@ -201,10 +206,10 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
                       <span className="muted text-xs font-mono">{formatDate(ev.start_date || ev.starts_at)}</span>
                     </td>
                     <td>
-                      <div className="table-actions justify-end flex items-center gap-1.5 flex-nowrap">
+                      <div className="table-actions justify-end flex items-center gap-1 flex-nowrap">
                         <select
-                          className="select select-compact text-xs"
-                          style={{ width: '115px', padding: '0.25rem 0.5rem', height: '30px' }}
+                          className="select select-compact text-xs admin-role-select"
+                          style={{ width: '115px' }}
                           value={statusKey}
                           onChange={(e) => handleStatusChange(ev.id, e.target.value)}
                           aria-label={`Thay đổi trạng thái sự kiện ${ev.title}`}
@@ -213,21 +218,11 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
                           <option value="PAUSED">PAUSED (Tạm dừng)</option>
                           <option value="ENDED">ENDED (Kết thúc)</option>
                           <option value="CANCELLED">CANCELLED (Hủy)</option>
-                          <option value="DRAFT">DRAFT (Nháp)</option>
                         </select>
 
                         <button
                           type="button"
-                          className="btn btn-xs btn-warning flex-shrink-0"
-                          onClick={() => setMassRefundTarget(ev)}
-                          title="Hoàn tiền hàng loạt 100% cho người mua"
-                        >
-                          Hoàn tiền 100%
-                        </button>
-
-                        <button
-                          type="button"
-                          className="btn btn-xs btn-danger flex-shrink-0"
+                          className="btn btn-xs btn-danger btn-table-action flex-shrink-0"
                           onClick={() => setDeleteTarget(ev)}
                           title="Xóa sự kiện khỏi hệ thống"
                         >
@@ -295,22 +290,22 @@ export const AdminEventsTab = ({ events = [], onReload, notify }) => {
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Xác nhận xóa sự kiện"
-        message={`Bạn có chắc chắn muốn xóa sự kiện "${deleteTarget?.title}" (ID: #${deleteTarget?.id})? Thao tác này sẽ tự động hoàn tiền 100% và vô hiệu hóa vé của tất cả người mua.`}
+        message={`Bạn có chắc chắn muốn xóa sự kiện "${deleteTarget?.title}" (ID: #${deleteTarget?.id})? Thao tác này sẽ xóa sự kiện và vô hiệu hóa vé của tất cả người mua.`}
         isDanger={true}
         loading={processing}
         confirmText="Xóa Sự Kiện"
       />
 
-      {/* Mass Refund Confirm Modal */}
+      {/* Mass Refund Confirm Modal (UI trigger removed per user request) */}
       <ConfirmModal
         isOpen={Boolean(massRefundTarget)}
         onClose={() => setMassRefundTarget(null)}
         onConfirm={confirmMassRefund}
-        title="Kích hoạt Hoàn tiền hàng loạt (Mass Refund)"
-        message={`CẢNH BÁO TÀI CHÍNH: Bạn đang chuẩn bị kích hoạt lệnh hoàn tiền 100% cho tất cả đơn hàng đã thanh toán của sự kiện "${massRefundTarget?.title}" (ID: #${massRefundTarget?.id}). Toàn bộ vé phát hành sẽ chuyển sang trạng thái CANCELLED.`}
+        title="Xác nhận hoàn tiền 100%"
+        message={`Bạn có chắc chắn muốn hoàn tiền 100% cho tất cả người mua vé sự kiện "${massRefundTarget?.title}"? Tất cả vé sẽ chuyển sang trạng thái CANCELLED và không thể hoàn tác.`}
         isDanger={true}
         loading={processing}
-        confirmText="Xác nhận hoàn tiền toàn sàn"
+        confirmText="Xác nhận hoàn tiền 100%"
       />
     </section>
   );

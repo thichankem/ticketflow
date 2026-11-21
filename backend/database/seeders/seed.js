@@ -408,7 +408,7 @@ export async function seedDatabase() {
           offline_payment_instructions, is_online_event, created_at, updated_at
         ) VALUES (
           $1,
-          'Vui lòng xem lại giỏ vé của bạn. Thời gian giữ chỗ là 15 phút.',
+          'Vui lòng xem lại giỏ hàng của bạn. Thời gian giữ chỗ là 15 phút.',
           'Chúc mừng bạn đã đặt vé thành công! Biên lai điện tử và mã QR đã sẵn sàng.',
           'Tự động xếp chỗ liền kề cho đơn hàng nhóm.',
           'Tiếp tục đặt vé',
@@ -583,14 +583,11 @@ export async function seedDatabase() {
     }
 
     // 12. Recommendation Engine Interaction Signals
-    console.log('[SEED] Populating 100+ user interaction signals (views & favorites)...');
+    console.log('[SEED] Populating 100+ user interaction signals (views)...');
     for (let u = 1; u <= 20; u++) {
       for (let e = 1; e <= 8; e++) {
         const evId = ((u * 3 + e) % 50) + 1;
         recommendationService.trackView(u, evId);
-        if ((u + e) % 3 === 0) {
-          recommendationService.toggleFavorite(u, evId);
-        }
       }
     }
 
@@ -603,20 +600,6 @@ export async function seedDatabase() {
         (2, 3, 2, 'SCHEDULE_CHANGE', 'Thông báo đổi lịch: Indie Music Fest 2026', 'Ban tổ chức vừa cập nhật thời gian biểu diễn mới. Vui lòng kiểm tra chi tiết vé.', true, NOW() - INTERVAL '1 day'),
         (3, 2, 1, 'SYSTEM', 'Cập nhật hệ thống', 'Dữ liệu bán vé sự kiện đã được đồng bộ chính xác.', false, NOW() - INTERVAL '1 day'),
         (4, 3, 1, 'REFUND', 'Xác nhận hoàn tiền đơn hàng', 'Đơn hàng của bạn đã được hoàn lại thành công theo chính sách sự kiện.', false, NOW() - INTERVAL '5 hours');
-    `);
-
-    // 16. Populate Event Favorites
-    console.log('[SEED] Populating event favorites in PostgreSQL...');
-    await client.query(`
-      INSERT INTO event_favorites (user_id, event_id, created_at)
-      VALUES
-        (3, 1, NOW() - INTERVAL '5 days'),
-        (3, 2, NOW() - INTERVAL '4 days'),
-        (3, 3, NOW() - INTERVAL '3 days'),
-        (3, 9, NOW() - INTERVAL '2 days'),
-        (2, 1, NOW() - INTERVAL '6 days'),
-        (1, 1, NOW() - INTERVAL '7 days')
-      ON CONFLICT (user_id, event_id) DO NOTHING;
     `);
 
     // 17. Populate Persistent Seat Reservations
@@ -658,7 +641,6 @@ export async function seedDatabase() {
       SELECT setval('payouts_id_seq', (SELECT COALESCE(MAX(id), 1) FROM payouts));
       SELECT setval('announcements_id_seq', (SELECT COALESCE(MAX(id), 1) FROM announcements));
       SELECT setval('notifications_id_seq', (SELECT COALESCE(MAX(id), 1) FROM notifications));
-      SELECT setval('event_favorites_id_seq', (SELECT COALESCE(MAX(id), 1) FROM event_favorites));
       SELECT setval('seat_reservations_id_seq', (SELECT COALESCE(MAX(id), 1) FROM seat_reservations));
     `);
 

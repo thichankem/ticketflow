@@ -277,6 +277,7 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
                 id="promo-discount-value"
                 type="number"
                 className="input"
+                placeholder={formData.discount_type === 'PERCENTAGE' ? 'VD: 20' : 'VD: 50000'}
                 value={formData.discount}
                 onChange={(e) => setFormData((p) => ({ ...p, discount: e.target.value }))}
                 min="1"
@@ -294,6 +295,7 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
                 id="promo-max-uses"
                 type="number"
                 className="input"
+                placeholder="VD: 100"
                 value={formData.max_uses}
                 onChange={(e) => setFormData((p) => ({ ...p, max_uses: e.target.value }))}
                 min="1"
@@ -308,6 +310,7 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
                 id="promo-expires-at"
                 type="date"
                 className="input"
+                placeholder="YYYY-MM-DD"
                 value={formData.expires_at}
                 onChange={(e) => setFormData((p) => ({ ...p, expires_at: e.target.value }))}
                 disabled={submitting}

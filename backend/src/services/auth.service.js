@@ -18,18 +18,18 @@ export function isDemoUsersAllowed() {
 const initSeedUsers = async () => {
   if (!isDemoUsersAllowed()) return;
   const hash = await bcrypt.hash('password123', 10);
-  memoryUsers.set(1, { id: 1, name: 'Super Admin', email: 'admin@ticketflow.local', phone: '0901234567', password_hash: hash, role: 'ADMIN', account_id: 1, is_active: true, subscription_plan: 'ENTERPRISE', is_premium: true, created_at: '2026-05-10T08:00:00Z' });
-  memoryUsers.set(2, { id: 2, name: 'Demo Organizer', email: 'organizer@ticketflow.local', phone: '0902345678', password_hash: hash, role: 'ORGANIZER', account_id: 2, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-06-12T09:30:00Z' });
-  memoryUsers.set(3, { id: 3, name: 'John Doe', email: 'attendee@ticketflow.local', phone: '0903456789', password_hash: hash, role: 'ATTENDEE', account_id: 3, is_active: true, subscription_plan: 'VIP_MEMBER', is_premium: true, created_at: '2026-07-04T14:15:00Z' });
-  memoryUsers.set(4, { id: 4, name: 'Lê Hoàng Nam', email: 'nam.le@eventpro.vn', phone: '0912345678', password_hash: hash, role: 'ORGANIZER', account_id: 4, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-08-15T11:20:00Z' });
-  memoryUsers.set(5, { id: 5, name: 'Trần Minh Anh', email: 'minhanh.tran@techfest.io', phone: '0923456789', password_hash: hash, role: 'ATTENDEE', account_id: 5, is_active: true, subscription_plan: 'VIP_MEMBER', is_premium: true, created_at: '2026-08-28T16:45:00Z' });
-  memoryUsers.set(6, { id: 6, name: 'Phạm Đức Trí', email: 'tri.pham@saigonmusic.com', phone: '0934567890', password_hash: hash, role: 'ORGANIZER', account_id: 6, is_active: true, subscription_plan: 'ENTERPRISE', is_premium: true, created_at: '2026-09-05T10:00:00Z' });
-  memoryUsers.set(7, { id: 7, name: 'Nguyễn Bích Ngọc', email: 'ngoc.nguyen@vietrunners.org', phone: '0945678901', password_hash: hash, role: 'ATTENDEE', account_id: 7, is_active: true, subscription_plan: 'FREE', is_premium: false, created_at: '2026-09-18T13:10:00Z' });
-  memoryUsers.set(8, { id: 8, name: 'Vũ Quốc Huy', email: 'huy.vu@indiefilms.vn', phone: '0956789012', password_hash: hash, role: 'ORGANIZER', account_id: 8, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-10-02T08:30:00Z' });
-  memoryUsers.set(9, { id: 9, name: 'Đặng Mai Phương', email: 'phuong.dang@gmail.com', phone: '0967890123', password_hash: hash, role: 'ATTENDEE', account_id: 9, is_active: true, subscription_plan: 'VIP_MEMBER', is_premium: true, created_at: '2026-10-15T15:20:00Z' });
-  memoryUsers.set(10, { id: 10, name: 'Hoàng Tuấn Kiệt', email: 'kiet.hoang@live.com', phone: '0978901234', password_hash: hash, role: 'ATTENDEE', account_id: 10, is_active: true, subscription_plan: 'FREE', is_premium: false, created_at: '2026-10-25T19:00:00Z' });
-  memoryUsers.set(11, { id: 11, name: 'Bùi Thảo Linh', email: 'linh.bui@youthhub.vn', phone: '0989012345', password_hash: hash, role: 'ATTENDEE', account_id: 11, is_active: true, subscription_plan: 'FREE', is_premium: false, created_at: '2026-11-03T11:40:00Z' });
-  memoryUsers.set(12, { id: 12, name: 'Đỗ Hải Đăng', email: 'dang.do@vngcloud.vn', phone: '0990123456', password_hash: hash, role: 'ORGANIZER', account_id: 12, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-11-12T14:10:00Z' });
+  memoryUsers.set(1, { id: 1, name: 'Super Admin', email: 'admin@ticketflow.local', phone: '0901234567', password_hash: hash, role: 'ADMIN', account_id: 1, is_active: true, created_at: '2026-05-10T08:00:00Z' });
+  memoryUsers.set(2, { id: 2, name: 'Demo Organizer', email: 'organizer@ticketflow.local', phone: '0902345678', password_hash: hash, role: 'ORGANIZER', account_id: 2, is_active: true, created_at: '2026-06-12T09:30:00Z' });
+  memoryUsers.set(3, { id: 3, name: 'John Doe', email: 'attendee@ticketflow.local', phone: '0903456789', password_hash: hash, role: 'ATTENDEE', account_id: 3, is_active: true, created_at: '2026-07-04T14:15:00Z' });
+  memoryUsers.set(4, { id: 4, name: 'Lê Hoàng Nam', email: 'nam.le@eventpro.vn', phone: '0912345678', password_hash: hash, role: 'ORGANIZER', account_id: 4, is_active: true, created_at: '2026-08-15T11:20:00Z' });
+  memoryUsers.set(5, { id: 5, name: 'Trần Minh Anh', email: 'minhanh.tran@techfest.io', phone: '0923456789', password_hash: hash, role: 'ATTENDEE', account_id: 5, is_active: true, created_at: '2026-08-28T16:45:00Z' });
+  memoryUsers.set(6, { id: 6, name: 'Phạm Đức Trí', email: 'tri.pham@saigonmusic.com', phone: '0934567890', password_hash: hash, role: 'ORGANIZER', account_id: 6, is_active: true, created_at: '2026-09-05T10:00:00Z' });
+  memoryUsers.set(7, { id: 7, name: 'Nguyễn Bích Ngọc', email: 'ngoc.nguyen@vietrunners.org', phone: '0945678901', password_hash: hash, role: 'ATTENDEE', account_id: 7, is_active: true, created_at: '2026-09-18T13:10:00Z' });
+  memoryUsers.set(8, { id: 8, name: 'Vũ Quốc Huy', email: 'huy.vu@indiefilms.vn', phone: '0956789012', password_hash: hash, role: 'ORGANIZER', account_id: 8, is_active: true, created_at: '2026-10-02T08:30:00Z' });
+  memoryUsers.set(9, { id: 9, name: 'Đặng Mai Phương', email: 'phuong.dang@gmail.com', phone: '0967890123', password_hash: hash, role: 'ATTENDEE', account_id: 9, is_active: true, created_at: '2026-10-15T15:20:00Z' });
+  memoryUsers.set(10, { id: 10, name: 'Hoàng Tuấn Kiệt', email: 'kiet.hoang@live.com', phone: '0978901234', password_hash: hash, role: 'ATTENDEE', account_id: 10, is_active: true, created_at: '2026-10-25T19:00:00Z' });
+  memoryUsers.set(11, { id: 11, name: 'Bùi Thảo Linh', email: 'linh.bui@youthhub.vn', phone: '0989012345', password_hash: hash, role: 'ATTENDEE', account_id: 11, is_active: true, created_at: '2026-11-03T11:40:00Z' });
+  memoryUsers.set(12, { id: 12, name: 'Đỗ Hải Đăng', email: 'dang.do@vngcloud.vn', phone: '0990123456', password_hash: hash, role: 'ORGANIZER', account_id: 12, is_active: true, created_at: '2026-11-12T14:10:00Z' });
 };
 if (isDemoUsersAllowed()) {
   initSeedUsers();
@@ -52,7 +52,7 @@ class AuthService {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const normalizedEmail = email.toLowerCase().trim();
     if (!emailRegex.test(normalizedEmail)) {
-      const error = new Error('Định dạng email không hợp lệ');
+      const error = new Error('Invalid email format');
       error.statusCode = 400;
       error.code = 'VALIDATION_FAILED';
       throw error;
@@ -77,7 +77,7 @@ class AuthService {
     }
 
     if (!password || typeof password !== 'string' || password.length < 8 || !/(?=.*[a-zA-Z])(?=.*[0-9])/.test(password)) {
-      const error = new Error('Mật khẩu phải có độ dài tối thiểu 8 ký tự và bao gồm cả chữ cái và chữ số');
+      const error = new Error('Password must be at least 8 characters long and contain both letters and numbers');
       error.statusCode = 400;
       error.code = 'VALIDATION_FAILED';
       throw error;
@@ -129,7 +129,7 @@ class AuthService {
     } catch (err) {
       if (err.statusCode === 409) throw err;
       if (isProduction() || !isDemoUsersAllowed()) {
-        const error = new Error('Lỗi kết nối cơ sở dữ liệu. Không thể hoàn tất đăng ký.');
+        const error = new Error('Database connection error. Unable to complete registration.');
         error.statusCode = 500;
         throw error;
       }
@@ -186,7 +186,7 @@ class AuthService {
         const user = res.rows[0];
 
         if (user.is_suspended || user.is_active === false || user.deleted_at) {
-          const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
+          const error = new Error('Account is suspended or locked');
           error.statusCode = 401;
           error.code = 'AUTH_TOKEN_INVALID';
           throw error;
@@ -194,7 +194,7 @@ class AuthService {
 
         const valid = await bcrypt.compare(password, user.password);
         if (!valid) {
-          const error = new Error('Mật khẩu không chính xác');
+          const error = new Error('Invalid password');
           error.statusCode = 401;
           error.code = 'AUTH_TOKEN_INVALID';
           throw error;
@@ -212,7 +212,7 @@ class AuthService {
       }
 
       if (isProduction() || !isDemoUsersAllowed()) {
-        const error = new Error('Tài khoản không tồn tại trong hệ thống');
+        const error = new Error('Account does not exist');
         error.statusCode = 401;
         error.code = 'AUTH_TOKEN_INVALID';
         throw error;
@@ -220,7 +220,7 @@ class AuthService {
     } catch (err) {
       if (err.statusCode === 401) throw err;
       if (isProduction() || !isDemoUsersAllowed()) {
-        const error = new Error('Lỗi kết nối cơ sở dữ liệu. Vui lòng thử lại sau.');
+        const error = new Error('Database connection error. Please try again later.');
         error.statusCode = 500;
         throw error;
       }
@@ -230,7 +230,7 @@ class AuthService {
       for (const u of memoryUsers.values()) {
         if (u.email.toLowerCase() === normalizedEmail) {
           if (u.is_suspended || u.is_active === false || u.status === 'SUSPENDED') {
-            const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
+            const error = new Error('Account is suspended or locked');
             error.statusCode = 401;
             error.code = 'AUTH_TOKEN_INVALID';
             throw error;
@@ -238,7 +238,7 @@ class AuthService {
 
           const valid = await bcrypt.compare(password, u.password_hash || u.password);
           if (!valid) {
-            const error = new Error('Mật khẩu không chính xác');
+            const error = new Error('Invalid password');
             error.statusCode = 401;
             error.code = 'AUTH_TOKEN_INVALID';
             throw error;
@@ -257,7 +257,7 @@ class AuthService {
       }
     }
 
-    const error = new Error('Tài khoản không tồn tại trong hệ thống');
+    const error = new Error('Account does not exist');
     error.statusCode = 401;
     error.code = 'AUTH_TOKEN_INVALID';
     throw error;
@@ -276,7 +276,7 @@ class AuthService {
       const user = await this.getUserById(decoded.id);
 
       if (user.is_suspended || user.is_active === false) {
-        const error = new Error('Tài khoản đã bị tạm ngưng');
+        const error = new Error('Account is suspended');
         error.statusCode = 401;
         error.code = 'AUTH_TOKEN_INVALID';
         throw error;
@@ -328,7 +328,7 @@ class AuthService {
       }
     } catch (err) {
       if (isProduction() || !isDemoUsersAllowed()) {
-        const error = new Error('Lỗi kết nối cơ sở dữ liệu');
+        const error = new Error('Database connection error');
         error.statusCode = 500;
         throw error;
       }
@@ -368,7 +368,7 @@ class AuthService {
       normalizedEmail = email.toLowerCase().trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(normalizedEmail)) {
-        const err = new Error('Định dạng email không hợp lệ');
+        const err = new Error('Invalid email format');
         err.statusCode = 400;
         throw err;
       }
@@ -376,7 +376,7 @@ class AuthService {
         const checkSql = 'SELECT id FROM users WHERE LOWER(email) = $1 AND id != $2 LIMIT 1';
         const existing = await query(checkSql, [normalizedEmail, numId]);
         if (existing.rowCount > 0) {
-          const err = new Error('Email đã được sử dụng bởi tài khoản khác');
+          const err = new Error('Email is already in use by another account');
           err.statusCode = 409;
           throw err;
         }
@@ -441,13 +441,13 @@ class AuthService {
     const current_password = payload.current_password || payload.currentPassword;
     const new_password = payload.new_password || payload.newPassword;
     if (!current_password || !new_password) {
-      const err = new Error('Mật khẩu hiện tại và mật khẩu mới là bắt buộc');
+      const err = new Error('Current password and new password are required');
       err.statusCode = 400;
       throw err;
     }
 
     if (typeof new_password !== 'string' || new_password.length < 8 || !/(?=.*[a-zA-Z])(?=.*[0-9])/.test(new_password)) {
-      const err = new Error('Mật khẩu mới phải có độ dài tối thiểu 8 ký tự và bao gồm cả chữ cái và chữ số');
+      const err = new Error('New password must be at least 8 characters long and contain both letters and numbers');
       err.statusCode = 400;
       throw err;
     }
@@ -458,14 +458,14 @@ class AuthService {
         const currentHash = res.rows[0].password;
         const valid = await bcrypt.compare(current_password, currentHash);
         if (!valid) {
-          const err = new Error('Mật khẩu hiện tại không chính xác');
+          const err = new Error('Current password is incorrect');
           err.statusCode = 400;
           throw err;
         }
 
         const newHash = await bcrypt.hash(new_password, 10);
         await query('UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2', [newHash, numId]);
-        return { success: true, message: 'Đổi mật khẩu thành công' };
+        return { success: true, message: 'Password changed successfully' };
       }
     } catch (err) {
       if (err.statusCode === 400) throw err;
@@ -475,14 +475,14 @@ class AuthService {
     if (memUser) {
       const valid = await bcrypt.compare(current_password, memUser.password_hash || memUser.password);
       if (!valid) {
-        const err = new Error('Mật khẩu hiện tại không chính xác');
+        const err = new Error('Current password is incorrect');
         err.statusCode = 400;
         throw err;
       }
       memUser.password_hash = await bcrypt.hash(new_password, 10);
       memUser.password = memUser.password_hash;
       memUser.updated_at = new Date().toISOString();
-      return { success: true, message: 'Đổi mật khẩu thành công' };
+      return { success: true, message: 'Password changed successfully' };
     }
 
     const error = new Error('User not found');

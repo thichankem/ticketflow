@@ -103,14 +103,14 @@ export class AttendeeService {
 
     const { first_name, last_name, name, email, ticket_tier_id } = data;
     if (!email || (!name && !first_name)) {
-      const err = new Error('Họ tên và email khách mời là bắt buộc');
+      const err = new Error('Guest full name and email are required');
       err.statusCode = 400;
       throw err;
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
     const fullName = name ? name.trim() : `${first_name || ''} ${last_name || ''}`.trim();
-    const firstName = first_name || fullName.split(' ')[0] || 'Khách mời';
+    const firstName = first_name || fullName.split(' ')[0] || 'Guest';
     const lastName = last_name || (fullName.split(' ').length > 1 ? fullName.split(' ').slice(1).join(' ') : 'VIP');
 
     const tiers = await ticketsService.listByEventId(numEventId, true);
@@ -179,8 +179,8 @@ export class AttendeeService {
             barcode: row.barcode,
             status: row.status,
             checked_in_at: row.checked_in_at,
-            tier_name: chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
-            'tier name': chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+            tier_name: chosenTier?.title || chosenTier?.name || 'VIP Guest',
+            'tier name': chosenTier?.title || chosenTier?.name || 'VIP Guest',
             ticket_tier_id: tierId,
             event_id: numEventId,
             order_id: orderId,
@@ -204,8 +204,8 @@ export class AttendeeService {
         barcode,
         status: 'ACTIVE',
         checked_in_at: null,
-        tier_name: chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
-        'tier name': chosenTier?.title || chosenTier?.name || 'Khách Mời VIP',
+        tier_name: chosenTier?.title || chosenTier?.name || 'VIP Guest',
+        'tier name': chosenTier?.title || chosenTier?.name || 'VIP Guest',
         ticket_tier_id: tierId,
         event_id: numEventId,
       };
@@ -346,7 +346,112 @@ export class AttendeeService {
 
     return {
       success: true,
-      message: `Đã hủy vé của khách tham dự #${numAttendeeId} thành công`,
+      message: `Ticket for attendee #${numAttendeeId} cancelled successfully`,
+    };
+  }
+
+  /**
+   * Check in attendee using their ticket barcode or public ID.
+   * Enforces role checks, duplicate check-in prevention, and atomic status transition.
+   */
+  async checkInAttendee(eventId, { barcode, ticket_code } = {}, user = null) {
+    const numEventId = Number(eventId);
+    const ev = await eventsService.getEventById(numEventId);
+    if (!ev) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(ev.account_id) !== Number(user.account_id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const code = barcode || ticket_code;
+    if (!code) {
+      const err = new Error('Barcode is required for check-in');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    let checkedInAttendee = null;
+
+    try {
+      const checkRes = await query(
+        `SELECT * FROM attendees WHERE event_id = $1 AND (barcode = $2 OR public_id = $2 OR short_id = $2)`,
+        [numEventId, code]
+      );
+
+      if (checkRes.rowCount > 0) {
+        const row = checkRes.rows[0];
+        if (row.status === 'CHECKED_IN') {
+          const err = new Error('Ticket is already checked in');
+          err.statusCode = 400;
+          throw err;
+        }
+        if (row.status === 'CANCELLED') {
+          const err = new Error('Ticket is cancelled');
+          err.statusCode = 400;
+          throw err;
+        }
+
+        const updateRes = await query(
+          `UPDATE attendees SET status = 'CHECKED_IN', checked_in_at = NOW(), updated_at = NOW() WHERE id = $1 RETURNING *`,
+          [row.id]
+        );
+        if (updateRes.rowCount > 0) {
+          const u = updateRes.rows[0];
+          checkedInAttendee = {
+            id: Number(u.id),
+            short_id: u.short_id,
+            first_name: u.first_name,
+            last_name: u.last_name,
+            name: `${u.first_name} ${u.last_name}`.trim(),
+            email: u.email,
+            barcode: u.barcode,
+            status: u.status,
+            checked_in_at: u.checked_in_at,
+            ticket_tier_id: Number(u.ticket_tier_id),
+            event_id: numEventId,
+          };
+        }
+      }
+    } catch (dbErr) {
+      if (dbErr.statusCode) throw dbErr;
+      console.warn('[AttendeeService.checkInAttendee] DB checkin error, trying fallback:', dbErr.message);
+    }
+
+    if (!checkedInAttendee) {
+      for (const att of memoryAttendees.values()) {
+        if (Number(att.event_id) === numEventId && (att.barcode === code || att.ticket_code === code || att.short_id === code)) {
+          if (att.status === 'CHECKED_IN') {
+            const err = new Error('Ticket is already checked in');
+            err.statusCode = 400;
+            throw err;
+          }
+          if (att.status === 'CANCELLED') {
+            const err = new Error('Ticket is cancelled');
+            err.statusCode = 400;
+            throw err;
+          }
+          att.status = 'CHECKED_IN';
+          att.checked_in_at = new Date().toISOString();
+          checkedInAttendee = att;
+          break;
+        }
+      }
+    }
+
+    if (!checkedInAttendee) {
+      const err = new Error('Ticket not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    return {
+      success: true,
+      attendee: checkedInAttendee,
     };
   }
 }

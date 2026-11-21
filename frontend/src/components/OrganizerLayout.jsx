@@ -3,6 +3,7 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { ReportModal } from './common/ReportModal';
 import { Icon } from './ui/Icon';
 import { BrandMark } from './ui/BrandLogo';
 
@@ -12,6 +13,8 @@ export const OrganizerLayout = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const isEventDetail = location.pathname.startsWith('/organizer/events/') && location.pathname !== '/organizer/events/new';
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -32,10 +35,7 @@ export const OrganizerLayout = ({ children }) => {
           <div className="header-left">
             <Link to="/organizer" className="logo" aria-label="Ticketflow Organizer Studio">
               <BrandMark size={34} />
-              <div className="logo-text">
-                <span className="brand-name">Ticketflow</span>
-                <span className="portal-subtag organizer-subtag">{t('role.organizer_sub', 'Studio Ban Tổ Chức')}</span>
-              </div>
+              <span className="brand-name">Ticketflow</span>
             </Link>
           </div>
 
@@ -45,10 +45,22 @@ export const OrganizerLayout = ({ children }) => {
               <span>{t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}</span>
             </NavLink>
 
-            <NavLink to="/organizer/events/new" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Icon name="plus" size="sm" ariaHidden />
-              <span>{t('nav.create_event', 'Tạo Sự Kiện Mới')}</span>
-            </NavLink>
+            {!isEventDetail && (
+              <NavLink to="/organizer/events/new" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                <Icon name="plus" size="sm" ariaHidden />
+                <span>{t('nav.create_event', 'Tạo Sự Kiện Mới')}</span>
+              </NavLink>
+            )}
+
+            <button
+              type="button"
+              className="nav-link btn-nav-report"
+              onClick={() => setShowReportModal(true)}
+              title={t('nav.report_issue', 'Báo Cáo Sự Cố')}
+            >
+              <Icon name="shield" size="sm" ariaHidden />
+              <span>{t('nav.report_issue', 'Báo Cáo Sự Cố')}</span>
+            </button>
 
             {isAuthenticated ? (
               <div className="nav-actions">
@@ -89,10 +101,7 @@ export const OrganizerLayout = ({ children }) => {
         <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
           <div className="mobile-drawer-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Menu BTC">
             <div className="mobile-drawer-header">
-              <div className="logo-text">
-                <span className="brand-name">Ticketflow</span>
-                <span className="portal-subtag organizer-subtag">{t('role.organizer_sub', 'Organizer')}</span>
-              </div>
+              <span className="brand-name font-bold">Ticketflow</span>
               <button
                 type="button"
                 className="drawer-close-btn"
@@ -108,10 +117,23 @@ export const OrganizerLayout = ({ children }) => {
                 <Icon name="studio" size="sm" ariaHidden className="mr-2" />
                 {t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}
               </NavLink>
-              <NavLink to="/organizer/events/new" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                <Icon name="plus" size="sm" ariaHidden className="mr-2" />
-                {t('nav.create_event', 'Tạo Sự Kiện Mới')}
-              </NavLink>
+              {!isEventDetail && (
+                <NavLink to="/organizer/events/new" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                  <Icon name="plus" size="sm" ariaHidden className="mr-2" />
+                  {t('nav.create_event', 'Tạo Sự Kiện Mới')}
+                </NavLink>
+              )}
+              <button
+                type="button"
+                className="drawer-link"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setShowReportModal(true);
+                }}
+              >
+                <Icon name="shield" size="sm" ariaHidden className="mr-2" />
+                {t('nav.report_issue', 'Báo Cáo Sự Cố')}
+              </button>
               <NavLink to="/notifications" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
                 <Icon name="bell" size="sm" ariaHidden className="mr-2" />
                 {t('nav.notifications', 'Thông Báo Hộp Thư')}
@@ -130,7 +152,7 @@ export const OrganizerLayout = ({ children }) => {
               {isAuthenticated && (
                 <div className="drawer-user-info">
                   <Link to="/profile" className="drawer-user-name" style={{ display: 'block', marginBottom: '8px', color: 'inherit', textDecoration: 'none' }}>
-                    <strong>{user.name}</strong> ({user.role}) &rarr; {t('nav.profile', 'Hồ Sơ')}
+                    <strong>{user.name}</strong>
                   </Link>
                   <button type="button" onClick={handleLogout} className="btn btn-secondary btn-block btn-sm">
                     {t('nav.logout', 'Đăng Xuất')}
@@ -158,6 +180,15 @@ export const OrganizerLayout = ({ children }) => {
           </div>
         </div>
       </footer>
+
+      {showReportModal && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          targetType="SYSTEM"
+          targetTitle="Sự cố sàn & phản ánh từ Ban tổ chức"
+        />
+      )}
     </div>
   );
 };

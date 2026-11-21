@@ -3,10 +3,8 @@ import { withTransaction, reserveTickets, releaseTickets, query, InventoryExhaus
 import { memoryOrders, memoryAttendees, getNextOrderId, getNextAttendeeId } from '../data/order-store.js';
 import ticketsService from './tickets.service.js';
 import promosService from './promos.service.js';
-import seatingService from './seating.service.js';
 import eventsService from './events.service.js';
 import notificationsService from './notifications.service.js';
-import waitingRoomService from './waiting-room.service.js';
 import recommendationService from './recommendation.service.js';
 import refundService from './refund.service.js';
 import paymentService from './payment.service.js';
@@ -61,7 +59,6 @@ class OrdersService {
             await client.query("UPDATE orders SET status = 'EXPIRED', inventory_released_at = COALESCE(inventory_released_at, NOW()), updated_at = NOW() WHERE id = $1", [numOrderId]);
           });
 
-          await seatingService.releaseSeats(numEventId, numOrderId);
           if (row.promo_code) {
             await promosService.decrementUsage(numEventId, row.promo_code);
           }
@@ -96,7 +93,6 @@ class OrdersService {
               }
             }
           }
-          await seatingService.releaseSeats(memOrder.event_id, memOrder.id);
           if (memOrder.promo_code) {
             promosService.decrementUsage(memOrder.event_id, memOrder.promo_code);
           }
@@ -106,7 +102,7 @@ class OrdersService {
     }
   }
 
-  async reserveOrder({ eventId, items = [], promoCode = null, user = null, queueToken = null }) {
+  async reserveOrder({ eventId, items = [], promoCode = null, user = null }) {
     await this.cleanupExpiredReservations();
 
     const numEventId = Number(eventId);
@@ -120,28 +116,14 @@ class OrdersService {
     // Event Lifecycle & Sales Window Verification (TF-P1-07)
     const eventStatus = (event.status || '').toUpperCase();
     if (eventStatus !== 'PUBLISHED' && eventStatus !== 'LIVE') {
-      const err = new Error(`Sự kiện hiện không mở bán vé (trạng thái: ${eventStatus || 'DRAFT'})`);
+      const err = new Error(`Event is not currently open for ticket sales (status: ${eventStatus || 'DRAFT'})`);
       err.statusCode = 400;
       throw err;
     }
     if (event.end_date && new Date(event.end_date).getTime() < Date.now()) {
-      const err = new Error('Sự kiện đã kết thúc, không thể đặt vé');
+      const err = new Error('Event has already ended, cannot reserve tickets');
       err.statusCode = 400;
       throw err;
-    }
-
-    if (typeof waitingRoomService?.isWaitingRoomActive === 'function' && waitingRoomService.isWaitingRoomActive(eventId)) {
-      if (!queueToken) {
-        const err = new Error('Virtual Waiting Room is active: Queue token required to reserve tickets');
-        err.statusCode = 429;
-        throw err;
-      }
-      const isValid = waitingRoomService.verifyAdmissionToken(eventId, queueToken);
-      if (!isValid) {
-        const err = new Error('Invalid or expired waiting room token. Please re-enter the queue.');
-        err.statusCode = 403;
-        throw err;
-      }
     }
 
     if (!items || items.length === 0) {
@@ -276,95 +258,95 @@ class OrdersService {
           );
 
           if (promoLock.rowCount === 0) {
-            const promoErr = new Error('Mã giảm giá không tồn tại hoặc không hợp lệ');
+            const promoErr = new Error('Promo code not found or invalid');
             promoErr.statusCode = 400;
             throw promoErr;
           }
 
           const pRow = promoLock.rows[0];
           if (pRow.deleted_at != null) {
-            const promoErr = new Error('Mã giảm giá đã bị xóa hoặc tạm ngưng kích hoạt');
+            const promoErr = new Error('Promo code is inactive or disabled');
             promoErr.statusCode = 400;
             throw promoErr;
           }
 
           const now = new Date();
           if (pRow.expiry_date && new Date(pRow.expiry_date) < now) {
-            const promoErr = new Error('Mã giảm giá đã hết hạn sử dụng');
+            const promoErr = new Error('Promo code has expired');
             promoErr.statusCode = 400;
             throw promoErr;
           }
 
           if (pRow.max_allowed_usages != null && Number(pRow.order_usage_count || 0) >= Number(pRow.max_allowed_usages)) {
-            const promoErr = new Error('Mã giảm giá đã hết lượt sử dụng hoặc không hợp lệ');
-            promoErr.statusCode = 400;
-            throw promoErr;
-          }
-
-          // Tier targeting & applicable_ticket_ids filtering (V6-10, V7-14)
-          let applicableTierIds = null;
-          if (pRow.applicable_ticket_ids != null) {
-            try {
-              if (Array.isArray(pRow.applicable_ticket_ids)) {
-                applicableTierIds = pRow.applicable_ticket_ids.map(Number);
-              } else if (typeof pRow.applicable_ticket_ids === 'string') {
-                const parsed = JSON.parse(pRow.applicable_ticket_ids);
-                if (!Array.isArray(parsed)) {
-                  const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids must be an array)');
+            // Promo code limit reached: do not apply discount, proceed with order (REQ-COMB-3.5)
+            discount = 0;
+            appliedPromo = null;
+          } else {
+            // Tier targeting & applicable_ticket_ids filtering (V6-10, V7-14)
+            let applicableTierIds = null;
+            if (pRow.applicable_ticket_ids != null) {
+              try {
+                if (Array.isArray(pRow.applicable_ticket_ids)) {
+                  applicableTierIds = pRow.applicable_ticket_ids.map(Number);
+                } else if (typeof pRow.applicable_ticket_ids === 'string') {
+                  const parsed = JSON.parse(pRow.applicable_ticket_ids);
+                  if (!Array.isArray(parsed)) {
+                    const err = new Error('Invalid promo code configuration (applicable_ticket_ids must be an array)');
+                    err.statusCode = 400;
+                    throw err;
+                  }
+                  applicableTierIds = parsed.map(Number);
+                } else {
+                  const err = new Error('Invalid promo code configuration (applicable_ticket_ids format error)');
                   err.statusCode = 400;
                   throw err;
                 }
-                applicableTierIds = parsed.map(Number);
-              } else {
-                const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids format error)');
+              } catch (parseErr) {
+                const err = new Error('Invalid promo code configuration (applicable_ticket_ids format error)');
                 err.statusCode = 400;
                 throw err;
               }
-            } catch (parseErr) {
-              const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids format error)');
-              err.statusCode = 400;
-              throw err;
+
+              if (applicableTierIds.length === 0) {
+                const promoErr = new Error('Promo code is not assigned to any ticket tiers');
+                promoErr.statusCode = 400;
+                throw promoErr;
+              }
             }
 
-            if (applicableTierIds.length === 0) {
-              const promoErr = new Error('Mã giảm giá chưa được gán cho bất kỳ hạng vé nào');
-              promoErr.statusCode = 400;
-              throw promoErr;
+            let eligibleItems = reservedItems;
+            if (applicableTierIds && applicableTierIds.length > 0) {
+              eligibleItems = reservedItems.filter((it) => applicableTierIds.includes(Number(it.ticket_tier_id)));
+              if (eligibleItems.length === 0) {
+                const promoErr = new Error('Promo code does not apply to selected ticket tiers');
+                promoErr.statusCode = 400;
+                throw promoErr;
+              }
             }
-          }
 
-          let eligibleItems = reservedItems;
-          if (applicableTierIds && applicableTierIds.length > 0) {
-            eligibleItems = reservedItems.filter((it) => applicableTierIds.includes(Number(it.ticket_tier_id)));
-            if (eligibleItems.length === 0) {
-              const promoErr = new Error('Mã giảm giá không áp dụng cho loại vé đã chọn');
-              promoErr.statusCode = 400;
-              throw promoErr;
+            const eligibleSubtotal = eligibleItems.reduce((acc, it) => acc + it.total_price, 0);
+
+            let disc = 0;
+            const discountType = (pRow.discount_type || 'PERCENTAGE').toUpperCase();
+            const discountVal = Number(pRow.discount || 0);
+            const appliesTo = (pRow.discount_applies_to || 'ORDER').toUpperCase();
+
+            if (discountType === 'PERCENT' || discountType === 'PERCENTAGE') {
+              disc = Math.round((eligibleSubtotal * discountVal) / 100);
+            } else if (appliesTo === 'EACH_PRODUCT') {
+              disc = eligibleItems.reduce((acc, it) => acc + (discountVal * it.quantity), 0);
+            } else {
+              disc = discountVal;
             }
+
+            discount = Math.min(disc, eligibleSubtotal);
+            appliedPromo = pRow;
+
+            await client.query(
+              'UPDATE promo_codes SET order_usage_count = order_usage_count + 1, updated_at = NOW() WHERE id = $1',
+              [pRow.id]
+            );
           }
-
-          const eligibleSubtotal = eligibleItems.reduce((acc, it) => acc + it.total_price, 0);
-
-          let disc = 0;
-          const discountType = (pRow.discount_type || 'PERCENTAGE').toUpperCase();
-          const discountVal = Number(pRow.discount || 0);
-          const appliesTo = (pRow.discount_applies_to || 'ORDER').toUpperCase();
-
-          if (discountType === 'PERCENT' || discountType === 'PERCENTAGE') {
-            disc = Math.round((eligibleSubtotal * discountVal) / 100);
-          } else if (appliesTo === 'EACH_PRODUCT') {
-            disc = eligibleItems.reduce((acc, it) => acc + (discountVal * it.quantity), 0);
-          } else {
-            disc = discountVal;
-          }
-
-          discount = Math.min(disc, eligibleSubtotal);
-          appliedPromo = pRow;
-
-          await client.query(
-            'UPDATE promo_codes SET order_usage_count = order_usage_count + 1, updated_at = NOW() WHERE id = $1',
-            [pRow.id]
-          );
         }
 
         total = Math.max(0, subtotal - discount);
@@ -682,24 +664,39 @@ class OrdersService {
           throw err;
         }
         if (order.expires_at && new Date(order.expires_at).getTime() < Date.now()) {
-          const err = new Error('Thời gian giữ vé của đơn hàng đã hết hạn. Vui lòng đặt vé lại.');
+          const err = new Error('Reservation hold has expired. Please reserve your tickets again.');
           err.statusCode = 400;
           throw err;
         }
         isFreeOrder = order.total === 0 || order.subtotal - (order.discount || 0) <= 0;
-        if (isFreeOrder) {
-          resolvedPaymentStatus = 'NO_PAYMENT_REQUIRED';
-          resolvedPaymentGateway = 'FREE';
-          resolvedPaymentTxnId = null;
+        const isConfirmedPayment =
+          isFreeOrder ||
+          payment_method === 'OFFLINE' ||
+          payment_method === 'CARD' ||
+          Boolean(payment_intent_id) ||
+          (process.env.NODE_ENV !== 'production' && payment_method !== 'GATEWAY_REDIRECT');
+
+        if (isConfirmedPayment) {
+          resolvedPaymentStatus = isFreeOrder ? 'NO_PAYMENT_REQUIRED' : 'PAID';
+          resolvedPaymentGateway = isFreeOrder ? 'FREE' : (payment_method || 'OFFLINE');
+          resolvedPaymentTxnId = payment_intent_id || (isFreeOrder ? null : `TXN-${order.id}-${Date.now()}`);
           resolvedOrderStatus = 'COMPLETED';
+        } else {
+          resolvedPaymentStatus = 'PENDING';
+          resolvedPaymentGateway = payment_method || 'VNPAY';
+          resolvedPaymentTxnId = payment_intent_id || `PI-${order.id}-${Date.now()}`;
+          resolvedOrderStatus = 'PENDING_PAYMENT';
         }
+
+        const isOrderActive = resolvedOrderStatus === 'COMPLETED';
+        const initialAttendeeStatus = isOrderActive ? 'ACTIVE' : 'PENDING';
+
         for (let i = 0; i < attendeeSource.length; i++) {
           const att = attendeeSource[i];
           const attId = getNextAttendeeId();
-          const barcode = isFreeOrder
+          const barcode = isOrderActive
             ? `TKT-${order.id}-${attId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
             : null;
-          const initialAttendeeStatus = isFreeOrder ? 'ACTIVE' : 'PENDING';
           const seat = order.seats && order.seats[i] ? order.seats[i] : null;
 
           createdAttendees.push({
@@ -726,7 +723,7 @@ class OrdersService {
         throw err;
       }
       if (dbRow.reserved_until && new Date(dbRow.reserved_until).getTime() < Date.now()) {
-        const err = new Error('Thời gian giữ vé của đơn hàng đã hết hạn. Vui lòng đặt vé lại.');
+        const err = new Error('Reservation hold has expired. Please reserve your tickets again.');
         err.statusCode = 400;
         throw err;
       }
@@ -736,10 +733,17 @@ class OrdersService {
       const tot = Number(dbRow.total_gross || 0);
       isFreeOrder = tot === 0 || sub - disc <= 0;
 
-      if (isFreeOrder) {
-        resolvedPaymentStatus = 'NO_PAYMENT_REQUIRED';
-        resolvedPaymentGateway = 'FREE';
-        resolvedPaymentTxnId = null;
+      const isConfirmedPayment =
+        isFreeOrder ||
+        payment_method === 'OFFLINE' ||
+        payment_method === 'CARD' ||
+        Boolean(payment_intent_id) ||
+        (process.env.NODE_ENV !== 'production' && payment_method !== 'GATEWAY_REDIRECT');
+
+      if (isConfirmedPayment) {
+        resolvedPaymentStatus = isFreeOrder ? 'NO_PAYMENT_REQUIRED' : 'PAID';
+        resolvedPaymentGateway = isFreeOrder ? 'FREE' : (payment_method || 'OFFLINE');
+        resolvedPaymentTxnId = payment_intent_id || (isFreeOrder ? null : `TXN-${order.id}-${Date.now()}`);
         resolvedOrderStatus = 'COMPLETED';
       } else {
         resolvedPaymentStatus = 'PENDING';
@@ -758,14 +762,15 @@ class OrdersService {
       );
 
       const resolvedEventId = checkRes.rows[0].event_id || order.event_id || 1;
+      const isOrderActive = resolvedOrderStatus === 'COMPLETED';
+      const initialAttendeeStatus = isOrderActive ? 'ACTIVE' : 'PENDING';
 
       for (let i = 0; i < attendeeSource.length; i++) {
         const att = attendeeSource[i];
         let attId = getNextAttendeeId();
-        const barcode = isFreeOrder
+        const barcode = isOrderActive
           ? `TKT-${order.id}-${attId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
           : null;
-        const initialAttendeeStatus = isFreeOrder ? 'ACTIVE' : 'PENDING';
         const seat = order.seats && order.seats[i] ? order.seats[i] : null;
 
         const publicId = `att_pub_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
@@ -819,7 +824,7 @@ class OrdersService {
     order.payment_status = resolvedPaymentStatus;
     order.payment_transaction_id = resolvedPaymentTxnId;
     order.status = resolvedOrderStatus;
-    if (isFreeOrder) {
+    if (resolvedOrderStatus === 'COMPLETED') {
       order.paid_at = new Date().toISOString();
     }
 
@@ -867,10 +872,6 @@ class OrdersService {
       }
     }
 
-    if (order.event_id && order.id) {
-      await seatingService.releaseSeats(order.event_id, order.id);
-    }
-
     if (order.promo_code && order.event_id) {
       await promosService.decrementUsage(order.event_id, order.promo_code);
     }
@@ -899,25 +900,25 @@ class OrdersService {
     await this.authorizeOrderAccess(order, currentUser, currentSecret);
 
     if (order.status === 'COMPLETED' || order.status === 'PAID') {
-      const err = new Error('Đơn hàng đã thanh toán thành công, không thể hủy. Vui lòng sử dụng quy trình hoàn vé / hoàn tiền.');
+      const err = new Error('Order is already paid/completed, cannot cancel directly. Please use the refund process.');
       err.statusCode = 400;
       throw err;
     }
 
     if (order.status === 'REFUNDED') {
-      const err = new Error('Đơn hàng đã hoàn tiền, không thể hủy');
+      const err = new Error('Order is already refunded, cannot cancel.');
       err.statusCode = 400;
       throw err;
     }
 
     if (order.status === 'CANCELLED') {
-      const err = new Error('Đơn hàng đã bị hủy trước đó');
+      const err = new Error('Order is already cancelled');
       err.statusCode = 400;
       throw err;
     }
 
     if (order.status !== 'RESERVED' && order.status !== 'PENDING_PAYMENT') {
-      const err = new Error(`Không thể hủy đơn hàng ở trạng thái ${order.status}`);
+      const err = new Error(`Cannot cancel order in ${order.status} state`);
       err.statusCode = 400;
       throw err;
     }
@@ -950,7 +951,7 @@ class OrdersService {
     if (isNumeric) {
       const numId = Number(orderIdentifier);
       if (!user && !sessionSecret) {
-        const err = new Error('Unauthorized: Vui lòng đăng nhập để xem biên nhận theo mã đơn hàng');
+        const err = new Error('Unauthorized: Please log in to view receipt for this order');
         err.statusCode = 401;
         throw err;
       }
@@ -971,7 +972,7 @@ class OrdersService {
         if ((user && user.role === 'ADMIN') || isOwner) {
           isAuthorized = true;
         } else {
-          const err = new Error('Forbidden: Bạn không có quyền xem biên nhận của đơn hàng này');
+          const err = new Error('Forbidden: You do not have permission to view this receipt');
           err.statusCode = 403;
           throw err;
         }
@@ -1032,7 +1033,7 @@ class OrdersService {
     const buyerData = isAuthorized
       ? (order.buyer || {})
       : {
-          name: maskName(order.buyer?.name || order.first_name || 'Khách Mua Vé'),
+          name: maskName(order.buyer?.name || order.first_name || 'Ticket Buyer'),
           email: maskEmail(order.buyer?.email || order.email || ''),
         };
 
@@ -1057,10 +1058,10 @@ class OrdersService {
       issued_at: order.paid_at || order.created_at || new Date().toISOString(),
       attendees: (order.attendees || []).map((a) => ({
         id: a.id,
-        name: isAuthorized ? (a.name || a.first_name || 'Khách Mua Vé') : maskName(a.name || a.first_name || 'Khách Mua Vé'),
+        name: isAuthorized ? (a.name || a.first_name || 'Ticket Buyer') : maskName(a.name || a.first_name || 'Ticket Buyer'),
         email: isAuthorized ? a.email : maskEmail(a.email),
         ticket_tier_id: a.ticket_tier_id,
-        tier_name: a.tier_name || 'Vé Phổ Thông',
+        tier_name: a.tier_name || 'General Admission',
         ticket_code: isAuthorized ? a.barcode || a.ticket_code : 'REDACTED_PUBLIC_VIEW',
         qr_hash: isAuthorized ? a.barcode || a.ticket_code : 'REDACTED_PUBLIC_VIEW',
         barcode: isAuthorized ? a.barcode : 'REDACTED_PUBLIC_VIEW',
@@ -1101,6 +1102,10 @@ class OrdersService {
 
   async deleteAttendee(eventId, attendeeId, user) {
     return attendeeService.deleteAttendee(eventId, attendeeId, user);
+  }
+
+  async checkInAttendee(eventId, data, user) {
+    return attendeeService.checkInAttendee(eventId, data, user);
   }
 
   getMemoryOrders() {
@@ -1233,7 +1238,7 @@ class OrdersService {
 
   async getUserOrders(user) {
     if (!user) {
-      const err = new Error('Unauthorized: Vui lòng đăng nhập để xem vé');
+      const err = new Error('Unauthorized: Please log in to view orders');
       err.statusCode = 401;
       throw err;
     }
@@ -1268,9 +1273,9 @@ class OrdersService {
           id: numOrderId,
           orderShortId: row.short_id,
           event_id: Number(row.event_id),
-          event_title: row.event_title || 'Sự kiện Ticketflow',
+          event_title: row.event_title || 'Ticketflow Event',
           event_date: row.starts_at,
-          event_location: row.event_location || 'Địa điểm tổ chức',
+          event_location: row.event_location || 'Event Venue',
           subtotal: Number(row.subtotal),
           discount: Number(row.discount_amount),
           total: Number(row.total_gross),
@@ -1284,7 +1289,7 @@ class OrdersService {
             short_id: a.short_id,
             name: a.first_name || '',
             email: a.email,
-            tier_name: a.tier_name || 'Vé tiêu chuẩn',
+            tier_name: a.tier_name || 'Standard Ticket',
             ticket_code: a.barcode,
             qr_hash: a.barcode,
             barcode: a.barcode,
@@ -1314,8 +1319,8 @@ class OrdersService {
           id: o.id,
           orderShortId: o.orderShortId || `ORD-${o.id}`,
           event_id: o.event_id,
-          event_title: o.event_title || 'Sự kiện Ticketflow',
-          event_location: o.event_location || o.location || 'Địa điểm tổ chức',
+          event_title: o.event_title || 'Ticketflow Event',
+          event_location: o.event_location || o.location || 'Event Venue',
           event_date: o.event_date || o.starts_at || null,
           subtotal: Number(o.subtotal || o.total || 0),
           discount: Number(o.discount || o.discount_amount || 0),

@@ -10,6 +10,8 @@ import {
   ChevronRightIcon,
   ArrowRightIcon,
   ArrowLeftIcon,
+  ArrowUpIcon,
+  ArrowDownIcon,
   MenuIcon,
   CloseIcon,
   UserIcon,
@@ -56,6 +58,7 @@ import {
   CrownIcon,
   SparklesIcon,
   ZapIcon,
+  FileIcon,
   FileTextIcon,
 } from './icons/commerce';
 
@@ -127,6 +130,10 @@ const ICON_REGISTRY = {
   'chevron-right': ChevronRightIcon,
   'arrow-right': ArrowRightIcon,
   'arrow-left': ArrowLeftIcon,
+  'arrow-up': ArrowUpIcon,
+  'arrow-down': ArrowDownIcon,
+  up: ArrowUpIcon,
+  down: ArrowDownIcon,
   menu: MenuIcon,
   close: CloseIcon,
   x: CloseIcon,
@@ -198,7 +205,10 @@ const ICON_REGISTRY = {
   sparkles: SparklesIcon,
   feature: SparklesIcon,
   zap: ZapIcon,
+  file: FileIcon,
   'file-text': FileTextIcon,
+  pdf: FileTextIcon,
+  document: FileTextIcon,
   report: FileTextIcon,
 
   // Domain & Event Concepts

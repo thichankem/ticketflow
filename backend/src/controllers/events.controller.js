@@ -1,5 +1,4 @@
 import eventsService from '../services/events.service.js';
-import seatingService from '../services/seating.service.js';
 import recommendationService from '../services/recommendation.service.js';
 import storageService from '../services/storage.service.js';
 import { sanitizeCsvCell } from '../utils/csv.js';
@@ -95,80 +94,12 @@ class EventsController {
     }
   }
 
-  async toggleFavorite(req, res, next) {
-    try {
-      const { id } = req.params;
-      const userId = req.user ? req.user.id : (req.body.user_id || req.ip);
-      const action = req.body?.action;
-      let result;
-      if (action === 'SUBSCRIBE' || action === 'FAVORITE' || req.body?.favorited === true) {
-        result = recommendationService.setFavorite(userId, id, true);
-      } else if (action === 'UNFAVORITE' || req.body?.favorited === false) {
-        result = recommendationService.setFavorite(userId, id, false);
-      } else {
-        result = recommendationService.toggleFavorite(userId, id);
-      }
-      return res.status(200).json({
-        message: result.favorited ? 'Đã thêm vào sự kiện yêu thích' : 'Đã bỏ yêu thích sự kiện',
-        ...result,
-      });
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async getUserFavorites(req, res, next) {
-    try {
-      const userId = req.user ? req.user.id : (req.query?.user_id || req.ip);
-      const favorites = await recommendationService.getUserFavorites(userId);
-      return res.status(200).json({ favorites });
-    } catch (err) {
-      next(err);
-    }
-  }
-
   async trackView(req, res, next) {
     try {
       const { id } = req.params;
       const userId = req.user ? req.user.id : (req.body.user_id || req.ip);
       recommendationService.trackView(userId, id);
       return res.status(200).json({ tracked: true });
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async getSeats(req, res, next) {
-    try {
-      const { id } = req.params;
-      const seatLayout = await seatingService.getSeatLayout(id);
-      return res.status(200).json(seatLayout);
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async configureSeats(req, res, next) {
-    try {
-      const { id } = req.params;
-      const event = await eventsService.getEventById(id);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-      if (req.user && req.user.role !== 'ADMIN' && Number(event.account_id) !== Number(req.user.account_id)) {
-        return res.status(403).json({ error: 'Forbidden: Event does not belong to user account' });
-      }
-      const { rows, seats_per_row, seat_map_url, reserved_vip_seats } = req.body;
-      const result = seatingService.configureLayout(id, {
-        rows,
-        seatsPerRow: seats_per_row,
-        seatMapImageUrl: seat_map_url,
-        reservedVipSeats: reserved_vip_seats,
-      });
-      return res.status(200).json({
-        message: 'Cấu hình sơ đồ chỗ ngồi thành công',
-        layout: result,
-      });
     } catch (err) {
       next(err);
     }
@@ -183,7 +114,7 @@ class EventsController {
       const mediaType = req.body?.mediaType || req.params?.type || 'cover';
 
       if (!fileData) {
-        return res.status(400).json({ error: 'Dữ liệu hình ảnh (tệp tải lên hoặc fileData) là bắt buộc.' });
+        return res.status(400).json({ error: 'Image data (uploaded file or fileData) is required.' });
       }
 
       const result = await storageService.uploadEventImage({
@@ -197,7 +128,7 @@ class EventsController {
 
       return res.status(200).json({
         success: true,
-        message: 'Tải ảnh lên và tự động tối ưu hóa thành công',
+        message: 'Image uploaded and automatically optimized successfully',
         url: result.url,
         path: result.path,
         key: result.key,
@@ -225,7 +156,7 @@ class EventsController {
 
       return res.status(200).json({
         success: true,
-        message: 'Xóa hình ảnh thành công',
+        message: 'Image deleted successfully',
         ...result,
       });
     } catch (err) {
@@ -259,12 +190,12 @@ class EventsController {
           size: req.body.size || 0,
         };
       } else {
-        return res.status(400).json({ error: 'Tệp tải lên hoặc thông tin đính kèm là bắt buộc' });
+        return res.status(400).json({ error: 'Uploaded file or attachment details required' });
       }
 
       const attachment = await eventsService.addAttachment(id, attachmentData, req.user);
       return res.status(201).json({
-        message: 'Tải lên tài liệu PDF sự kiện thành công',
+        message: 'Event PDF document uploaded successfully',
         attachment,
       });
     } catch (err) {
@@ -285,7 +216,7 @@ class EventsController {
       );
 
       if (!att) {
-        const err = new Error('Không tìm thấy tài liệu đính kèm yêu cầu');
+        const err = new Error('Attachment not found');
         err.statusCode = 404;
         throw err;
       }
@@ -304,7 +235,7 @@ class EventsController {
       }
 
       // Strictly reject fake mock PDF generation; fail closed with 404 (TF-P1-E)
-      const err = new Error('Tài liệu đính kèm chưa được tải lên hoặc không tồn tại trong hệ thống lưu trữ');
+      const err = new Error('Attachment file not found in storage');
       err.statusCode = 404;
       throw err;
     } catch (err) {
@@ -312,39 +243,31 @@ class EventsController {
     }
   }
 
-  async getQueueStatus(req, res, next) {
+  async listAttachments(req, res, next) {
     try {
       const { id } = req.params;
-      const { session_id } = req.query;
-      const { default: waitingRoomService } = await import('../services/waiting-room.service.js');
-      const queueStatus = waitingRoomService.joinOrCheckQueue(id, session_id);
-      return res.status(200).json(queueStatus);
+      const attachments = await eventsService.getAttachments(id, req.user);
+      return res.json({ attachments });
     } catch (err) {
       next(err);
     }
   }
 
-  async configureQueue(req, res, next) {
+  async updateAttachment(req, res, next) {
     try {
-      const { id } = req.params;
-      const event = await eventsService.getEventById(id);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-      if (req.user && req.user.role !== 'ADMIN' && Number(event.account_id) !== Number(req.user.account_id)) {
-        return res.status(403).json({ error: 'Forbidden: Event does not belong to user account' });
-      }
-      const { enabled, max_concurrent, admission_rate } = req.body;
-      const { default: waitingRoomService } = await import('../services/waiting-room.service.js');
-      const result = waitingRoomService.configureWaitingRoom(id, {
-        enabled,
-        maxConcurrent: max_concurrent,
-        admissionRatePerMin: admission_rate,
-      });
-      return res.status(200).json({
-        message: 'Cấu hình phòng chờ ảo thành công',
-        config: result,
-      });
+      const { id, attachmentId } = req.params;
+      const updated = await eventsService.updateAttachment(id, attachmentId, req.body, req.user);
+      return res.json({ message: 'Attachment updated successfully', attachment: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async deleteAttachment(req, res, next) {
+    try {
+      const { id, attachmentId } = req.params;
+      await eventsService.deleteAttachment(id, attachmentId, req.user);
+      return res.json({ message: 'Attachment deleted successfully' });
     } catch (err) {
       next(err);
     }
@@ -418,15 +341,15 @@ class EventsController {
       const { default: ordersService } = await import('../services/orders.service.js');
       const attendees = await ordersService.getAttendeesByEvent(id, req.user);
 
-      // Generate UTF-8 CSV with BOM for proper Excel compatibility (Phân hệ 2.14 & Open Seating)
-      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Trạng Thái\n';
+      // Generate UTF-8 CSV with BOM for proper Excel compatibility (Module 2.14 & Open Seating)
+      let csv = '\uFEFFNo,Ticket ID,Full Name,Email,Tier,Status\n';
       (attendees || []).forEach((att, idx) => {
         const row = [
           idx + 1,
           sanitizeCsvCell(att.ticket_code || att.barcode || att.short_id || att.id || ''),
           sanitizeCsvCell(att.name || ''),
           sanitizeCsvCell(att.email || ''),
-          sanitizeCsvCell(att.tier_name || att.ticket_tier_id || 'Vé Tiêu Chuẩn'),
+          sanitizeCsvCell(att.tier_name || att.ticket_tier_id || 'Standard Ticket'),
           sanitizeCsvCell(att.status || 'ACTIVE'),
         ];
         csv += row.join(',') + '\n';
@@ -446,8 +369,8 @@ class EventsController {
       const { default: ordersService } = await import('../services/orders.service.js');
       const orders = await ordersService.getOrdersByEvent(id, req.user);
 
-      // Generate UTF-8 CSV with BOM for sales report (Phân hệ 2.14)
-      let csv = '\uFEFFMã Đơn Hàng,Mã Ngắn,Khách Hàng,Email,Tổng Tiền Trước Giảm,Giảm Giá,Tổng Thực Thu,Mã Khuyến Mãi,Cổng Thanh Toán,Trạng Thái,Thời Gian Đặt\n';
+      // Generate UTF-8 CSV with BOM for sales report (Module 2.14)
+      let csv = '\uFEFFOrder ID,Short Code,Customer Name,Email,Subtotal,Discount,Gross Total,Promo Code,Gateway,Status,Order Date\n';
       (orders || []).forEach((ord) => {
         const row = [
           sanitizeCsvCell(ord.id || ''),

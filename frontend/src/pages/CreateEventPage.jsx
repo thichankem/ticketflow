@@ -4,6 +4,7 @@ import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { EventForm } from '../components/events/EventForm';
 import { PageHeader } from '../components/common/PageHeader';
+import { Icon } from '../components/ui/Icon';
 
 export const CreateEventPage = () => {
   const { t } = useLanguage();
@@ -31,9 +32,9 @@ export const CreateEventPage = () => {
     <div className="container py-lg max-w-4xl mx-auto">
       <div className="flex justify-between items-center flex-wrap gap-sm mb-md">
         <Link to="/organizer" className="btn btn-secondary btn-sm inline-flex items-center gap-xs">
-          ← {t('common.back', 'Quay lại Studio')}
+          <Icon name="arrow-left" size="xs" ariaHidden />
+          <span>{t('common.back', 'Quay lại Studio')}</span>
         </Link>
-        <span className="badge badge-primary font-semibold">Khởi tạo sự kiện mới</span>
       </div>
 
       <PageHeader

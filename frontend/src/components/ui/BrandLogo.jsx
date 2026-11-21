@@ -110,19 +110,12 @@ export const BrandMark = ({ size = 34, className = '', ariaHidden = true }) => {
 
 export const BrandLogo = ({
   size = 34,
-  showSubtag = true,
-  subtagText = 'Vé Sự Kiện Trực Tuyến',
   className = '',
 }) => {
   return (
     <div className={`brand-logo-container ${className}`} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
       <BrandMark size={size} />
-      <div className="logo-text">
-        <span className="brand-name font-bold tracking-tight">Ticketflow</span>
-        {showSubtag && subtagText && (
-          <span className="portal-subtag">{subtagText}</span>
-        )}
-      </div>
+      <span className="brand-name font-bold tracking-tight">Ticketflow</span>
     </div>
   );
 };

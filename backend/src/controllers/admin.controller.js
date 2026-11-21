@@ -158,7 +158,7 @@ class AdminController {
   async exportAuditReport(req, res, next) {
     try {
       const orders = await ordersService.getAllOrders();
-      let csv = '\uFEFFMã Đơn,Mã Ngắn,Sự Kiện ID,Khách Hàng,Email,Tổng Tiền,Thực Thu,Mã KM,Cổng Thanh Toán,Trạng Thái,Thời Gian\n';
+      let csv = '\uFEFFOrder ID,Short Code,Event ID,Customer Name,Email,Total,Gross,Promo Code,Gateway,Status,Created At\n';
       (orders || []).forEach((ord) => {
         const row = [
           sanitizeCsvCell(ord.id || ''),
@@ -185,7 +185,7 @@ class AdminController {
   }
 
   // ----------------------------------------------------
-  // Broadcast Announcements (REQ-ADM-09: Thông Báo Chung)
+  // Broadcast Announcements (REQ-ADM-09)
   // ----------------------------------------------------
   async getAnnouncements(req, res, next) {
     try {
@@ -209,6 +209,23 @@ class AdminController {
         createdBy: req.user?.id,
       });
       return res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async updateAnnouncement(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { title, message, type, target_role } = req.body;
+      const { default: announcementsService } = await import('../services/announcements.service.js');
+      const result = await announcementsService.updateAnnouncement(id, {
+        title,
+        message,
+        type,
+        target_role,
+      });
+      return res.status(200).json(result);
     } catch (err) {
       next(err);
     }

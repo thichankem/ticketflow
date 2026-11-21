@@ -57,7 +57,6 @@ export const ReceiptPage = () => {
           <div className="receipt-icon-circle flex items-center justify-center mb-2" style={{ background: 'none', border: 'none', width: 'auto', height: 'auto' }}>
             <SuccessVectorAnimation size={56} />
           </div>
-          <span className="badge badge-success">{t('receipt.header_badge', 'Biên lai thanh toán')}</span>
           <h1 className="receipt-title">{t('receipt.headline', 'Biên lai thanh toán')}</h1>
           <p className="receipt-subtitle">
             {t('receipt.code_label', 'Mã biên lai:')} <strong>{receipt.receipt_id}</strong> · {t('receipt.order_label', 'Mã đơn:')} <strong>{receipt.order_short_id || receipt.order_id}</strong>

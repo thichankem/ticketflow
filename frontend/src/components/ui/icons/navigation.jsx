@@ -78,6 +78,20 @@ export const ArrowLeftIcon = () => (
   </>
 );
 
+export const ArrowUpIcon = () => (
+  <>
+    <line x1="12" y1="19.5" x2="12" y2="4.5" />
+    <polyline points="5 11.5 12 4.5 19 11.5" />
+  </>
+);
+
+export const ArrowDownIcon = () => (
+  <>
+    <line x1="12" y1="4.5" x2="12" y2="19.5" />
+    <polyline points="19 12.5 12 19.5 5 12.5" />
+  </>
+);
+
 export const MenuIcon = () => (
   <>
     <line x1="4" y1="6.5" x2="20" y2="6.5" />

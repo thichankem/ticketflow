@@ -89,6 +89,7 @@ class PromosService {
     const cleanCode = code.toUpperCase().trim();
 
     let promo = null;
+    let dbFailed = false;
     try {
       const sql = `
         SELECT * FROM promo_codes 
@@ -107,10 +108,11 @@ class PromosService {
         };
       }
     } catch (dbErr) {
+      dbFailed = true;
       console.warn('[PromosService.validatePromo] DB query error, using fallback:', dbErr.message);
     }
 
-    if (!promo) {
+    if (!promo && dbFailed) {
       for (const p of memoryPromos.values()) {
         if (p.event_id === numEventId && p.code === cleanCode && p.is_active) {
           promo = p;

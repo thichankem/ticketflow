@@ -81,14 +81,14 @@ class StorageService {
    */
   async optimizeImage(buffer, mediaType = 'cover') {
     if (!Buffer.isBuffer(buffer) || buffer.length < 12) {
-      const err = new Error('Tệp hình ảnh không hợp lệ hoặc dữ liệu tệp bị rỗng.');
+      const err = new Error('Invalid image file or empty file payload.');
       err.statusCode = 400;
       throw err;
     }
 
     if (buffer.length > MAX_FILE_SIZE_BYTES) {
       const err = new Error(
-        `Kích thước tệp (${(buffer.length / 1024 / 1024).toFixed(1)}MB) vượt quá giới hạn tối đa cho phép (10MB).`
+        `File size (${(buffer.length / 1024 / 1024).toFixed(1)}MB) exceeds maximum limit allowed (10MB).`
       );
       err.statusCode = 400;
       throw err;
@@ -97,7 +97,7 @@ class StorageService {
     const detected = this.detectMagicBytes(buffer);
     if (!detected || !ALLOWED_IMAGE_MIME_TYPES.includes(detected)) {
       const err = new Error(
-        'Định dạng tệp không được hỗ trợ. Hệ thống chỉ chấp nhận hình ảnh PNG, JPEG, hoặc WebP.'
+        'Unsupported file format. System only accepts PNG, JPEG, or WebP images.'
       );
       err.statusCode = 400;
       throw err;
@@ -114,14 +114,14 @@ class StorageService {
       });
       metadata = await imageInstance.metadata();
     } catch (sharpErr) {
-      const err = new Error(`Không thể giải mã tệp hình ảnh hoặc tệp bị hỏng: ${sharpErr.message}`);
+      const err = new Error(`Cannot decode image file or file is corrupted: ${sharpErr.message}`);
       err.statusCode = 400;
       throw err;
     }
 
     const allowedFormats = ['jpeg', 'png', 'webp'];
     if (!metadata.format || !allowedFormats.includes(metadata.format)) {
-      const err = new Error('Chỉ chấp nhận tệp hình ảnh định dạng PNG, JPEG hoặc WebP.');
+      const err = new Error('Only PNG, JPEG, or WebP image formats are accepted.');
       err.statusCode = 400;
       throw err;
     }
@@ -217,14 +217,14 @@ class StorageService {
    */
   async uploadEventImage({ fileData, fileName, mimeType, eventId, mediaType = 'cover', user }) {
     if (!user) {
-      const err = new Error('Yêu cầu xác thực tài khoản để tải ảnh lên.');
+      const err = new Error('Authentication required to upload image.');
       err.statusCode = 401;
       throw err;
     }
 
     const role = (user.role || '').toUpperCase();
     if (role !== 'ORGANIZER' && role !== 'ADMIN') {
-      const err = new Error('Chỉ Ban tổ chức hoặc Quản trị viên mới có quyền tải ảnh sự kiện lên.');
+      const err = new Error('Only Organizers or Administrators can upload event images.');
       err.statusCode = 403;
       throw err;
     }
@@ -239,7 +239,7 @@ class StorageService {
       const cleanBase64 = fileData.includes(';base64,') ? fileData.split(';base64,')[1] : fileData;
       rawBuffer = Buffer.from(cleanBase64, 'base64');
     } else {
-      const err = new Error('Dữ liệu hình ảnh tải lên không hợp lệ.');
+      const err = new Error('Invalid image upload payload.');
       err.statusCode = 400;
       throw err;
     }
@@ -252,14 +252,14 @@ class StorageService {
       /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp)$/i.test(lowerName)
     ) {
       const err = new Error(
-        'Không cho phép tải video lên. Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPEG, WebP).'
+        'Video upload not allowed. System only supports image files (PNG, JPEG, WebP).'
       );
       err.statusCode = 400;
       throw err;
     }
     if (lowerMime === 'application/pdf' || /\.pdf$/i.test(lowerName)) {
       const err = new Error(
-        'Không tải tệp PDF vào phần ảnh sự kiện. Vui lòng tải tài liệu tại mục Tài liệu đính kèm sự kiện.'
+        'Do not upload PDF files as event images. Please upload documents in event attachments.'
       );
       err.statusCode = 400;
       throw err;
@@ -275,13 +275,13 @@ class StorageService {
           numEventId,
         ]);
         if (evRes.rows.length === 0) {
-          const err = new Error('Sự kiện không tồn tại.');
+          const err = new Error('Event does not exist.');
           err.statusCode = 404;
           throw err;
         }
         existingEvent = evRes.rows[0];
         if (role !== 'ADMIN' && Number(existingEvent.account_id) !== accountId) {
-          const err = new Error('Bạn không có quyền chỉnh sửa hình ảnh của sự kiện này.');
+          const err = new Error('You do not have permission to edit images for this event.');
           err.statusCode = 403;
           throw err;
         }
@@ -307,7 +307,7 @@ class StorageService {
       });
 
     if (uploadError) {
-      const err = new Error(`Tải ảnh lên Supabase Storage thất bại: ${uploadError.message}`);
+      const err = new Error(`Failed to upload image to Supabase Storage: ${uploadError.message}`);
       err.statusCode = 502;
       throw err;
     }
@@ -346,7 +346,7 @@ class StorageService {
         `[StorageService.uploadEventImage] DB metadata insert failed. Cleaning up orphan ${storagePath}: ${dbErr.message}`
       );
       await this.deleteFile(bucket, storagePath);
-      const err = new Error('Không thể lưu thông tin hình ảnh vào cơ sở dữ liệu.');
+      const err = new Error('Could not save image metadata to database.');
       err.statusCode = 500;
       throw err;
     }
@@ -376,7 +376,7 @@ class StorageService {
       } catch (updateErr) {
         // Compensating cleanup on DB failure: remove uploaded storage object (TF-P1-D)
         await this.deleteFile(bucket, storagePath).catch(() => {});
-        const err = new Error(`Lỗi cập nhật ảnh sự kiện vào cơ sở dữ liệu: ${updateErr.message}`);
+        const err = new Error(`Database error updating event image: ${updateErr.message}`);
         err.statusCode = 500;
         throw err;
       }
@@ -421,21 +421,21 @@ class StorageService {
    */
   async deleteEventImage({ eventId, mediaType = 'cover', storagePath, user }) {
     if (!user) {
-      const err = new Error('Yêu cầu xác thực tài khoản để xóa ảnh.');
+      const err = new Error('Authentication required to delete image.');
       err.statusCode = 401;
       throw err;
     }
 
     const role = (user.role || '').toUpperCase();
     if (role !== 'ORGANIZER' && role !== 'ADMIN') {
-      const err = new Error('Chỉ Ban tổ chức hoặc Quản trị viên mới có quyền xóa ảnh.');
+      const err = new Error('Only Organizers or Administrators can delete images.');
       err.statusCode = 403;
       throw err;
     }
 
     const numEventId = parseInt(eventId, 10);
     if (!Number.isFinite(numEventId)) {
-      const err = new Error('ID sự kiện không hợp lệ.');
+      const err = new Error('Invalid event ID.');
       err.statusCode = 400;
       throw err;
     }
@@ -444,7 +444,7 @@ class StorageService {
       numEventId,
     ]);
     if (evRes.rows.length === 0) {
-      const err = new Error('Sự kiện không tồn tại.');
+      const err = new Error('Event does not exist.');
       err.statusCode = 404;
       throw err;
     }
@@ -452,7 +452,7 @@ class StorageService {
 
     const accountId = Number(user.account_id || user.accountId || user.id || 1);
     if (role !== 'ADMIN' && Number(event.account_id) !== accountId) {
-      const err = new Error('Bạn không có quyền xóa hình ảnh của sự kiện này.');
+      const err = new Error('You do not have permission to delete images for this event.');
       err.statusCode = 403;
       throw err;
     }
@@ -470,7 +470,7 @@ class StorageService {
 
     // Path traversal check
     if (targetPath.includes('..') || targetPath.includes('//')) {
-      const err = new Error('Đường dẫn đối tượng lưu trữ không hợp lệ.');
+      const err = new Error('Invalid storage object path.');
       err.statusCode = 400;
       throw err;
     }
@@ -498,7 +498,7 @@ class StorageService {
 
     // Both Admin and Organizer MUST only delete assets registered to the specified event
     if (!isRegisteredAsset) {
-      const err = new Error('Forbidden: Không thể xóa đối tượng lưu trữ không thuộc tài sản đăng ký của sự kiện này.');
+      const err = new Error('Forbidden: Cannot delete storage objects that do not belong to this event.');
       err.statusCode = 403;
       throw err;
     }
@@ -518,7 +518,7 @@ class StorageService {
 
     return {
       success: true,
-      message: 'Hình ảnh đã được xóa an toàn khỏi hệ thống lưu trữ đám mây.',
+      message: 'Image deleted securely from cloud storage.',
     };
   }
 
@@ -592,7 +592,7 @@ class StorageService {
 
     if (mimeType.startsWith('video/')) {
       const err = new Error(
-        'Không cho phép tải video lên. Hệ thống chỉ hỗ trợ tệp tài liệu PDF và hình ảnh (PNG, JPEG, WebP).'
+        'Video upload not allowed. System only supports PDF documents and images (PNG, JPEG, WebP).'
       );
       err.statusCode = 400;
       throw err;
@@ -619,7 +619,7 @@ class StorageService {
     if (mimeType === 'application/pdf') {
       const isPdfMagic = buffer.length >= 5 && buffer.slice(0, 5).toString('ascii') === '%PDF-';
       if (!isPdfMagic) {
-        const err = new Error('Nội dung tệp không phải định dạng PDF hợp lệ');
+        const err = new Error('File content is not valid PDF format');
         err.statusCode = 400;
         throw err;
       }

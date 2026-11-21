@@ -19,14 +19,12 @@ class OrdersController {
   async reserve(req, res, next) {
     try {
       const eventId = req.params.id || req.body.event_id;
-      const { items, promo_code, queue_token, admission_token } = req.body;
-      const queueToken = queue_token || admission_token || req.headers['x-waiting-room-token'] || req.headers['x-queue-token'] || req.headers['x-admission-token'];
+      const { items, promo_code } = req.body;
       const result = await ordersService.reserveOrder({
         eventId,
         items,
         promoCode: promo_code,
         user: req.user,
-        queueToken,
       });
       if (result.session_token) {
         res.cookie('order_session_token', result.session_token, {
@@ -123,6 +121,17 @@ class OrdersController {
     try {
       const { id, attendeeId } = req.params;
       const result = await ordersService.deleteAttendee(id, attendeeId, req.user);
+      return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async checkInAttendee(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { barcode, ticket_code } = req.body;
+      const result = await ordersService.checkInAttendee(id, { barcode, ticket_code }, req.user);
       return res.status(200).json(result);
     } catch (err) {
       next(err);

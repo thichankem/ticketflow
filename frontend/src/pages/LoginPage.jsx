@@ -56,15 +56,18 @@ export const LoginPage = () => {
 
   return (
     <section className="auth-shell">
-      <div className="auth-brand">
-        <p className="eyebrow">Ticketflow</p>
-        <h1>Đăng nhập</h1>
-      </div>
-
       <div className="card auth-card">
-        <h2 className="panel-title">{t('auth.login_title', 'Đăng Nhập')}</h2>
+        <div className="auth-card-header">
+          <h1 className="panel-title">{t('auth.login_title', 'Đăng Nhập')}</h1>
+          <p className="auth-card-subtitle">Nhập thông tin tài khoản của bạn để tiếp tục</p>
+        </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className="alert alert-error">
+            <Icon name="alert-circle" size="sm" ariaHidden />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -109,39 +112,58 @@ export const LoginPage = () => {
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? t('auth.logging_in', 'Đang Đăng Nhập...') : t('auth.login_btn', 'Đăng Nhập')}
+          <button type="submit" className="btn btn-primary btn-block auth-submit-btn" disabled={loading}>
+            {loading ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span className="spinner spinner-sm" aria-hidden="true" />
+                <span>{t('auth.logging_in', 'Đang Đăng Nhập...')}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span>{t('auth.login_btn', 'Đăng Nhập')}</span>
+                <span aria-hidden="true">&rarr;</span>
+              </span>
+            )}
           </button>
         </form>
 
         <div className="auth-demo-box">
-          <span className="auth-demo-label">
-            {t('auth.quick_demo', 'Tài khoản thử nghiệm:')}
-          </span>
+          <div className="auth-demo-header">
+            <span className="auth-demo-label">
+              <Icon name="sparkles" size="xs" ariaHidden />
+              <span>{t('auth.quick_demo', 'Tài khoản thử nghiệm:')}</span>
+            </span>
+          </div>
           <div className="auth-demo-actions">
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm auth-demo-btn"
               onClick={() => handleQuickLogin('attendee@ticketflow.local', 'ATTENDEE')}
               disabled={loading}
+              title="Đăng nhập Khách Mua Vé (attendee@ticketflow.local)"
             >
-              {t('role.attendee', 'Khách Mua Vé')}
+              <span className="auth-demo-role">{t('role.attendee', 'Khách Mua Vé')}</span>
+              <span className="auth-demo-hint">attendee@</span>
             </button>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm auth-demo-btn"
               onClick={() => handleQuickLogin('organizer@ticketflow.local', 'ORGANIZER')}
               disabled={loading}
+              title="Đăng nhập Ban Tổ Chức (organizer@ticketflow.local)"
             >
-              {t('role.organizer', 'Ban Tổ Chức')}
+              <span className="auth-demo-role">{t('role.organizer', 'Ban Tổ Chức')}</span>
+              <span className="auth-demo-hint">organizer@</span>
             </button>
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm auth-demo-btn"
               onClick={() => handleQuickLogin('admin@ticketflow.local', 'ADMIN')}
               disabled={loading}
+              title="Đăng nhập Quản Trị Sàn (admin@ticketflow.local)"
             >
-              {t('role.admin', 'Quản Trị Sàn')}
+              <span className="auth-demo-role">{t('role.admin', 'Quản Trị Sàn')}</span>
+              <span className="auth-demo-hint">admin@</span>
             </button>
           </div>
         </div>

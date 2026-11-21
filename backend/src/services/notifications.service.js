@@ -2,7 +2,7 @@
  * Notifications & Restock Trigger Service
  * File: backend/src/services/notifications.service.js
  *
- * Implements in-app notifications and automatic restock notifications (Phân hệ 2.6).
+ * Implements in-app notifications and automatic restock notifications (Module 2.6).
  */
 
 import { query } from '../config/db.js';
@@ -48,42 +48,10 @@ class NotificationsService {
   }
 
   /**
-   * Notify users who favorited an event that tickets have been restocked
+   * Restock notifications trigger
    */
-  async triggerRestockNotification(eventId, eventTitle = 'Sự kiện') {
-    const numEventId = Number(eventId);
-    if (!eventTitle || eventTitle === 'Sự kiện') {
-      try {
-        const { default: eventsService } = await import('./events.service.js');
-        const ev = await eventsService.getEventById(numEventId);
-        if (ev && ev.title) {
-          eventTitle = ev.title;
-        }
-      } catch {}
-    }
-    const resolvedTitle = eventTitle || 'Sự kiện';
-    const { default: recommendationService } = await import('./recommendation.service.js');
-
-    // Get all users who favorited this event
-    const userIds = await recommendationService.getUsersWhoFavorited(numEventId);
-    if (!userIds || userIds.length === 0) return [];
-
-    const notifications = [];
-    const title = `🔔 Vé có sẵn trở lại: ${resolvedTitle}`;
-    const message = `Có vé vừa được nhả lại vào kho cho sự kiện "${resolvedTitle}". Hãy nhanh tay đặt ngay trước khi hết!`;
-
-    for (const uid of userIds) {
-      const notif = await this.createNotification({
-        userId: uid,
-        eventId: numEventId,
-        type: 'RESTOCK',
-        title,
-        message,
-      });
-      notifications.push(notif);
-    }
-
-    return notifications;
+  async triggerRestockNotification(eventId, eventTitle = 'Event') {
+    return [];
   }
 
   /**

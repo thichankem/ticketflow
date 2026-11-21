@@ -14,7 +14,8 @@ export class AdminService {
       const statsQuery = `
         SELECT 
           (SELECT COUNT(*) FROM users) AS total_users,
-          (SELECT COUNT(*) FROM events) AS total_events,
+          (SELECT COUNT(*) FROM events WHERE deleted_at IS NULL AND UPPER(status) != 'DRAFT') AS total_events,
+          (SELECT COUNT(*) FROM events WHERE deleted_at IS NULL AND UPPER(status) IN ('LIVE', 'OPEN', 'PUBLISHED')) AS open_events,
           (SELECT COUNT(*) FROM orders) AS total_orders,
           (SELECT COALESCE(SUM(total_gross), 0) FROM orders WHERE status = 'COMPLETED') AS total_revenue
       `;
@@ -24,6 +25,7 @@ export class AdminService {
         return {
           total_users: Number(row.total_users || 0),
           total_events: Number(row.total_events || 0),
+          open_events: Number(row.open_events || 0),
           total_orders: Number(row.total_orders || 0),
           total_revenue: Number(row.total_revenue || 0),
         };
@@ -33,6 +35,7 @@ export class AdminService {
     return {
       total_users: memoryUsers.size,
       total_events: 0,
+      open_events: 0,
       total_orders: 0,
       total_revenue: 0,
     };
@@ -85,7 +88,7 @@ export class AdminService {
     const normalizedEmail = email.toLowerCase().trim();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
-      const error = new Error('Định dạng email không hợp lệ');
+      const error = new Error('Invalid email format');
       error.statusCode = 400;
       throw error;
     }
@@ -110,9 +113,15 @@ export class AdminService {
       }
     }
 
+    if (role && role.toUpperCase() === 'ADMIN') {
+      const error = new Error('Administrators cannot grant or create another administrator (ADMIN)');
+      error.statusCode = 403;
+      throw error;
+    }
+
     const rawPassword = password || 'Ticketflow@123';
     const password_hash = await bcrypt.hash(rawPassword, 10);
-    const validRole = ['ADMIN', 'ORGANIZER', 'ATTENDEE'].includes(role?.toUpperCase())
+    const validRole = ['ORGANIZER', 'ATTENDEE'].includes(role?.toUpperCase())
       ? role.toUpperCase()
       : 'ATTENDEE';
 
@@ -173,6 +182,12 @@ export class AdminService {
   async adminUpdateUser(userId, { name, email, phone, role, is_active }) {
     const numId = Number(userId);
     let updated = null;
+
+    if (role && role.toUpperCase() === 'ADMIN') {
+      const error = new Error('Administrators cannot assign another user as administrator (ADMIN)');
+      error.statusCode = 403;
+      throw error;
+    }
 
     if (email) {
       const normalizedEmail = email.toLowerCase().trim();
@@ -240,8 +255,14 @@ export class AdminService {
   }
 
   async updateUserRole(userId, newRole) {
-    const validRoles = ['ADMIN', 'ORGANIZER', 'ATTENDEE'];
     const roleUpper = (newRole || '').toUpperCase();
+    if (roleUpper === 'ADMIN') {
+      const error = new Error('Administrators cannot promote or assign another user as administrator (ADMIN)');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    const validRoles = ['ORGANIZER', 'ATTENDEE'];
     if (!validRoles.includes(roleUpper)) {
       const error = new Error(`Invalid role. Must be one of: ${validRoles.join(', ')}`);
       error.statusCode = 400;
@@ -249,6 +270,13 @@ export class AdminService {
     }
 
     const numId = Number(userId);
+
+    const memUserCheck = memoryUsers.get(numId);
+    if (memUserCheck && memUserCheck.role === 'ADMIN') {
+      const error = new Error('Cannot change the role of an administrator');
+      error.statusCode = 403;
+      throw error;
+    }
     let updated = null;
 
     try {

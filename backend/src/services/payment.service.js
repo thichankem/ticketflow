@@ -1,7 +1,6 @@
 import crypto from 'node:crypto';
 import { query, withTransaction, releaseTickets } from '../config/db.js';
 import { memoryOrders, memoryAttendees } from '../data/order-store.js';
-import seatingService from './seating.service.js';
 import promosService from './promos.service.js';
 import gatewayAdapter, { PaymentGatewayService } from './gateway-adapter.js';
 
@@ -51,7 +50,7 @@ export class PaymentService {
     await ordersService.authorizeOrderAccess(order, user, sessionToken);
 
     if (order.status === 'CANCELLED' || order.status === 'EXPIRED') {
-      const err = new Error(`Không thể thanh toán đơn hàng đã ${order.status === 'CANCELLED' ? 'bị hủy' : 'hết hạn'}`);
+      const err = new Error(`Cannot process payment for an order that is ${order.status === 'CANCELLED' ? 'cancelled' : 'expired'}`);
       err.statusCode = 400;
       throw err;
     }
@@ -59,7 +58,7 @@ export class PaymentService {
     // Reservation TTL check (TF-V4-F06)
     const reservedUntil = order.reserved_until || order.expires_at;
     if (reservedUntil && new Date(reservedUntil).getTime() < Date.now()) {
-      const err = new Error('Thời gian giữ vé của đơn hàng đã hết hạn. Vui lòng đặt vé lại.');
+      const err = new Error('Ticket hold time has expired. Please place a new reservation.');
       err.statusCode = 400;
       throw err;
     }
@@ -68,7 +67,7 @@ export class PaymentService {
       return {
         success: true,
         status: 'COMPLETED',
-        message: 'Thanh toán trực tuyến hoàn tất thành công',
+        message: 'Online payment completed successfully',
         transaction_id: order.payment_transaction_id || `TXN-ALREADY-PAID-${order.id}`,
         receipt_url: `/api/orders/${order.id}/receipt`,
         order,
@@ -78,14 +77,14 @@ export class PaymentService {
     const selectedGateway = (gateway || payment_method || 'VNPAY').toUpperCase();
     if (selectedGateway === 'OFFLINE' || selectedGateway === 'CASH') {
       const err = new Error(
-        'Chỉ chấp nhận thanh toán trực tuyến 100% (VNPay, Momo, Thẻ tín dụng/ghi nợ). Không hỗ trợ phương thức trả sau hoặc tiền mặt.'
+        'Only online payments are accepted (VNPay, Card). Post-paid or cash methods are not supported.'
       );
       err.statusCode = 400;
       throw err;
     }
 
     if (selectedGateway !== 'VNPAY' && selectedGateway !== 'FREE') {
-      const err = new Error(`Phương thức thanh toán '${selectedGateway}' hiện chưa được hỗ trợ adapter xử lý. Vui lòng chọn VNPay.`);
+      const err = new Error(`Payment method '${selectedGateway}' is not supported. Please select VNPay.`);
       err.statusCode = 400;
       throw err;
     }
@@ -132,7 +131,7 @@ export class PaymentService {
       return {
         success: true,
         status: 'COMPLETED',
-        message: 'Vé miễn phí đã được xác nhận thành công.',
+        message: 'Free tickets confirmed successfully.',
         transaction_id: txnId,
         receipt_url: `/api/orders/${order.id}/receipt`,
         order,
@@ -169,7 +168,7 @@ export class PaymentService {
     return {
       success: true,
       status: 'PENDING_PAYMENT',
-      message: 'Yêu cầu thanh toán đã được khởi tạo. Vui lòng chuyển hướng đến cổng thanh toán.',
+      message: 'Payment request initialized. Please redirect to payment gateway.',
       payment_url: vnpayUrl,
       payment_intent_id: intentId,
       order,
@@ -400,7 +399,7 @@ export class PaymentService {
         late_payment: true,
         status: 'EXPIRED_PAYMENT_PENDING_REFUND',
         payment_status: 'LATE_PAYMENT_CAPTURED',
-        message: 'Thanh toán được ghi nhận sau khi đơn hàng đã hết hạn giữ chỗ. Hệ thống đã giải phóng kho vé và khởi tạo yêu cầu tự động hoàn tiền (REFUND_REQUIRED).',
+        message: 'Payment received after ticket hold expired. Inventory was released and automated refund is initiated (REFUND_REQUIRED).',
         order,
       };
     }
@@ -639,7 +638,7 @@ export class PaymentService {
         late_payment: true,
         status: 'EXPIRED_PAYMENT_PENDING_REFUND',
         payment_status: 'LATE_PAYMENT_CAPTURED',
-        message: 'Thanh toán được ghi nhận sau khi đơn hàng đã hết hạn giữ chỗ. Hệ thống đã giải phóng kho vé và khởi tạo yêu cầu tự động hoàn tiền (REFUND_REQUIRED).',
+        message: 'Payment received after ticket hold expired. Inventory was released and automated refund is initiated (REFUND_REQUIRED).',
         order,
       };
     }

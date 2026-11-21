@@ -43,20 +43,18 @@ function verifyCronAuth(req, res, next) {
 async function handleReconcileRefunds(req, res) {
   try {
     const staleReclaimed = await refundService.handleStaleProcessingRequests();
-    const reconciliation = await refundService.reconcilePendingRefunds();
 
     return res.status(200).json({
       success: true,
-      message: 'Reconciliation cycle executed successfully',
+      message: 'Processing queue checked successfully',
       stale_reclaimed: staleReclaimed,
-      reconciliation,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[CronRoutes] Reconcile error:', err);
+    console.error('[CronRoutes] Error:', err);
     return res.status(500).json({
       success: false,
-      message: 'Reconciliation execution failed',
+      message: 'Execution failed',
       error: err.message,
     });
   }

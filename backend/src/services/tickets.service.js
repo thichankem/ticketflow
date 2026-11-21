@@ -308,7 +308,7 @@ class TicketsService {
       throw err;
     }
 
-    // Protection of Accounting Data (SPEC.md Phân hệ 2.4):
+    // Protection of Accounting Data (SPEC.md Module 2.4):
     // Block deleting tier if any orders or attendees already exist for it
     try {
       const orderCheck = await query('SELECT count(*) FROM order_items WHERE ticket_tier_id = $1', [numTierId]);
@@ -316,7 +316,7 @@ class TicketsService {
       const orderCount = orderCheck.rows ? parseInt(orderCheck.rows[0].count, 10) : 0;
       const attCount = attCheck.rows ? parseInt(attCheck.rows[0].count, 10) : 0;
       if (orderCount > 0 || attCount > 0) {
-        const err = new Error('Không thể xóa hạng vé đã phát sinh đơn hàng hoặc vé đã phát hành để bảo toàn dữ liệu kế toán (TIER_DELETION_LOCKED)');
+        const err = new Error('Cannot delete ticket tier with existing orders or issued tickets (TIER_DELETION_LOCKED)');
         err.statusCode = 409;
         err.code = 'TIER_DELETION_LOCKED';
         throw err;

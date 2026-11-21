@@ -9,29 +9,7 @@ import { query } from '../config/db.js';
 import notificationsService from './notifications.service.js';
 
 const memoryAnnouncements = new Map();
-let nextAnnouncementId = 10;
-
-// Seed sample memory announcements
-memoryAnnouncements.set(1, {
-  id: 1,
-  title: 'Chào mừng đến với nền tảng Ticketflow 2026',
-  message: 'Hệ thống bán vé trực tuyến bảo mật, chống đầu cơ và thanh toán 100% online đã chính thức vận hành.',
-  type: 'GENERAL',
-  target_role: 'ALL',
-  recipients_count: 56,
-  created_by: 1,
-  created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-});
-memoryAnnouncements.set(2, {
-  id: 2,
-  title: 'Cập nhật chính sách hoàn hủy vé sự kiện',
-  message: 'Chính sách hoàn tiền tự động 100% khi sự kiện dời ngày hoặc hủy bỏ đã có hiệu lực trên toàn sàn.',
-  type: 'POLICY',
-  target_role: 'ALL',
-  recipients_count: 56,
-  created_by: 1,
-  created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-});
+let nextAnnouncementId = 1;
 
 class AnnouncementsService {
   /**
@@ -39,12 +17,12 @@ class AnnouncementsService {
    */
   async createAnnouncement({ title, message, type = 'GENERAL', targetRole = 'ALL', createdBy = null }) {
     if (!title || !title.trim()) {
-      const err = new Error('Tiêu đề thông báo không được để trống');
+      const err = new Error('Announcement title cannot be empty');
       err.status = 400;
       throw err;
     }
     if (!message || !message.trim()) {
-      const err = new Error('Nội dung thông báo không được để trống');
+      const err = new Error('Announcement message cannot be empty');
       err.status = 400;
       throw err;
     }
@@ -116,7 +94,7 @@ class AnnouncementsService {
     }
 
     const newId = ++nextAnnouncementId;
-    recipientsCount = 56; // Mock total user count
+    recipientsCount = 0;
     createdAnnouncement = {
       id: Number(newId),
       title: cleanTitle,
@@ -148,7 +126,7 @@ class AnnouncementsService {
         ORDER BY a.id DESC
       `;
       const res = await query(sql);
-      if (res.rows && (res.rows.length > 0 || memoryAnnouncements.size === 0)) {
+      if (res && res.rows) {
         return res.rows.map((r) => ({
           ...r,
           id: Number(r.id),
@@ -165,6 +143,81 @@ class AnnouncementsService {
   }
 
   /**
+   * Update an existing announcement
+   */
+  async updateAnnouncement(id, { title, message, type, target_role, targetRole }) {
+    const numId = Number(id);
+    const cleanType = type ? type.toUpperCase() : undefined;
+    const cleanRole = (target_role || targetRole) ? (target_role || targetRole).toUpperCase() : undefined;
+
+    let existing = null;
+    try {
+      const updates = [];
+      const values = [];
+      let idx = 1;
+
+      if (title !== undefined && title.trim()) {
+        updates.push(`title = $${idx++}`);
+        values.push(title.trim());
+      }
+      if (message !== undefined && message.trim()) {
+        updates.push(`message = $${idx++}`);
+        values.push(message.trim());
+      }
+      if (cleanType !== undefined) {
+        updates.push(`type = $${idx++}`);
+        values.push(cleanType);
+      }
+      if (cleanRole !== undefined) {
+        updates.push(`target_role = $${idx++}`);
+        values.push(cleanRole);
+      }
+
+      if (updates.length > 0) {
+        values.push(numId);
+        const sql = `
+          UPDATE announcements
+          SET ${updates.join(', ')}
+          WHERE id = $${idx}
+          RETURNING *
+        `;
+        const res = await query(sql, values);
+        if (res.rows && res.rows[0]) {
+          existing = {
+            ...res.rows[0],
+            id: Number(res.rows[0].id),
+            recipients_count: Number(res.rows[0].recipients_count || 0),
+          };
+        }
+      }
+    } catch {
+      // In-memory fallback
+    }
+
+    if (memoryAnnouncements.has(numId)) {
+      const current = memoryAnnouncements.get(numId);
+      const updated = {
+        ...current,
+        ...(title !== undefined && title.trim() ? { title: title.trim() } : {}),
+        ...(message !== undefined && message.trim() ? { message: message.trim() } : {}),
+        ...(cleanType !== undefined ? { type: cleanType } : {}),
+        ...(cleanRole !== undefined ? { target_role: cleanRole } : {}),
+        updated_at: new Date().toISOString(),
+      };
+      memoryAnnouncements.set(numId, updated);
+      return { success: true, announcement: updated };
+    }
+
+    if (existing) {
+      return { success: true, announcement: existing };
+    }
+
+    const err = new Error('Announcement not found');
+    err.status = 404;
+    throw err;
+  }
+
+  /**
    * Delete an announcement
    */
   async deleteAnnouncement(id) {
@@ -175,7 +228,7 @@ class AnnouncementsService {
       // Fallback
     }
     memoryAnnouncements.delete(numId);
-    return { success: true, message: 'Đã xóa thông báo chung thành công' };
+    return { success: true, message: 'Announcement deleted successfully' };
   }
 }
 

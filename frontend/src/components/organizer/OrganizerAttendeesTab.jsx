@@ -4,6 +4,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../Modal';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { ReportModal } from '../common/ReportModal';
 import { Icon } from '../ui/Icon';
 
 export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEvent, notify, hideEventSelector = false }) => {
@@ -18,6 +19,7 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [editingAttendee, setEditingAttendee] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [reportTargetAttendee, setReportTargetAttendee] = useState(null);
   const [guestSubmitting, setGuestSubmitting] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
 
@@ -268,6 +270,14 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
                           >
                             Sửa
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline"
+                            onClick={() => setReportTargetAttendee(a)}
+                            title="Báo cáo người tham dự vi phạm lên Ban Quản Trị"
+                          >
+                            Báo cáo
+                          </button>
                           {a.status !== 'CANCELLED' && (
                             <button
                               type="button"
@@ -396,6 +406,7 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
                 id="edit-att-name"
                 type="text"
                 className="input"
+                placeholder="VD: Nguyễn Văn A"
                 value={editingAttendee.name || `${editingAttendee.first_name || ''} ${editingAttendee.last_name || ''}`.trim()}
                 onChange={(e) => setEditingAttendee((p) => ({ ...p, name: e.target.value }))}
                 required
@@ -410,6 +421,7 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
                   id="edit-att-email"
                   type="email"
                   className="input"
+                  placeholder="email@example.com"
                   value={editingAttendee.email || ''}
                   onChange={(e) => setEditingAttendee((p) => ({ ...p, email: e.target.value }))}
                   required
@@ -422,6 +434,7 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
                   id="edit-att-phone"
                   type="tel"
                   className="input"
+                  placeholder="0912345678"
                   value={editingAttendee.phone || ''}
                   onChange={(e) => setEditingAttendee((p) => ({ ...p, phone: e.target.value }))}
                   disabled={editSubmitting}
@@ -480,6 +493,18 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
         message={`Bạn có chắc chắn muốn hủy vé của "${deleteTarget?.name || deleteTarget?.email}"? Mã vé này sẽ bị vô hiệu hóa.`}
         isDanger={true}
       />
+
+      {/* Report Attendee Modal */}
+      {reportTargetAttendee && (
+        <ReportModal
+          isOpen={Boolean(reportTargetAttendee)}
+          onClose={() => setReportTargetAttendee(null)}
+          targetType="ATTENDEE"
+          targetId={reportTargetAttendee.id}
+          targetTitle={`${reportTargetAttendee.name || `${reportTargetAttendee.first_name || ''} ${reportTargetAttendee.last_name || ''}`.trim()} (${reportTargetAttendee.email || ''})`}
+          onSuccess={() => notify?.(`Đã gửi báo cáo người tham dự #${reportTargetAttendee.id} lên Admin!`)}
+        />
+      )}
     </div>
   );
 };

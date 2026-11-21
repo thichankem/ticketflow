@@ -15,7 +15,7 @@ export const StatusBadge = ({ status, type = 'default' }) => {
       ORGANIZER: 'badge-role-organizer',
       ADMIN: 'badge-role-admin',
     };
-    return <span className={`badge ${roleColors[raw] || 'badge-secondary'}`}>{raw}</span>;
+    return <span className={`badge ${roleColors[raw] || 'badge-secondary'}`} style={{ whiteSpace: 'nowrap' }}>{raw}</span>;
   }
 
   // Event / Order / Ticket status mapping
@@ -70,7 +70,7 @@ export const StatusBadge = ({ status, type = 'default' }) => {
       label = raw;
   }
 
-  return <span className={`badge ${badgeClass}`}>{label}</span>;
+  return <span className={`badge ${badgeClass}`} style={{ whiteSpace: 'nowrap' }}>{label}</span>;
 };
 
 export default StatusBadge;

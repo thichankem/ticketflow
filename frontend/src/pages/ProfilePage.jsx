@@ -178,8 +178,6 @@ export const ProfilePage = () => {
                     <span>{user.phone}</span>
                   </>
                 )}
-                <span>•</span>
-                <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>Đang hoạt động</span>
               </div>
             </div>
           </div>
@@ -300,6 +298,7 @@ export const ProfilePage = () => {
                   id="profile-role"
                   type="text"
                   className="input"
+                  placeholder="Vai trò tài khoản"
                   value={user.role}
                   readOnly
                   disabled
@@ -455,69 +454,6 @@ export const ProfilePage = () => {
             </form>
           </div>
         </div>
-
-        {/* Quick Links Section */}
-        <section className="profile-quick-links">
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.75rem' }}>
-            {t('profile.overview', 'Lối Tắt & Quản Lý Hoạt Động')}
-          </h2>
-
-          <div className="quick-links-grid">
-            <Link to="/my-tickets" className="quick-link-card">
-              <div className="quick-link-icon">
-                <Icon name="ticket" size="md" ariaHidden />
-              </div>
-              <div className="quick-link-info">
-                <h3>{t('nav.my_tickets', 'Vé Của Tôi')}</h3>
-                <p>Xem vé điện tử, mã QR và hóa đơn đã đặt</p>
-              </div>
-            </Link>
-
-            <Link to="/notifications" className="quick-link-card">
-              <div className="quick-link-icon" style={{ color: '#0f766e', background: 'rgba(15, 118, 110, 0.1)' }}>
-                <Icon name="bell" size="md" ariaHidden />
-              </div>
-              <div className="quick-link-info">
-                <h3>{t('nav.notifications', 'Hộp Thư & Thông Báo')}</h3>
-                <p>Xem toàn bộ thông báo hệ thống, restock vé và tin tức sàn</p>
-              </div>
-            </Link>
-
-            <Link to="/events" className="quick-link-card">
-              <div className="quick-link-icon">
-                <Icon name="calendar" size="md" ariaHidden />
-              </div>
-              <div className="quick-link-info">
-                <h3>{t('nav.explore', 'Khám Phá Sự Kiện')}</h3>
-                <p>Tìm kiếm sự kiện âm nhạc, hội thảo, thể thao</p>
-              </div>
-            </Link>
-
-            {user.role === 'ORGANIZER' && (
-              <Link to="/organizer" className="quick-link-card">
-                <div className="quick-link-icon" style={{ color: '#7c3aed', background: 'rgba(124, 58, 237, 0.1)' }}>
-                  <Icon name="studio" size="md" ariaHidden />
-                </div>
-                <div className="quick-link-info">
-                  <h3>{t('nav.organizer_studio', 'Studio Ban Tổ Chức')}</h3>
-                  <p>Quản lý sự kiện, hạng vé và danh sách người tham dự</p>
-                </div>
-              </Link>
-            )}
-
-            {user.role === 'ADMIN' && (
-              <Link to="/admin" className="quick-link-card">
-                <div className="quick-link-icon" style={{ color: '#ea580c', background: 'rgba(234, 88, 12, 0.1)' }}>
-                  <Icon name="shield" size="md" ariaHidden />
-                </div>
-                <div className="quick-link-info">
-                  <h3>{t('nav.admin_console', 'Bảng Điều Hành')}</h3>
-                  <p>Quản trị người dùng, sự kiện và kiểm toán tài chính</p>
-                </div>
-              </Link>
-            )}
-          </div>
-        </section>
       </div>
     </Layout>
   );

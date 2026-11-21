@@ -2,7 +2,7 @@
  * Virtual Waiting Room Service
  * File: backend/src/services/waiting-room.service.js
  *
- * Implements FIFO Virtual Waiting Room, queue position and estimated wait time (Phân hệ 2.7).
+ * Implements FIFO Virtual Waiting Room, queue position and estimated wait time (Module 2.7).
  */
 
 class WaitingRoomService {
@@ -70,7 +70,7 @@ class WaitingRoomService {
         admission_token: `TOKEN_PASS_${numEventId}_${sessionId}`,
         position: 0,
         estimated_wait_seconds: 0,
-        message: 'Bạn có thể vào luồng đặt vé ngay',
+        message: 'You can enter the booking flow immediately',
       };
     }
 
@@ -128,7 +128,7 @@ class WaitingRoomService {
         admission_token: entry.token,
         position: 0,
         estimated_wait_seconds: 0,
-        message: 'Đã đến lượt của bạn! Bạn có 15 phút để hoàn tất chọn vé và thanh toán.',
+        message: 'It is your turn! You have 15 minutes to complete ticket selection and checkout.',
       };
     }
 
@@ -145,7 +145,7 @@ class WaitingRoomService {
       position,
       total_in_queue: waitingQueue.length,
       estimated_wait_seconds: estimatedWaitSeconds,
-      message: `Bạn đang ở vị trí thứ ${position} trong hàng đợi ảo. Vui lòng giữ nguyên màn hình.`,
+      message: `You are at position #${position} in the waiting room. Please keep this screen open.`,
     };
   }
 

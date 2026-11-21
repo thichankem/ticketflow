@@ -50,6 +50,7 @@ export const NotificationsPage = () => {
 
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'unread' | 'read'
   const [searchQuery, setSearchQuery] = useState('');
   const [clearModalOpen, setClearModalOpen] = useState(false);

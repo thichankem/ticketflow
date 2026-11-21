@@ -277,6 +277,7 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
                 id="tier-price-input"
                 type="number"
                 className="input"
+                placeholder="VD: 250000"
                 value={formData.price}
                 onChange={(e) => setFormData((p) => ({ ...p, price: e.target.value }))}
                 min="0"
@@ -294,6 +295,7 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
                 id="tier-qty-input"
                 type="number"
                 className="input"
+                placeholder="VD: 100"
                 value={formData.total_quantity}
                 onChange={(e) => setFormData((p) => ({ ...p, total_quantity: e.target.value }))}
                 min="1"

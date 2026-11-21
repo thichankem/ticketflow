@@ -2,7 +2,7 @@
  * Hybrid Recommendation Engine
  * File: backend/src/services/recommendation.service.js
  *
- * Implements content-based & behavioral recommendations as specified in SPEC.md (Phân hệ 2.5).
+ * Implements content-based & behavioral recommendations as specified in SPEC.md (Module 2.5).
  */
 
 import eventsService from './events.service.js';
@@ -13,7 +13,6 @@ class RecommendationService {
   constructor() {
     // Behavioral stores
     this.userViews = new Map(); // userId/sessionId -> Array<{ eventId, timestamp }>
-    this.userFavorites = new Map(); // userId -> Set<eventId>
     this.userPurchases = new Map(); // userId -> Set<eventId>
   }
 
@@ -35,118 +34,6 @@ class RecommendationService {
     if (views.length > 50) {
       views.shift();
     }
-  }
-
-  /**
-   * Toggle event favorite / like
-   */
-  toggleFavorite(userId, eventId) {
-    if (!userId || !eventId) return { favorited: false, count: 0 };
-    const userKey = String(userId);
-    const numEventId = Number(eventId);
-    const numUserId = Number(userId);
-
-    if (!this.userFavorites.has(userKey)) {
-      this.userFavorites.set(userKey, new Set());
-    }
-    const favSet = this.userFavorites.get(userKey);
-    let favorited = false;
-
-    if (favSet.has(numEventId)) {
-      favSet.delete(numEventId);
-      favorited = false;
-      if (!isNaN(numUserId)) {
-        query('DELETE FROM event_favorites WHERE user_id = $1 AND event_id = $2', [numUserId, numEventId]).catch(() => {});
-      }
-    } else {
-      favSet.add(numEventId);
-      favorited = true;
-      if (!isNaN(numUserId)) {
-        query('INSERT INTO event_favorites (user_id, event_id) VALUES ($1, $2) ON CONFLICT (user_id, event_id) DO NOTHING', [numUserId, numEventId]).catch(() => {});
-      }
-    }
-
-    // Count total favorites for this event
-    let totalCount = 0;
-    for (const set of this.userFavorites.values()) {
-      if (set.has(numEventId)) totalCount++;
-    }
-
-    return { favorited, count: totalCount };
-  }
-
-  /**
-   * Set event favorite state explicitly (idempotent for subscription / restock alerts)
-   */
-  setFavorite(userId, eventId, shouldFavorite = true) {
-    if (!userId || !eventId) return { favorited: false, count: 0 };
-    const userKey = String(userId);
-    const numEventId = Number(eventId);
-    const numUserId = Number(userId);
-
-    if (!this.userFavorites.has(userKey)) {
-      this.userFavorites.set(userKey, new Set());
-    }
-    const favSet = this.userFavorites.get(userKey);
-
-    if (shouldFavorite) {
-      favSet.add(numEventId);
-      if (!isNaN(numUserId)) {
-        query('INSERT INTO event_favorites (user_id, event_id) VALUES ($1, $2) ON CONFLICT (user_id, event_id) DO NOTHING', [numUserId, numEventId]).catch(() => {});
-      }
-    } else {
-      favSet.delete(numEventId);
-      if (!isNaN(numUserId)) {
-        query('DELETE FROM event_favorites WHERE user_id = $1 AND event_id = $2', [numUserId, numEventId]).catch(() => {});
-      }
-    }
-
-    let totalCount = 0;
-    for (const set of this.userFavorites.values()) {
-      if (set.has(numEventId)) totalCount++;
-    }
-
-    return { favorited: Boolean(shouldFavorite), count: totalCount };
-  }
-
-  /**
-   * Get user favorites
-   */
-  async getUserFavorites(userId) {
-    if (!userId) return [];
-    const numUserId = Number(userId);
-    if (!isNaN(numUserId)) {
-      try {
-        const res = await query('SELECT event_id FROM event_favorites WHERE user_id = $1', [numUserId]);
-        if (res.rows && res.rows.length > 0) {
-          return res.rows.map(r => Number(r.event_id));
-        }
-      } catch {}
-    }
-    const set = this.userFavorites.get(String(userId));
-    return set ? Array.from(set) : [];
-  }
-
-  /**
-   * Get all user IDs who favorited an event
-   */
-  async getUsersWhoFavorited(eventId) {
-    const numEventId = Number(eventId);
-    if (!isNaN(numEventId)) {
-      try {
-        const res = await query('SELECT user_id FROM event_favorites WHERE event_id = $1', [numEventId]);
-        if (res.rows && res.rows.length > 0) {
-          return res.rows.map(r => Number(r.user_id));
-        }
-      } catch {}
-    }
-    const users = [];
-    for (const [userId, favSet] of this.userFavorites.entries()) {
-      if (favSet.has(numEventId)) {
-        users.push(userId);
-      }
-    }
-    return users;
   }
 
   /**
@@ -185,14 +72,11 @@ class RecommendationService {
     const purchasedEvents = userKey && this.userPurchases.has(userKey)
       ? this.userPurchases.get(userKey)
       : new Set();
-    const favoriteEvents = userKey && this.userFavorites.has(userKey)
-      ? this.userFavorites.get(userKey)
-      : new Set();
 
-    // Determine user preferred categories based on purchase & favorite history
+    // Determine user preferred categories based on purchase and browsing history
     const preferredCategories = new Map();
     for (const ev of allEvents) {
-      if (purchasedEvents.has(ev.id) || favoriteEvents.has(ev.id)) {
+      if (purchasedEvents.has(ev.id) || viewedEvents.has(ev.id)) {
         const cat = (ev.category || 'GENERAL').toUpperCase();
         preferredCategories.set(cat, (preferredCategories.get(cat) || 0) + 1);
       }
@@ -208,7 +92,7 @@ class RecommendationService {
       // 1. Content-based: Category Match (35%)
       if (targetCategory && evCategory === targetCategory) {
         score += 35;
-        reasons.push(`Cùng chủ đề ${event.category}`);
+        reasons.push(`Similar topic ${event.category}`);
       }
 
       // 2. Content-based: Tags Similarity (25%)
@@ -226,20 +110,17 @@ class RecommendationService {
       if (tagMatches > 0) {
         const tagScore = Math.min(25, tagMatches * 10);
         score += tagScore;
-        reasons.push('Nhiều sở thích tương đồng');
+        reasons.push('Matches your common interests');
       }
 
       // 3. Behavioral: Historical Preferences (25%)
       if (preferredCategories.has(evCategory)) {
         score += 20;
-        reasons.push(`Phù hợp với các sự kiện ${event.category} bạn quan tâm`);
+        reasons.push(`Matches ${event.category} events you follow`);
       }
-      if (favoriteEvents.has(event.id)) {
+      if (viewedEvents.has(event.id)) {
         score += 15;
-        reasons.push('Bạn đã yêu thích');
-      } else if (viewedEvents.has(event.id)) {
-        score += 10;
-        reasons.push('Bạn đã xem gần đây');
+        reasons.push('Recently viewed');
       }
 
       // 4. Geographic Proximity Boost (15%)
@@ -248,17 +129,17 @@ class RecommendationService {
         distanceInfo = locationService.calculateDistance(userProvince, event.location);
         if (distanceInfo.is_same_province) {
           score += 15;
-          reasons.push('Cùng khu vực với bạn');
+          reasons.push('In your region');
         } else if (distanceInfo.distance_km && distanceInfo.distance_km < 100) {
           score += 10;
-          reasons.push('Gần bạn (< 100 km)');
+          reasons.push('Near you (< 100 km)');
         }
       }
 
       // Default baseline score for popular/live events
       score += 5;
       if (reasons.length === 0) {
-        reasons.push('Sự kiện nổi bật được yêu thích');
+        reasons.push('Popular trending event');
       }
 
       return {

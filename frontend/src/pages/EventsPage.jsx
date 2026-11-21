@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
-import { useFavorites } from '../context/FavoritesContext';
 import { eventStart, formatDate, money, plainText, startingPrice, toneClass, eventCoverImage, EVENT_CATEGORIES } from '../utils/display';
 import { VIETNAM_PROVINCES } from '../utils/location';
 import { Icon } from '../components/ui/Icon';
 import { VectorSpinner } from '../components/ui/VectorAnimation';
 import { EmptyStateIllustration } from '../components/ui/EmptyStateIllustration';
+import CategoryScrollNav from '../components/common/CategoryScrollNav';
 
 const CATEGORIES = EVENT_CATEGORIES;
 
 export const EventsPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isFavorite, toggleFavorite } = useFavorites();
 
   // Initial state from URL params
   const initialCategory = searchParams.get('category') || 'ALL';
@@ -49,14 +48,6 @@ export const EventsPage = () => {
     setSearch(q);
     setSelectedProvinceFilter(prov);
   }, [searchParams]);
-
-  // Toggle favorite
-  const handleToggleFav = async (eventId, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const isNowFav = await toggleFavorite(eventId);
-    showToast(isNowFav ? 'Đã lưu sự kiện vào danh sách yêu thích' : 'Đã bỏ lưu sự kiện');
-  };
 
   // Sync params with URL when filter changes
   const updateUrlParam = (key, value) => {
@@ -245,19 +236,13 @@ export const EventsPage = () => {
       </div>
 
       {/* Category Pills Navigation */}
-      <nav className="category-scroll-nav mb-xl" aria-label="Lọc theo thể loại sự kiện">
-        {CATEGORIES.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            className={`category-pill flex items-center gap-1.5 ${selectedCategory === cat.id ? 'active' : ''}`}
-            onClick={() => handleCategoryChange(cat.id)}
-          >
-            <Icon name={cat.icon} size="sm" ariaHidden />
-            <span>{cat.label}</span>
-          </button>
-        ))}
-      </nav>
+      <CategoryScrollNav
+        categories={CATEGORIES}
+        selectedCategory={selectedCategory}
+        onSelectCategory={handleCategoryChange}
+        className="mb-xl"
+        ariaLabel="Lọc theo thể loại sự kiện"
+      />
 
       {/* Catalog Header Section Matching Screenshot */}
       <div className="section-header-row section-header-flex">
@@ -347,7 +332,6 @@ export const EventsPage = () => {
         <div className="grid-cards">
           {displayedEvents.map((event) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
-            const isFav = isFavorite(event.id);
 
             return (
               <article key={event.id} className="event-card">
@@ -359,21 +343,11 @@ export const EventsPage = () => {
                     onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
                   />
                   <div className="cover-meta">
-                    <span className="status-pill">{event.category || event.status}</span>
+                    <span className="status-pill">{event.category || 'Sự kiện'}</span>
                     <span className="price-chip">
                       {from === null ? 'Đang cập nhật' : from === 0 ? 'MIỄN PHÍ' : `Từ ${money(from)}`}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    className={`btn-favorite flex items-center justify-center ${isFav ? 'active' : ''}`}
-                    onClick={(e) => handleToggleFav(event.id, e)}
-                    title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
-                    aria-label={isFav ? `Bỏ lưu sự kiện ${event.title}` : `Lưu sự kiện ${event.title}`}
-                    aria-pressed={isFav}
-                  >
-                    <Icon name="heart" size="sm" fill={isFav ? 'currentColor' : 'none'} ariaHidden />
-                  </button>
                 </div>
 
                 <div className="event-card-body">
@@ -391,9 +365,9 @@ export const EventsPage = () => {
                   </p>
 
                   <div className="card-actions">
-                    <Link to={`/events/${event.id}`} className="btn btn-primary btn-sm btn-block">
+                    <Link to={`/events/${event.id}`} className="btn btn-primary btn-sm btn-block inline-flex items-center justify-center gap-1.5">
                       <span>Xem vé & Chi tiết</span>
-                      <span aria-hidden="true">→</span>
+                      <Icon name="arrow-right" size="xs" ariaHidden />
                     </Link>
                   </div>
                 </div>

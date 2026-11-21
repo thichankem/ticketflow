@@ -9,7 +9,9 @@ import { OrganizerEventsTab } from '../components/organizer/OrganizerEventsTab';
 import { OrganizerTiersTab } from '../components/organizer/OrganizerTiersTab';
 import { OrganizerPromosTab } from '../components/organizer/OrganizerPromosTab';
 import { OrganizerAttendeesTab } from '../components/organizer/OrganizerAttendeesTab';
+import { OrganizerAttachmentsTab } from '../components/organizer/OrganizerAttachmentsTab';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { ConfirmModal } from '../components/common/ConfirmModal';
 import { formatDate } from '../utils/display';
 import { Icon } from '../components/ui/Icon';
 
@@ -28,6 +30,9 @@ export const OrganizerPage = () => {
 
   // Edit event mode
   const [editingEvent, setEditingEvent] = useState(null);
+
+  // Delete event confirmation state (Chỉ mở trong chi tiết sự kiện)
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Global notice toast
   const [notice, setNotice] = useState(null);
@@ -259,10 +264,11 @@ export const OrganizerPage = () => {
             </p>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary inline-flex items-center gap-1.5"
               onClick={() => navigate('/organizer')}
             >
-              ← Quay lại danh sách sự kiện
+              <Icon name="arrow-left" size="sm" ariaHidden />
+              <span>Quay lại danh sách sự kiện</span>
             </button>
           </div>
         ) : (
@@ -277,10 +283,6 @@ export const OrganizerPage = () => {
                 <Icon name="chevron-left" size="xs" ariaHidden />
                 <span>Quay lại danh sách sự kiện</span>
               </button>
-              <div className="flex items-center gap-xs">
-                <span className="badge badge-primary font-mono text-xs">Mã: #{selectedEvent.id}</span>
-                <StatusBadge status={selectedEvent.status || 'DRAFT'} />
-              </div>
             </div>
 
             {/* Event Header Banner Card */}
@@ -326,9 +328,18 @@ export const OrganizerPage = () => {
                     </div>
                     <h1 className="text-xl font-bold m-0 text-foreground">{selectedEvent.title}</h1>
                     <p className="text-xs muted m-0 mt-1 flex items-center gap-md flex-wrap">
-                      <span>📅 {formatDate(selectedEvent.start_date || selectedEvent.starts_at)}</span>
-                      <span>📍 {selectedEvent.location || 'Online / TBA'}</span>
-                      <span>🎟️ Đã bán {selectedEvent.tickets_sold || 0} vé</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Icon name="calendar" size="xs" ariaHidden />
+                        <span>{formatDate(selectedEvent.start_date || selectedEvent.starts_at)}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Icon name="location" size="xs" ariaHidden />
+                        <span>{selectedEvent.location || 'Online / TBA'}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Icon name="ticket" size="xs" ariaHidden />
+                        <span>Đã bán {selectedEvent.tickets_sold || 0} vé</span>
+                      </span>
                     </p>
                   </div>
                 </div>
@@ -342,6 +353,15 @@ export const OrganizerPage = () => {
                   >
                     <Icon name="edit" size="xs" ariaHidden />
                     <span>Chỉnh sửa sự kiện</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-danger btn-sm flex items-center gap-1.5"
+                    onClick={() => setDeleteTarget(selectedEvent)}
+                    title="Xóa sự kiện này và hoàn tiền cho người mua"
+                  >
+                    <Icon name="trash" size="xs" ariaHidden />
+                    <span>Xóa sự kiện</span>
                   </button>
                   <a
                     href={`/events/${selectedEvent.id}`}
@@ -390,6 +410,13 @@ export const OrganizerPage = () => {
               >
                 Người tham dự
               </button>
+              <button
+                type="button"
+                className={`tab-btn ${eventSubTab === 'attachments' ? 'active' : ''}`}
+                onClick={() => setEventSubTab('attachments')}
+              >
+                Tài liệu đính kèm
+              </button>
             </div>
 
             {/* Sub-Tab Contents */}
@@ -429,6 +456,14 @@ export const OrganizerPage = () => {
                 notify={notify}
               />
             )}
+
+            {eventSubTab === 'attachments' && (
+              <OrganizerAttachmentsTab
+                selectedEventId={String(selectedEvent.id)}
+                hideEventSelector={true}
+                notify={notify}
+              />
+            )}
           </div>
         )
       ) : (
@@ -443,14 +478,16 @@ export const OrganizerPage = () => {
               </h1>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary flex items-center gap-1.5"
-              onClick={() => navigate('/organizer/events/new')}
-            >
-              <Icon name="plus" size="sm" ariaHidden />
-              <span>Tạo Sự Kiện Mới</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="btn btn-primary flex items-center gap-1.5"
+                onClick={() => navigate('/organizer/events/new')}
+              >
+                <Icon name="plus" size="sm" ariaHidden />
+                <span>Tạo Sự Kiện Mới</span>
+              </button>
+            </div>
           </div>
 
           {/* Events List */}
@@ -458,10 +495,25 @@ export const OrganizerPage = () => {
             events={events}
             loading={loadingEvents}
             onSelectEvent={handleSelectEvent}
-            onEditEvent={handleStartEditEvent}
-            onDeleteEvent={handleDeleteEvent}
           />
         </div>
+      )}
+
+      {/* Delete Event Confirmation Modal (Chỉ xuất hiện khi vào Chi Tiết Sự Kiện) */}
+      {deleteTarget && (
+        <ConfirmModal
+          isOpen={Boolean(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={async () => {
+            const target = deleteTarget;
+            setDeleteTarget(null);
+            await handleDeleteEvent(target.id, target.title);
+          }}
+          title={`Xác nhận xóa sự kiện: "${deleteTarget.title}"`}
+          message="CẢNH BÁO: Xóa sự kiện sẽ tự động kích hoạt HOÀN TIỀN 100% cho toàn bộ người mua vé và hủy toàn bộ vé đã phát hành. Thao tác này là vĩnh viễn và không thể khôi phục."
+          isDanger={true}
+          confirmText="Xác nhận xóa & Hoàn tiền"
+        />
       )}
     </section>
   );

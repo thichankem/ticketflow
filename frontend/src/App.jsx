@@ -2,7 +2,6 @@ import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 
-import RoleSwitcherBar from './components/RoleSwitcherBar';
 import AttendeeLayout from './components/AttendeeLayout';
 import OrganizerLayout from './components/OrganizerLayout';
 import AdminLayout from './components/AdminLayout';
@@ -85,7 +84,6 @@ const RoleGate = ({ allowedRoles, title, children }) => {
 export function App() {
   return (
     <>
-      {import.meta.env.DEV && <RoleSwitcherBar />}
       <Suspense fallback={<div className="page-suspense-fallback" style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="spinner" /></div>}>
         <Routes>
         {/* ============================================================== */}

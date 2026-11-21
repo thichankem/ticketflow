@@ -495,7 +495,7 @@ export const CheckoutPage = () => {
     return (
       <section className="card empty-state empty-state-card text-center p-8">
         <EmptyStateIllustration type="empty-cart" size={120} />
-        <h1>{t('checkout.empty_title', 'Giỏ vé đang trống')}</h1>
+        <h1>{t('checkout.empty_title', 'Giỏ hàng đang trống')}</h1>
         <p className="muted">
           {t('checkout.empty_desc', 'Bạn chưa chọn vé hoặc phiên đặt vé đã hết hạn.')}
         </p>
@@ -677,7 +677,6 @@ export const CheckoutPage = () => {
                   <div className="payment-method-body">
                     <div className="payment-title font-bold flex items-center gap-2">
                       <span>Cổng Thanh Toán Trực Tuyến VNPay</span>
-                      <span className="badge badge-primary text-xs">Chính thức</span>
                     </div>
                     <div className="payment-desc text-sm text-muted mt-1">
                       Hỗ trợ Thẻ ATM nội địa, Thẻ quốc tế (Visa / MasterCard / JCB) và ứng dụng ngân hàng quét VNPay-QR.
@@ -747,7 +746,7 @@ export const CheckoutPage = () => {
         onConfirm={handleConfirmCancel}
         onCancel={() => setShowCancelModal(false)}
         title={t('checkout.cancel_modal_title', 'Hủy Giữ Chỗ')}
-        message={t('checkout.cancel_modal_msg', 'Bạn có chắc chắn muốn hủy phiên giữ chỗ và nhả lại vé cho khách khác? Toàn bộ vé trong giỏ sẽ được hoàn trả lại hệ thống.')}
+        message={t('checkout.cancel_modal_msg', 'Bạn có chắc chắn muốn hủy phiên giữ chỗ và nhả lại vé cho khách khác? Toàn bộ vé trong giỏ hàng sẽ được hoàn trả lại hệ thống.')}
         confirmText={t('checkout.confirm_cancel', 'Đồng ý hủy')}
         cancelText={t('checkout.keep_holding', 'Tiếp tục giữ vé')}
         variant="danger"

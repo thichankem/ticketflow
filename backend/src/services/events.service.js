@@ -75,7 +75,7 @@ function formatEvent(r) {
     image_url: coverImg,
     banner: bannerImg,
     banner_url: bannerImg,
-    tags: r.tags || locDetails.tags || ['Sự kiện', r.category || 'Tech'],
+    tags: r.tags || locDetails.tags || ['Event', r.category || 'Tech'],
     blog_blocks: r.blog_blocks || locDetails.blog_blocks || (r.description ? [
       { type: 'paragraph', text: r.description }
     ] : []),
@@ -247,7 +247,7 @@ class EventsService {
     const finalEndDate = end_date || ends_at || new Date(Date.now() + 86400000).toISOString();
     const finalLocationName = location_name || location || 'TP. Hồ Chí Minh';
     const finalProvinceCode = province_code || 'HCM';
-    const finalTags = tags && tags.length > 0 ? tags : ['Sự kiện', category];
+    const finalTags = tags && tags.length > 0 ? tags : ['Event', category];
     const finalRefundPolicy = refund_policy || defaultRefundPolicy;
     const finalCover = cover || image_url || null;
     const finalBanner = banner || banner_url || finalCover || null;
@@ -470,7 +470,11 @@ class EventsService {
       if (updates.description) existing.description = updates.description;
       if (updates.status) existing.status = updates.status;
       if (updates.tags) existing.tags = updates.tags;
-      if (updates.blog_blocks) existing.blog_blocks = updates.blog_blocks;
+      if (updates.blog_blocks || updates.blocks) {
+        const finalBlks = updates.blocks || updates.blog_blocks;
+        existing.blog_blocks = finalBlks;
+        existing.blocks = finalBlks;
+      }
       if (updates.cover !== undefined) existing.cover = updates.cover;
       if (updates.banner !== undefined) existing.banner = updates.banner;
       if (updates.refund_policy) existing.refund_policy = updates.refund_policy;
@@ -525,6 +529,99 @@ class EventsService {
     return newAtt;
   }
 
+  async getAttachments(eventId, user = null) {
+    const numId = Number(eventId);
+    const existing = await this.getEventById(numId, user);
+    if (!existing) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    return Array.isArray(existing.pdf_attachments) ? existing.pdf_attachments : [];
+  }
+
+  async updateAttachment(eventId, attachmentId, data, user = null) {
+    const numId = Number(eventId);
+    const existing = await this.getEventById(numId, user);
+    if (!existing) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(existing.account_id) !== Number(user.account_id) && Number(existing.organizer_id) !== Number(user.id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const currentAttachments = Array.isArray(existing.pdf_attachments) ? existing.pdf_attachments : [];
+    const att = currentAttachments.find((a) => a.id === attachmentId || a.filename === attachmentId);
+    if (!att) {
+      const err = new Error('Attachment not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (data.filename) att.filename = data.filename.trim();
+    if (data.name) att.filename = data.name.trim();
+    if (data.description !== undefined) att.description = data.description;
+    att.updated_at = new Date().toISOString();
+
+    existing.pdf_attachments = currentAttachments;
+    const currentDetails = parseLocationDetails(existing.location_details);
+    currentDetails.pdf_attachments = currentAttachments;
+
+    try {
+      await query(
+        'UPDATE events SET location_details = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(currentDetails), numId]
+      );
+    } catch {}
+
+    const memEv = memoryEvents.get(numId);
+    if (memEv) {
+      memEv.pdf_attachments = currentAttachments;
+    }
+
+    return att;
+  }
+
+  async deleteAttachment(eventId, attachmentId, user = null) {
+    const numId = Number(eventId);
+    const existing = await this.getEventById(numId, user);
+    if (!existing) {
+      const err = new Error('Event not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (user && user.role !== 'ADMIN' && Number(existing.account_id) !== Number(user.account_id) && Number(existing.organizer_id) !== Number(user.id)) {
+      const err = new Error('Forbidden: Event does not belong to user account');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const currentAttachments = Array.isArray(existing.pdf_attachments) ? existing.pdf_attachments : [];
+    const filtered = currentAttachments.filter((a) => a.id !== attachmentId && a.filename !== attachmentId);
+
+    existing.pdf_attachments = filtered;
+    const currentDetails = parseLocationDetails(existing.location_details);
+    currentDetails.pdf_attachments = filtered;
+
+    try {
+      await query(
+        'UPDATE events SET location_details = $1, updated_at = NOW() WHERE id = $2',
+        [JSON.stringify(currentDetails), numId]
+      );
+    } catch {}
+
+    const memEv = memoryEvents.get(numId);
+    if (memEv) {
+      memEv.pdf_attachments = filtered;
+    }
+
+    return { success: true };
+  }
+
   async deleteEvent(user, id) {
     const numId = Number(id);
     let existing = await this.getEventById(numId, user).catch(() => null);
@@ -560,6 +657,10 @@ class EventsService {
     let refundError = null;
     try {
       massRefundResult = await refundService.massRefundEvent(numId, user);
+      if (massRefundResult) {
+        refundedOrdersCount = Number(massRefundResult.succeeded_count || 0);
+        refundedAmount = Number(massRefundResult.total_refunded || 0);
+      }
     } catch (refErr) {
       console.warn('[deleteEvent] massRefundEvent error:', refErr.message);
       refundError = refErr;
@@ -581,7 +682,7 @@ class EventsService {
         success: false,
         status: 'PARTIALLY_REFUNDED',
         event_status: 'CANCELLED',
-        message: 'Sự kiện đã chuyển sang trạng thái CANCELLED nhưng vẫn còn đơn hàng chưa hoàn tiền thành công. Nghĩa vụ hoàn tiền được bảo lưu.',
+        message: 'Event transitioned to CANCELLED status, but some orders could not be automatically refunded. Refund obligations remain pending.',
         mass_refund: massRefundResult || { error: refundError?.message },
       };
     }
@@ -633,8 +734,8 @@ class EventsService {
           userId: uId,
           eventId: numId,
           type: 'EVENT_CANCELLED',
-          title: `Sự kiện "${existing.title}" đã bị hủy`,
-          message: `Sự kiện "${existing.title}" đã được ban tổ chức xóa. Đơn hàng của bạn đã được hoàn tiền 100% tự động.`,
+          title: `Event "${existing.title}" has been cancelled`,
+          message: `Event "${existing.title}" was deleted by the organizer. Your order has been automatically refunded 100%.`,
         }).catch(() => {});
       }
     }
@@ -642,8 +743,8 @@ class EventsService {
     return {
       success: true,
       message: refundedOrdersCount > 0
-        ? `Đã xóa sự kiện thành công và tự động hoàn tiền 100% cho ${refundedOrdersCount} đơn hàng (${refundedAmount.toLocaleString('vi-VN')} đ).`
-        : 'Đã xóa sự kiện thành công.',
+        ? `Event deleted successfully with 100% automatic refund processed for ${refundedOrdersCount} orders (${refundedAmount.toLocaleString('en-US')} VND).`
+        : 'Event deleted successfully.',
       refunded_orders_count: refundedOrdersCount,
       refunded_amount: refundedAmount,
     };
@@ -671,7 +772,7 @@ class EventsService {
           )::numeric AS revenue
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
-        WHERE e.deleted_at IS NULL
+        WHERE e.deleted_at IS NULL AND UPPER(e.status) != 'DRAFT'
         GROUP BY e.id
         ORDER BY e.id ASC
       `;
@@ -698,6 +799,7 @@ class EventsService {
 
     const list = [];
     for (const ev of memoryEvents.values()) {
+      if ((ev.status || '').toUpperCase() === 'DRAFT') continue;
       const tiers = await ticketsService.listByEventId(ev.id, true);
       const total_tickets = tiers.reduce((sum, t) => sum + (Number(t.total_quantity || t.initial_quantity) || 0), 0);
       const sold_tickets = tiers.reduce((sum, t) => sum + ((Number(t.total_quantity || t.initial_quantity) || 0) - (Number(t.remaining_quantity) || 0)), 0);

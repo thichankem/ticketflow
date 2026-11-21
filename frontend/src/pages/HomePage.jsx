@@ -3,10 +3,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useFavorites } from '../context/FavoritesContext';
 import { eventStart, formatDate, money, plainText, startingPrice, toneClass, eventCoverImage, EVENT_CATEGORIES } from '../utils/display';
 import { VIETNAM_PROVINCES } from '../utils/location';
 import SliderSection from '../components/SliderSection';
+import CategoryScrollNav from '../components/common/CategoryScrollNav';
 import { Icon } from '../components/ui/Icon';
 
 /**
@@ -55,7 +55,6 @@ export const HomePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { t } = useLanguage();
-  const { isFavorite, toggleFavorite, subscribeRestock } = useFavorites();
   const [events, setEvents] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -83,18 +82,6 @@ export const HomePage = () => {
     const prov = e.target.value;
     setUserProvince(prov);
     localStorage.setItem('tf_user_province', prov);
-  };
-
-  const handleToggleFav = async (eventId, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const isNowFav = await toggleFavorite(eventId);
-    showToast(isNowFav ? 'Đã lưu sự kiện vào danh sách yêu thích' : 'Đã bỏ lưu sự kiện');
-  };
-
-  const handleNotifyMe = async (event) => {
-    const res = await subscribeRestock(event.id, event.title);
-    showToast(res.message);
   };
 
   useEffect(() => {
@@ -242,19 +229,11 @@ export const HomePage = () => {
       </form>
 
       {/* Category Ribbon Pills */}
-      <nav className="category-scroll-nav mb-2xl" aria-label="Danh mục sự kiện">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            className="category-pill flex items-center gap-1.5"
-            onClick={() => goToEvents(cat.id)}
-          >
-            <Icon name={cat.icon} size="sm" ariaHidden />
-            <span>{cat.label}</span>
-          </button>
-        ))}
-      </nav>
+      <CategoryScrollNav
+        categories={categories}
+        onSelectCategory={goToEvents}
+        className="mb-2xl"
+      />
 
       {/* ====================================================================
           PHẦN 1: GỢI Ý (SỰ KIỆN NỔI BẬT)
@@ -273,7 +252,6 @@ export const HomePage = () => {
         >
           {recommendations.map((event) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
-            const isFav = isFavorite(event.id);
 
             return (
               <article key={`rec-slide-${event.id}`} className="tkb-card">
@@ -286,16 +264,6 @@ export const HomePage = () => {
                   />
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">{event.category || 'Nổi bật'}</span>
-                    <button
-                      type="button"
-                      className={`tkb-fav-btn flex items-center justify-center ${isFav ? 'active' : ''}`}
-                      onClick={(e) => handleToggleFav(event.id, e)}
-                      title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
-                      aria-label={isFav ? `Bỏ lưu sự kiện ${event.title}` : `Lưu sự kiện ${event.title}`}
-                      aria-pressed={isFav}
-                    >
-                      <Icon name="heart" size="sm" fill={isFav ? 'currentColor' : 'none'} ariaHidden />
-                    </button>
                   </div>
                 </div>
 
@@ -471,7 +439,6 @@ export const HomePage = () => {
         >
           {musicEvents.map((event) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
-            const isFav = isFavorite(event.id);
             return (
               <article key={`music-${event.id}`} className="tkb-card">
                 <div className={`tkb-card-cover ${toneClass(event.category)}`}>
@@ -483,16 +450,6 @@ export const HomePage = () => {
                   />
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">Nhạc sống</span>
-                    <button
-                      type="button"
-                      className={`tkb-fav-btn flex items-center justify-center ${isFav ? 'active' : ''}`}
-                      onClick={(e) => handleToggleFav(event.id, e)}
-                      title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
-                      aria-label={isFav ? `Bỏ lưu sự kiện ${event.title}` : `Lưu sự kiện ${event.title}`}
-                      aria-pressed={isFav}
-                    >
-                      <Icon name="heart" size="sm" fill={isFav ? 'currentColor' : 'none'} ariaHidden />
-                    </button>
                   </div>
                 </div>
                 <div className="tkb-card-body">
@@ -532,7 +489,6 @@ export const HomePage = () => {
         >
           {theaterEvents.map((event) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
-            const isFav = isFavorite(event.id);
             return (
               <article key={`theater-${event.id}`} className="tkb-card">
                 <div className={`tkb-card-cover ${toneClass(event.category)}`}>
@@ -544,16 +500,6 @@ export const HomePage = () => {
                   />
                   <div className="tkb-card-cover-badges">
                     <span className="tkb-category-chip">Nghệ thuật</span>
-                    <button
-                      type="button"
-                      className={`tkb-fav-btn flex items-center justify-center ${isFav ? 'active' : ''}`}
-                      onClick={(e) => handleToggleFav(event.id, e)}
-                      title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
-                      aria-label={isFav ? `Bỏ lưu sự kiện ${event.title}` : `Lưu sự kiện ${event.title}`}
-                      aria-pressed={isFav}
-                    >
-                      <Icon name="heart" size="sm" fill={isFav ? 'currentColor' : 'none'} ariaHidden />
-                    </button>
                   </div>
                 </div>
                 <div className="tkb-card-body">
@@ -588,10 +534,10 @@ export const HomePage = () => {
         </h2>
         <Link
           to="/events"
-          className="btn btn-primary home-discovery-cta"
+          className="btn btn-primary home-discovery-cta inline-flex items-center gap-2"
         >
           <span>Xem tất cả sự kiện</span>
-          <span>→</span>
+          <Icon name="arrow-right" size="sm" ariaHidden />
         </Link>
       </section>
     </div>

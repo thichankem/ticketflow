@@ -143,72 +143,76 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
     <section className="admin-table-card">
       {/* Search and Filters Toolbar */}
       <div className="admin-toolbar">
-        <div className="admin-search-wrapper">
-          <label htmlFor="admin-users-search" className="sr-only">Tìm theo tên, email, ID</label>
-          <span className="admin-search-icon" aria-hidden="true">
-            <Icon name="search" size="xs" ariaHidden />
-          </span>
-          <input
-            id="admin-users-search"
-            type="text"
-            className="admin-search-input"
-            placeholder="Tìm theo tên, email, ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {search && (
-            <button
-              type="button"
-              className="admin-search-clear"
-              onClick={() => setSearch('')}
-              aria-label="Xóa từ khóa tìm kiếm"
-            >
-              <Icon name="x" size="xs" ariaHidden />
-            </button>
-          )}
+        <div className="admin-toolbar-left">
+          <div className="admin-search-wrapper">
+            <label htmlFor="admin-users-search" className="sr-only">Tìm theo tên, email, ID</label>
+            <span className="admin-search-icon" aria-hidden="true">
+              <Icon name="search" size="xs" ariaHidden />
+            </span>
+            <input
+              id="admin-users-search"
+              type="text"
+              className="admin-search-input"
+              placeholder="Tìm theo tên, email, ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                className="admin-search-clear"
+                onClick={() => setSearch('')}
+                aria-label="Xóa từ khóa tìm kiếm"
+              >
+                <Icon name="x" size="xs" ariaHidden />
+              </button>
+            )}
+          </div>
+
+          <div className="filter-pills flex items-center gap-xs flex-wrap">
+            <span className="muted text-xs mr-xs font-semibold">Vai trò:</span>
+            {[
+              { key: 'ALL', label: 'Tất cả' },
+              { key: 'ADMIN', label: 'Admin' },
+              { key: 'ORGANIZER', label: 'Organizer' },
+              { key: 'ATTENDEE', label: 'Attendee' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`filter-pill ${roleFilter === key ? 'active' : ''}`}
+                onClick={() => setRoleFilter(key)}
+              >
+                {label} ({roleCounts[key] || 0})
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="filter-pills flex items-center gap-xs flex-wrap">
-          <span className="muted text-xs mr-xs font-semibold">Vai trò:</span>
-          {[
-            { key: 'ALL', label: 'Tất cả' },
-            { key: 'ADMIN', label: 'Admin' },
-            { key: 'ORGANIZER', label: 'Organizer' },
-            { key: 'ATTENDEE', label: 'Attendee' },
-          ].map(({ key, label }) => (
-            <button
-              key={key}
-              type="button"
-              className={`filter-pill ${roleFilter === key ? 'active' : ''}`}
-              onClick={() => setRoleFilter(key)}
-            >
-              {label} ({roleCounts[key] || 0})
-            </button>
-          ))}
+        <div className="admin-toolbar-right">
+          <button
+            type="button"
+            className="btn btn-primary btn-sm flex items-center gap-1.5"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <Icon name="plus" size="xs" ariaHidden />
+            <span>Thêm Người Dùng</span>
+          </button>
         </div>
-
-        <button
-          type="button"
-          className="btn btn-primary btn-sm ml-auto flex items-center gap-1.5"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Icon name="plus" size="xs" ariaHidden />
-          <span>Thêm Người Dùng</span>
-        </button>
       </div>
 
       {/* Users Table */}
       <div className="table-responsive admin-table-container">
-        <table className="data-table admin-modern-table" style={{ minWidth: '920px' }}>
+        <table className="data-table admin-modern-table" style={{ width: '100%', minWidth: '850px' }}>
           <thead>
             <tr>
-              <th style={{ width: '70px' }}>ID</th>
-              <th style={{ minWidth: '220px' }}>Người Dùng</th>
-              <th style={{ minWidth: '200px' }}>Email</th>
-              <th style={{ width: '130px' }}>Vai trò</th>
-              <th style={{ width: '120px' }}>Trạng thái</th>
-              <th style={{ width: '120px' }}>Ngày tạo</th>
-              <th style={{ width: '240px' }} className="text-right">Thao tác quản trị</th>
+              <th style={{ width: '50px' }}>ID</th>
+              <th style={{ minWidth: '170px' }}>Người Dùng</th>
+              <th style={{ minWidth: '160px' }}>Email</th>
+              <th style={{ width: '95px' }}>Vai trò</th>
+              <th style={{ width: '105px' }}>Trạng thái</th>
+              <th style={{ width: '95px' }}>Ngày tạo</th>
+              <th style={{ width: '235px' }} className="text-right">Thao tác quản trị</th>
             </tr>
           </thead>
           <tbody>
@@ -253,38 +257,38 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                       </span>
                     </td>
                     <td>
-                      <span className={`badge ${isSuspended ? 'badge-status-suspended' : 'badge-status-active'}`}>
-                        <span className={isSuspended ? 'mr-1 text-red-500' : 'mr-1 text-emerald-500'}>●</span>
-                        {isSuspended ? 'Đã khóa' : 'Hoạt động'}
+                      <span className={`badge ${isSuspended ? 'badge-status-suspended' : 'badge-status-active'} inline-flex items-center`}>
+                        <Icon name="circle" size="xs" fill="currentColor" className={`mr-1 ${isSuspended ? 'text-red-500' : 'text-emerald-500'}`} ariaHidden />
+                        <span>{isSuspended ? 'Đã khóa' : 'Hoạt động'}</span>
                       </span>
                     </td>
                     <td>
                       <span className="muted text-xs font-mono">{formatDate(u.created_at)}</span>
                     </td>
                     <td>
-                      <div className="table-actions justify-end flex items-center gap-1.5 flex-nowrap">
+                      <div className="table-actions justify-end flex items-center gap-1 flex-nowrap">
                         <select
-                          className="select select-compact text-xs"
-                          style={{ width: '105px', padding: '0.25rem 0.5rem', height: '30px' }}
+                          className="select select-compact text-xs admin-role-select"
                           value={u.role || 'ATTENDEE'}
                           aria-label={`Thay đổi vai trò cho ${u.name || u.email}`}
                           onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                          disabled={isRoot}
+                          disabled={isRoot || u.role === 'ADMIN'}
+                          title={u.role === 'ADMIN' ? 'Không thể thay đổi vai trò của Quản trị viên' : undefined}
                         >
                           <option value="ATTENDEE">Attendee</option>
                           <option value="ORGANIZER">Organizer</option>
-                          <option value="ADMIN">Admin</option>
+                          {u.role === 'ADMIN' && <option value="ADMIN" disabled>Admin</option>}
                         </select>
 
                         {isRoot ? (
-                          <span className="badge badge-subtle text-xs" title="Tài khoản Quản trị gốc">
+                          <span className="badge badge-subtle text-xs" style={{ whiteSpace: 'nowrap' }} title="Tài khoản Quản trị gốc">
                             Root Admin
                           </span>
                         ) : (
                           <>
                             <button
                               type="button"
-                              className="btn btn-xs btn-secondary"
+                              className="btn btn-xs btn-secondary btn-table-action"
                               onClick={() => setEditingUser(u)}
                               title="Chỉnh sửa thông tin"
                             >
@@ -292,7 +296,7 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                             </button>
                             <button
                               type="button"
-                              className={`btn btn-xs ${isSuspended ? 'btn-success' : 'btn-warning'}`}
+                              className={`btn btn-xs ${isSuspended ? 'btn-success' : 'btn-warning'} btn-table-action`}
                               onClick={() => handleToggleStatus(u.id, isSuspended)}
                               title={isSuspended ? 'Mở khóa tài khoản' : 'Tạm khóa tài khoản'}
                             >
@@ -300,7 +304,7 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                             </button>
                             <button
                               type="button"
-                              className="btn btn-xs btn-danger"
+                              className="btn btn-xs btn-danger btn-table-action"
                               onClick={() => setDeleteTarget(u)}
                               title="Xóa tài khoản vĩnh viễn"
                             >
@@ -423,7 +427,6 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
               >
                 <option value="ATTENDEE">Khách Mua Vé (Attendee)</option>
                 <option value="ORGANIZER">Ban Tổ Chức (Organizer)</option>
-                <option value="ADMIN">Quản Trị Viên (Admin)</option>
               </select>
             </div>
           </div>
@@ -483,6 +486,7 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                 type="text"
                 className="input"
                 required
+                placeholder="Nguyễn Văn A"
                 value={editingUser.name || ''}
                 onChange={(e) => setEditingUser({ ...editingUser, name: e.target.value })}
                 disabled={editSubmitting}
@@ -496,6 +500,7 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                 type="email"
                 className="input"
                 required
+                placeholder="email@example.com"
                 value={editingUser.email || ''}
                 onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
                 disabled={editSubmitting}
@@ -510,11 +515,12 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                   className="select"
                   value={editingUser.role || 'ATTENDEE'}
                   onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
-                  disabled={editSubmitting}
+                  disabled={editSubmitting || editingUser.role === 'ADMIN'}
+                  title={editingUser.role === 'ADMIN' ? 'Không thể thay đổi vai trò của Quản trị viên' : undefined}
                 >
                   <option value="ATTENDEE">Attendee</option>
                   <option value="ORGANIZER">Organizer</option>
-                  <option value="ADMIN">Admin</option>
+                  {editingUser.role === 'ADMIN' && <option value="ADMIN" disabled>Admin</option>}
                 </select>
               </div>
 
@@ -524,6 +530,7 @@ export const AdminUsersTab = ({ users = [], currentUser, onReload, notify }) => 
                   id="edit-user-phone"
                   type="tel"
                   className="input"
+                  placeholder="0912345678"
                   value={editingUser.phone || ''}
                   onChange={(e) => setEditingUser({ ...editingUser, phone: e.target.value })}
                   disabled={editSubmitting}

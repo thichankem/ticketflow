@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { ReportModal } from './common/ReportModal';
 import { Icon } from './ui/Icon';
 import { BrandMark } from './ui/BrandLogo';
 
@@ -15,6 +16,7 @@ export const AttendeeLayout = ({ children }) => {
   const location = useLocation();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Close mobile menu on route change
   useEffect(() => {
@@ -49,10 +51,7 @@ export const AttendeeLayout = ({ children }) => {
           <div className="header-left">
             <Link to="/" className="logo" aria-label="Ticketflow Trang chủ">
               <BrandMark size={34} />
-              <div className="logo-text">
-                <span className="brand-name">Ticketflow</span>
-                <span className="portal-subtag attendee-subtag">{t('role.attendee_sub', 'Vé Sự Kiện Trực Tuyến')}</span>
-              </div>
+              <span className="brand-name">Ticketflow</span>
             </Link>
           </div>
 
@@ -63,11 +62,6 @@ export const AttendeeLayout = ({ children }) => {
               <span>{t('nav.explore', 'Khám Phá')}</span>
             </NavLink>
 
-            <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <Icon name="calendar" size="sm" ariaHidden />
-              <span>{t('home.all_heading', 'Tất Cả Sự Kiện')}</span>
-            </NavLink>
-
             <NavLink to="/my-tickets" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
               <Icon name="ticket" size="sm" ariaHidden />
               <span>{t('nav.my_tickets', 'Vé Của Tôi')}</span>
@@ -75,7 +69,7 @@ export const AttendeeLayout = ({ children }) => {
 
             <NavLink to="/checkout" className={({ isActive }) => `cart-nav-link nav-link ${isActive ? 'active' : ''}`}>
               <Icon name="cart" size="sm" ariaHidden />
-              <span>{t('nav.cart', 'Giỏ Vé')}</span>
+              <span>{t('nav.cart', 'Giỏ Hàng')}</span>
               {totalCartCount > 0 && (
                 <span className="badge badge-primary cart-badge animate-pulse" aria-label={`${totalCartCount} vé`}>
                   {totalCartCount}
@@ -96,6 +90,16 @@ export const AttendeeLayout = ({ children }) => {
                 <span>{t('nav.admin_console_short', 'Quản Trị')}</span>
               </NavLink>
             )}
+
+            <button
+              type="button"
+              className="nav-link btn-nav-report"
+              onClick={() => setShowReportModal(true)}
+              title={t('nav.report_issue', 'Báo Cáo Sự Cố')}
+            >
+              <Icon name="shield" size="sm" ariaHidden />
+              <span>{t('nav.report_issue', 'Báo Cáo Sự Cố')}</span>
+            </button>
 
             {isAuthenticated ? (
               <div className="nav-actions">
@@ -139,10 +143,7 @@ export const AttendeeLayout = ({ children }) => {
         <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
           <div className="mobile-drawer-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Menu điều hướng di động">
             <div className="mobile-drawer-header">
-              <div className="logo-text">
-                <span className="brand-name">Ticketflow</span>
-                <span className="portal-subtag attendee-subtag">{t('role.attendee_sub', 'Vé Sự Kiện')}</span>
-              </div>
+              <span className="brand-name font-bold">Ticketflow</span>
               <button
                 type="button"
                 className="drawer-close-btn"
@@ -158,18 +159,25 @@ export const AttendeeLayout = ({ children }) => {
                 <Icon name="home" size="sm" ariaHidden className="mr-2" />
                 {t('nav.explore', 'Khám Phá')}
               </NavLink>
-              <NavLink to="/events" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                <Icon name="calendar" size="sm" ariaHidden className="mr-2" />
-                {t('home.all_heading', 'Tất Cả Sự Kiện')}
-              </NavLink>
               <NavLink to="/my-tickets" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
                 <Icon name="ticket" size="sm" ariaHidden className="mr-2" />
                 {t('nav.my_tickets', 'Vé Của Tôi')}
               </NavLink>
               <NavLink to="/checkout" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
                 <Icon name="cart" size="sm" ariaHidden className="mr-2" />
-                {t('nav.cart', 'Giỏ Vé')} {totalCartCount > 0 && `(${totalCartCount})`}
+                {t('nav.cart', 'Giỏ Hàng')} {totalCartCount > 0 && `(${totalCartCount})`}
               </NavLink>
+              <button
+                type="button"
+                className="drawer-link"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  setShowReportModal(true);
+                }}
+              >
+                <Icon name="shield" size="sm" ariaHidden className="mr-2" />
+                {t('nav.report_issue', 'Báo Cáo Sự Cố')}
+              </button>
               {isAuthenticated && (
                 <>
                   {user?.role === 'ORGANIZER' && (
@@ -200,7 +208,7 @@ export const AttendeeLayout = ({ children }) => {
               {isAuthenticated ? (
                 <div className="drawer-user-info">
                   <Link to="/profile" className="drawer-user-name" style={{ display: 'block', marginBottom: '8px', color: 'inherit', textDecoration: 'none' }}>
-                    <strong>{user.name}</strong> ({user.role}) &rarr; {t('nav.profile', 'Hồ Sơ')}
+                    <strong>{user.name}</strong>
                   </Link>
                   <button type="button" onClick={handleLogout} className="btn btn-secondary btn-block btn-sm">
                     {t('nav.logout', 'Đăng Xuất')}
@@ -237,6 +245,15 @@ export const AttendeeLayout = ({ children }) => {
           </div>
         </div>
       </footer>
+
+      {showReportModal && (
+        <ReportModal
+          isOpen={showReportModal}
+          onClose={() => setShowReportModal(false)}
+          targetType="SYSTEM"
+          targetTitle="Báo cáo sự cố hệ thống & giao dịch sàn"
+        />
+      )}
     </div>
   );
 };

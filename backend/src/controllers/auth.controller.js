@@ -19,7 +19,7 @@ class AuthController {
 
       return res.status(201).json({
         success: true,
-        message: 'Đăng ký tài khoản thành công',
+        message: 'Account registered successfully',
         user,
         token,
         accessToken: token,
@@ -106,7 +106,7 @@ class AuthController {
       const userObj = result.user || result;
       return res.status(200).json({
         success: true,
-        message: 'Cập nhật thông tin hồ sơ thành công',
+        message: 'Profile updated successfully',
         user: userObj,
         token: result.token,
       });
@@ -133,7 +133,7 @@ class AuthController {
       res.clearCookie('refreshToken', { path: '/api/auth' });
       return res.status(200).json({
         success: true,
-        message: 'Đăng xuất thành công',
+        message: 'Logged out successfully',
       });
     } catch (err) {
       next(err);

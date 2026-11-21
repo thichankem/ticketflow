@@ -4,7 +4,6 @@ import DOMPurify from 'dompurify';
 import { api } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
-import { useFavorites } from '../context/FavoritesContext';
 import { formatRange, money, toneClass, eventCoverImage } from '../utils/display';
 import { getDistanceInfo } from '../utils/location';
 import { Icon } from '../components/ui/Icon';
@@ -15,7 +14,6 @@ export const EventDetailsPage = () => {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { cartItems, updateQuantity, applyPromoCode, reserveTickets, promoCode, discountAmount, total } = useCart();
-  const { isFavorite, toggleFavorite } = useFavorites();
 
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -24,8 +22,6 @@ export const EventDetailsPage = () => {
   const [promoStatus, setPromoStatus] = useState(null);
   const [reserving, setReserving] = useState(false);
 
-  const isFavorited = isFavorite(id);
-  const [restockNotice, setRestockNotice] = useState(false);
   const [seatMapImgError, setSeatMapImgError] = useState(false);
 
   const userProvince = localStorage.getItem('tf_user_province') || 'Hà Nội';
@@ -48,14 +44,6 @@ export const EventDetailsPage = () => {
     fetchEvent();
     return () => { isMounted = false; };
   }, [id]);
-
-  const handleToggleFavorite = async () => {
-    const isNowFav = await toggleFavorite(id);
-    if (isNowFav) {
-      setRestockNotice(true);
-      setTimeout(() => setRestockNotice(false), 5000);
-    }
-  };
 
   const handleApplyPromo = async (e) => {
     e.preventDefault();
@@ -166,11 +154,6 @@ export const EventDetailsPage = () => {
                 : event.status || 'Đang mở bán'}
             </span>
             <span className="badge badge-category">{event.category || 'Sự kiện'}</span>
-            {distInfo && (
-              <span className={`badge badge-location ${distInfo.isSameProvince ? 'same' : ''}`}>
-                {distInfo.isSameProvince ? 'Cùng khu vực' : distInfo.label}
-              </span>
-            )}
           </div>
 
           <h1 className="event-details-headline">{event.title}</h1>
@@ -179,22 +162,6 @@ export const EventDetailsPage = () => {
             <span>{formatRange(event)}</span>
             {event.location && <span>{event.location}</span>}
           </div>
-
-          <div className="banner-actions-row">
-            <button
-              type="button"
-              className={`btn ${isFavorited ? 'btn-danger' : 'btn-secondary'} btn-sm`}
-              onClick={handleToggleFavorite}
-            >
-              {isFavorited ? 'Đã lưu' : 'Lưu sự kiện'}
-            </button>
-          </div>
-
-          {restockNotice && (
-            <div className="restock-floating-alert">
-              Hệ thống sẽ thông báo khi có vé mở bán.
-            </div>
-          )}
         </div>
       </header>
 
@@ -203,11 +170,11 @@ export const EventDetailsPage = () => {
       <div className="event-content-split">
         {/* Main Content Area (Dynamic Blog Style Presentation) */}
         <div className="event-main-prose">
-          {/* About Event - Blog Style Article */}
-          {sanitizedDescription && (
+          {/* About Event - Fallback when no structured paragraph blocks are defined */}
+          {sanitizedDescription && !contentBlocks.some((b) => (b.type === 'paragraph' || b.type === 'text') && (b.content || b.text)) && (
             <section className="card blog-article-card mb-md">
-              <h2 className="section-title">{t('event.about_title', 'Giới thiệu chi tiết sự kiện')}</h2>
-              <div className="prose blog-body" dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
+              <h2 className="section-title text-xl font-bold mb-md">{t('event.about_title', 'Giới thiệu sự kiện')}</h2>
+              <div className="prose blog-body whitespace-pre-line text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
             </section>
           )}
 
@@ -216,12 +183,11 @@ export const EventDetailsPage = () => {
             contentBlocks.map((b, idx) => {
               if (b.type === 'paragraph' || b.type === 'text') {
                 const textContent = b.content || b.text || '';
-                // Avoid duplicating if identical to main description
-                if (!textContent.trim() || textContent.trim() === event?.description?.trim()) return null;
+                if (!textContent.trim()) return null;
                 return (
-                  <section key={b.id || idx} className="card blog-article-card mb-md">
-                    {b.title && <h2 className="section-title">{b.title}</h2>}
-                    <div className="prose blog-body whitespace-pre-line text-sm leading-relaxed">
+                  <section key={b.id || idx} className="card blog-article-card mb-md p-lg">
+                    <h2 className="section-title text-xl font-bold mb-md">{b.title || 'Giới thiệu sự kiện'}</h2>
+                    <div className="prose blog-body whitespace-pre-line text-sm leading-relaxed text-slate-700 dark:text-slate-300">
                       {textContent}
                     </div>
                   </section>
@@ -232,8 +198,8 @@ export const EventDetailsPage = () => {
                 const items = b.items || [];
                 if (items.length === 0) return null;
                 return (
-                  <section key={b.id || idx} className="card timeline-card mb-md">
-                    <h2 className="section-title">{b.title || t('event.agenda_title', 'Lịch trình chi tiết (Agenda)')}</h2>
+                  <section key={b.id || idx} className="card timeline-card mb-md p-lg">
+                    <h2 className="section-title text-xl font-bold mb-md">{b.title || t('event.agenda_title', 'Lịch trình sự kiện')}</h2>
                     <div className="timeline-flow">
                       {items.map((item, itemIdx) => (
                         <div key={item.id || itemIdx} className="timeline-item">
@@ -253,28 +219,31 @@ export const EventDetailsPage = () => {
 
               if (b.type === 'media' || b.type === 'image') {
                 const mediaSrc = b.url || b.media_url;
-                if (!mediaSrc) return null;
+                if (!mediaSrc && !b.caption) return null;
                 return (
-                  <section key={b.id || idx} className="card blog-media-section mb-md">
-                    {b.title && <h2 className="section-title">{b.title}</h2>}
-                    <figure className="blog-media-item m-0 rounded overflow-hidden border">
-                      <img
-                        src={mediaSrc}
-                        alt={b.caption || b.title || `${event.title} - ảnh ${idx + 1}`}
-                        className="w-full object-cover rounded-lg"
-                        style={{ maxHeight: '480px', width: '100%', objectFit: 'cover' }}
-                        loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.onerror = null;
-                          e.currentTarget.src = '/images/events/summit.svg';
-                        }}
-                      />
-                      {b.caption && (
-                        <figcaption className="p-xs text-xs text-center muted italic bg-slate-50 dark:bg-slate-900">
-                          {b.caption}
-                        </figcaption>
-                      )}
-                    </figure>
+                  <section key={b.id || idx} className="card blog-media-section mb-md p-lg">
+                    <h2 className="section-title text-xl font-bold mb-md">{b.title || 'Sơ đồ & Hình ảnh sự kiện'}</h2>
+                    {mediaSrc && (
+                      <figure className="blog-media-item m-0 rounded-lg overflow-hidden border mb-3">
+                        <img
+                          src={mediaSrc}
+                          alt={b.caption || b.title || `${event.title} - ảnh ${idx + 1}`}
+                          className="w-full object-cover rounded-lg"
+                          style={{ maxHeight: '480px', width: '100%', objectFit: 'cover' }}
+                          loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = '/images/events/summit.svg';
+                          }}
+                        />
+                      </figure>
+                    )}
+                    {b.caption && (
+                      <div className="p-3 border rounded-lg bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 text-sm flex items-start gap-2">
+                        <Icon name="info" size="sm" className="text-teal-600 dark:text-teal-400 mt-0.5 flex-shrink-0" ariaHidden />
+                        <div className="flex-1 text-sm leading-relaxed">{b.caption}</div>
+                      </div>
+                    )}
                   </section>
                 );
               }
@@ -334,6 +303,51 @@ export const EventDetailsPage = () => {
             </>
           )}
 
+          {/* Event PDF Attachments */}
+          {Array.isArray(event.pdf_attachments) && event.pdf_attachments.length > 0 && (
+            <section className="card attachments-card mb-md">
+              <h2 className="section-title text-xl font-bold mb-sm flex items-center gap-2">
+                <Icon name="file" size="sm" className="text-primary" ariaHidden />
+                <span>{t('event.attachments_title', 'Tài liệu & Tệp đính kèm')}</span>
+              </h2>
+              <p className="text-xs muted mb-md">
+                Tài liệu chính thức do Ban tổ chức phát hành dành cho người tham dự sự kiện.
+              </p>
+              <div className="flex flex-col gap-sm">
+                {event.pdf_attachments.map((att, idx) => (
+                  <div
+                    key={att.id || idx}
+                    className="flex items-center justify-between p-sm border rounded bg-subtle"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Icon name="file" size="md" className="text-primary" ariaHidden />
+                      <div>
+                        <div className="font-semibold text-sm text-foreground">
+                          {att.filename || att.name || 'Tài liệu sự kiện'}
+                        </div>
+                        {att.description && (
+                          <div className="text-xs muted">{att.description}</div>
+                        )}
+                      </div>
+                    </div>
+                    {att.url && (
+                      <a
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-sm btn-outline flex items-center gap-1"
+                        download
+                      >
+                        <Icon name="external-link" size="xs" ariaHidden />
+                        <span>Tải về / Xem</span>
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Open Seating & Venue Layout */}
           <section className="card seatmap-card">
             <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ phân khu & Không gian')}</h2>
@@ -367,7 +381,7 @@ export const EventDetailsPage = () => {
                     </div>
                   </div>
                   <p className="seat-map-legend-text text-xs text-slate-500">
-                    * Sơ đồ mang tính chất minh họa phân khu không gian tham khảo; vị trí cụ thể do Ban tổ chức bố trí tại địa điểm sự kiện. Phân khu mở · Ghế tự do theo hạng vé · Nhận chỗ theo thứ tự vào cửa.
+                    * Sơ đồ phân khu tham khảo theo quy chế Open Seating của sự kiện.
                   </p>
                 </div>
               )}

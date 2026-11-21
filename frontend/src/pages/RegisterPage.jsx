@@ -31,15 +31,18 @@ export const RegisterPage = () => {
 
   return (
     <section className="auth-shell">
-      <div className="auth-brand brand-workshop">
-        <p className="eyebrow">Ticketflow</p>
-        <h1>Đăng ký tài khoản</h1>
-      </div>
-
       <div className="card auth-card">
-        <h2 className="panel-title">{t('auth.register_title', 'Đăng Ký')}</h2>
+        <div className="auth-card-header">
+          <h1 className="panel-title">{t('auth.register_title', 'Đăng Ký')}</h1>
+          <p className="auth-card-subtitle">Tạo tài khoản mới để đặt vé sự kiện và quản lý vé trực tuyến</p>
+        </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className="alert alert-error">
+            <Icon name="alert-circle" size="sm" ariaHidden />
+            <span>{error}</span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -97,10 +100,24 @@ export const RegisterPage = () => {
                 <Icon name={showPassword ? 'eye-off' : 'eye'} size="sm" ariaHidden />
               </button>
             </div>
+            <p className="auth-password-hint">
+              <Icon name="info" size="xs" ariaHidden />
+              <span>Mật khẩu tối thiểu 8 ký tự, khuyến nghị có cả chữ cái và số</span>
+            </p>
           </div>
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? t('auth.registering', 'Đang Tạo Tài Khoản...') : t('auth.register_submit', 'Hoàn Tất Đăng Ký')}
+          <button type="submit" className="btn btn-primary btn-block auth-submit-btn" disabled={loading}>
+            {loading ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span className="spinner spinner-sm" aria-hidden="true" />
+                <span>{t('auth.registering', 'Đang Tạo Tài Khoản...')}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center justify-center gap-2">
+                <span>{t('auth.register_submit', 'Hoàn Tất Đăng Ký')}</span>
+                <span aria-hidden="true">&rarr;</span>
+              </span>
+            )}
           </button>
         </form>
 

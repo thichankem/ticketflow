@@ -3,7 +3,7 @@
  * File: backend/src/services/seating.service.js
  *
  * Implements Contiguous Seating Algorithm and Orphan Seat Prevention
- * as specified in SPEC.md (Phân hệ 2.3).
+ * as specified in SPEC.md (Module 2.3).
  */
 
 import { query } from '../config/db.js';

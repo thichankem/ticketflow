@@ -2,20 +2,16 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../utils/display';
 import { StatusBadge } from '../common/StatusBadge';
-import { ConfirmModal } from '../common/ConfirmModal';
 import { Icon } from '../ui/Icon';
 
 export const OrganizerEventsTab = ({
   events = [],
   loading = false,
   onSelectEvent,
-  onEditEvent,
-  onDeleteEvent,
 }) => {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [deleteTarget, setDeleteTarget] = useState(null);
   const itemsPerPage = 9;
 
   const filtered = useMemo(() => {
@@ -32,12 +28,6 @@ export const OrganizerEventsTab = ({
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage));
   const paginated = filtered.slice((page - 1) * itemsPerPage, page * itemsPerPage);
 
-  const confirmDelete = async () => {
-    if (!deleteTarget) return;
-    await onDeleteEvent(deleteTarget.id, deleteTarget.title);
-    setDeleteTarget(null);
-  };
-
   return (
     <div className="stack">
       {/* Search and Action Toolbar */}
@@ -51,7 +41,7 @@ export const OrganizerEventsTab = ({
           <input
             type="search"
             className="input input-sm"
-            style={{ width: '260px' }}
+            style={{ width: '280px' }}
             placeholder="Tìm theo tên, thể loại, địa điểm..."
             aria-label="Tìm kiếm sự kiện theo tên, thể loại hoặc địa điểm"
             value={search}
@@ -60,13 +50,6 @@ export const OrganizerEventsTab = ({
               setPage(1);
             }}
           />
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => navigate('/organizer/events/new')}
-          >
-            + Tạo Sự Kiện Mới
-          </button>
         </div>
       </div>
 
@@ -146,30 +129,12 @@ export const OrganizerEventsTab = ({
                     <div className="event-card-footer mt-md flex justify-between items-center gap-xs">
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1"
+                        className="btn btn-primary btn-sm w-full flex items-center justify-center gap-1.5"
                         onClick={() => onSelectEvent(String(ev.id))}
                         title="Xem chi tiết sự kiện"
                       >
                         <Icon name="eye" size="xs" ariaHidden />
                         <span>Chi tiết sự kiện</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm flex items-center justify-center gap-1"
-                        onClick={() => onEditEvent(ev)}
-                        title="Chỉnh sửa thông tin sự kiện"
-                      >
-                        <Icon name="edit" size="xs" ariaHidden />
-                        <span>Sửa</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-danger btn-sm flex items-center justify-center gap-1"
-                        onClick={() => setDeleteTarget(ev)}
-                        title="Xóa sự kiện"
-                      >
-                        <Icon name="trash" size="xs" ariaHidden />
-                        <span>Xóa</span>
                       </button>
                     </div>
                   </div>
@@ -206,17 +171,6 @@ export const OrganizerEventsTab = ({
           )}
         </>
       )}
-
-      {/* Delete Event Confirmation Modal */}
-      <ConfirmModal
-        isOpen={Boolean(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={confirmDelete}
-        title={`Xác nhận xóa sự kiện: "${deleteTarget?.title}"`}
-        message={`CẢNH BÁO: Xóa sự kiện sẽ tự động kích hoạt HOÀN TIỀN 100% cho toàn bộ người mua vé và hủy toàn bộ vé đã phát hành. Thao tác này là vĩnh viễn và không thể khôi phục.`}
-        isDanger={true}
-        confirmText="Xác nhận xóa & Hoàn tiền"
-      />
     </div>
   );
 };

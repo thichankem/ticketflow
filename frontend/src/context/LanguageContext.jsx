@@ -4,13 +4,14 @@ export const DICTIONARY = {
   // Navigation & Common Layouts
   'nav.explore': 'Khám Phá Sự Kiện',
   'nav.my_tickets': 'Vé Của Tôi',
-  'nav.cart': 'Giỏ Vé',
+  'nav.cart': 'Giỏ Hàng',
   'nav.login': 'Đăng Nhập',
   'nav.register': 'Đăng Ký',
   'nav.logout': 'Đăng Xuất',
   'nav.profile': 'Hồ Sơ Cá Nhân',
   'nav.organizer_studio': 'Bảng Quản Trị Sự Kiện',
   'nav.admin_console': 'Bảng Điều Hành Quản Trị',
+  'nav.report_issue': 'Báo Cáo Sự Cố',
   'nav.notifications': 'Thông Báo Hộp Thư',
   'nav.no_notifications': 'Chưa có thông báo mới nào',
   'nav.notifications_count': 'tin',
@@ -95,9 +96,6 @@ export const DICTIONARY = {
   'event.reserve_btn_action': 'Đặt {n} vé',
   'event.atomic_note': '',
   'event.brochure_btn': 'Tải Brochure (PDF)',
-  'event.favorite_btn': 'Lưu sự kiện',
-  'event.favorited_btn': 'Đã lưu',
-  'event.restock_toast': 'Hệ thống sẽ thông báo khi có vé mở bán.',
 
   // Checkout Page
   'checkout.page_title': 'Thanh toán đơn hàng',
@@ -135,7 +133,7 @@ export const DICTIONARY = {
   'checkout.security_qr': '',
   'checkout.security_refund': '',
   'checkout.cancel_hold': 'Hủy giữ chỗ',
-  'checkout.empty_title': 'Giỏ vé đang trống',
+  'checkout.empty_title': 'Giỏ hàng đang trống',
   'checkout.empty_desc': 'Bạn chưa chọn vé hoặc phiên đặt vé đã hết hạn.',
   'checkout.empty_btn': 'Khám phá sự kiện',
 
@@ -249,6 +247,13 @@ export const DICTIONARY = {
   'organizer.delete_event_confirm': 'Bạn có chắc chắn muốn xóa sự kiện này không? Toàn bộ tiền vé của khách mua sẽ tự động được HOÀN TIỀN 100% và tất cả vé phát hành sẽ bị hủy hiệu lực. Thao tác này không thể hoàn tác!',
   'organizer.delete_event_danger_zone': 'Vùng Nguy Hiểm: Xóa Sự Kiện',
   'organizer.delete_event_danger_desc': 'Khi xóa sự kiện, hệ thống sẽ tự động hoàn tiền 100% cho toàn bộ người mua vé và hủy toàn bộ vé đã phát hành. Thao tác này là vĩnh viễn và không thể hoàn tác.',
+
+  // Admin & Reports
+  'admin.tab_overview': 'Tổng quan & Báo cáo',
+  'admin.tab_orders': 'Lịch sử',
+  'admin.tab_reports': 'Báo cáo vi phạm',
+  'report.btn_report': 'Báo cáo sự kiện',
+  'report.btn_report_organizer': 'Báo cáo sự cố',
 };
 
 const LanguageContext = createContext({

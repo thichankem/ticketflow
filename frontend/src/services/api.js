@@ -142,7 +142,15 @@ export const api = {
     exportAuditReport: () => api.downloadCsv(`${API_BASE_URL}/admin/export/audit`, 'platform_financial_audit.csv'),
     getAnnouncements: () => apiFetch('/admin/announcements'),
     createAnnouncement: (data) => apiFetch('/admin/announcements', { method: 'POST', body: data }),
+    updateAnnouncement: (id, data) => apiFetch(`/admin/announcements/${id}`, { method: 'PUT', body: data }),
     deleteAnnouncement: (id) => apiFetch(`/admin/announcements/${id}`, { method: 'DELETE' }),
+    getReports: (params) => {
+      const q = params ? '?' + new URLSearchParams(params).toString() : '';
+      return apiFetch(`/admin/reports${q}`);
+    },
+    getReportStats: () => apiFetch('/admin/reports/stats'),
+    getReportById: (id) => apiFetch(`/admin/reports/${id}`),
+    updateReport: (id, data) => apiFetch(`/admin/reports/${id}`, { method: 'PUT', body: data }),
   },
 
   // Broadcast Announcements (Public / In-App)
@@ -208,6 +216,17 @@ export const api = {
     updatePromo: (id, promoId, data) => apiFetch(`/events/${id}/promos/${promoId}`, { method: 'PUT', body: data }),
     deletePromo: (id, promoId) => apiFetch(`/events/${id}/promos/${promoId}`, { method: 'DELETE' }),
 
+    // PDF Attachments (Full CRUD)
+    getAttachments: (id) => apiFetch(`/events/${id}/attachments`),
+    uploadAttachment: (id, payload) => {
+      if (typeof FormData !== 'undefined' && payload instanceof FormData) {
+        return apiFetch(`/events/${id}/attachments`, { method: 'POST', body: payload });
+      }
+      return apiFetch(`/events/${id}/attachments`, { method: 'POST', body: payload });
+    },
+    updateAttachment: (id, attachmentId, data) => apiFetch(`/events/${id}/attachments/${attachmentId}`, { method: 'PUT', body: data }),
+    deleteAttachment: (id, attachmentId) => apiFetch(`/events/${id}/attachments/${attachmentId}`, { method: 'DELETE' }),
+
     // Attendees & Orders
     getAttendees: (id) => apiFetch(`/events/${id}/attendees`),
     createAttendee: (id, data) => apiFetch(`/events/${id}/attendees`, { method: 'POST', body: data }),
@@ -257,6 +276,13 @@ export const api = {
       const headers = token ? { 'x-order-token': token } : {};
       return apiFetch(`/orders/${id}/receipt${q}`, { headers });
     },
+  },
+
+  // Reports APIs (Attendees & Organizers)
+  reports: {
+    create: (data) => apiFetch('/reports', { method: 'POST', body: data }),
+    getMyReports: () => apiFetch('/reports/my'),
+    reportEvent: (eventId, data) => apiFetch(`/events/${eventId}/report`, { method: 'POST', body: data }),
   },
 
   // Auth & Profile APIs

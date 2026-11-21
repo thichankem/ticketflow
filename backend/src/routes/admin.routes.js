@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import adminController from '../controllers/admin.controller.js';
 import eventsController from '../controllers/events.controller.js';
+import reportsController from '../controllers/reports.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/rbac.middleware.js';
 
@@ -29,12 +30,19 @@ router.post('/events/:id/mass-refund', adminController.massRefund);
 // Platform Orders Endpoint
 router.get('/orders', adminController.getOrders);
 
-// Broadcast Announcements (REQ-ADM-09: Thông Báo Chung Toàn Sàn)
+// Broadcast Announcements (REQ-ADM-09: Platform Announcements)
 router.get('/announcements', adminController.getAnnouncements);
 router.post('/announcements', adminController.createAnnouncement);
+router.put('/announcements/:id', adminController.updateAnnouncement);
 router.delete('/announcements/:id', adminController.deleteAnnouncement);
 
-// Export Financial Audit Report (Phân hệ 2.14 & SPEC.md Section 5.5)
+// User & Organizer Reports Console (REQ-ADM-11: Incident & Report Management)
+router.get('/reports', reportsController.getReports);
+router.get('/reports/stats', reportsController.getReportStats);
+router.get('/reports/:id', reportsController.getReportById);
+router.put('/reports/:id', reportsController.updateReport);
+
+// Export Financial Audit Report (Module 2.14 & SPEC.md Section 5.5)
 router.get('/export/audit', adminController.exportAuditReport);
 router.get('/reports/audit-financial/export', adminController.exportAuditReport);
 

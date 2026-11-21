@@ -23,5 +23,8 @@
     "express-rate-limit": "^7.2.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.11.5"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "4.65.0"
   }
 }

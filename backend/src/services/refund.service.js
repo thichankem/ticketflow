@@ -25,7 +25,7 @@ export class RefundPolicy {
 
   evaluate(order, event) {
     if (!this.allowRefund) {
-      const err = new Error('Sự kiện này không áp dụng chính sách hoàn hủy vé');
+      const err = new Error('This event does not allow ticket refunds');
       err.statusCode = 400;
       throw err;
     }
@@ -36,7 +36,7 @@ export class RefundPolicy {
       const orderDate = new Date(order.created_at);
       const daysSinceOrder = (now - orderDate) / (1000 * 60 * 60 * 24);
       if (daysSinceOrder > this.maxDaysAfterOrder) {
-        const err = new Error(`Đã quá thời hạn yêu cầu hoàn vé (${this.maxDaysAfterOrder} ngày kể từ khi đặt đơn)`);
+        const err = new Error(`Refund request window expired (${this.maxDaysAfterOrder} days after order)`);
         err.statusCode = 400;
         throw err;
       }
@@ -46,7 +46,7 @@ export class RefundPolicy {
       const eventDate = new Date(event.start_date);
       const daysUntilEvent = (eventDate - now) / (1000 * 60 * 60 * 24);
       if (daysUntilEvent < this.minDaysBeforeEvent) {
-        const err = new Error(`Không thể hoàn vé trong vòng ${this.minDaysBeforeEvent} ngày trước khi sự kiện diễn ra`);
+        const err = new Error(`Cannot refund tickets within ${this.minDaysBeforeEvent} days of the event`);
         err.statusCode = 400;
         throw err;
       }
@@ -69,10 +69,7 @@ export class RefundPolicy {
 class RefundService {
   constructor() {
     this._bgInterval = null;
-    // Start unreferenced background reconciliation runner (TF-V4-P1-05, V7-06)
-    if (process.env.NODE_ENV !== 'test' || process.env.ENABLE_TEST_BACKGROUND_RECONCILER === 'true') {
-      this.startBackgroundReconciliation(60000);
-    }
+    // Background reconciliation runner removed per architectural specification
   }
 
   /**
@@ -352,24 +349,24 @@ class RefundService {
           refund_id: order.refund_idempotency_key,
           gateway_refund_id: order.refund_gateway_ref,
           settlement_confirmed: true,
-          message: 'Giao dịch hoàn tiền đã được xử lý thành công trước đó (idempotent)',
+          message: 'Refund transaction has already been completed (idempotent)',
           refund_amount: Number(order.total_refunded || order.total_gross || 0),
           refund_percentage: 100,
           order,
         };
       }
-      const err = new Error('Đơn hàng đã được hoàn tiền trước đó');
+      const err = new Error('Order is already refunded');
       err.statusCode = 400;
       throw err;
     }
 
     if (order.status === 'CANCELLED') {
-      const err = new Error('Đơn hàng đã bị hủy, không thể hoàn tiền');
+      const err = new Error('Order is cancelled and cannot be refunded');
       err.statusCode = 400;
       throw err;
     }
     if (order.status !== 'COMPLETED' && order.status !== 'PAID') {
-      const err = new Error('Chỉ có thể hoàn tiền cho đơn hàng đã thanh toán thành công (COMPLETED)');
+      const err = new Error('Refunds are only permitted for completed orders');
       err.statusCode = 400;
       throw err;
     }
@@ -414,7 +411,7 @@ class RefundService {
         if (reqRes.rowCount > 0) {
           const existingReq = reqRes.rows[0];
           if (existingReq.status === 'PENDING_RECONCILIATION' || dbOrder.refund_status === 'PENDING_RECONCILIATION') {
-            const err = new Error('Giao dịch hoàn tiền đang chờ đối soát với cổng thanh toán (PENDING_RECONCILIATION). Không thể xử lý lại lúc này.');
+            const err = new Error('Refund is awaiting payment gateway processing. Cannot re-process at this time.');
             err.statusCode = 409;
             throw err;
           }
@@ -423,7 +420,7 @@ class RefundService {
               alreadyCompleted = true;
               return;
             }
-            const err = new Error('Đơn hàng đã được hoàn tiền trước đó');
+            const err = new Error('Order is already refunded');
             err.statusCode = 400;
             throw err;
           }
@@ -434,7 +431,7 @@ class RefundService {
             const isLeaseActive = (now - updatedAtMs) < leaseWindowMs;
 
             if (isLeaseActive) {
-              const err = new Error('Yêu cầu hoàn tiền đang được xử lý trong tiến trình khác (in-flight lease lock), vui lòng thử lại sau.');
+              const err = new Error('Refund is currently being processed by another worker, please try again shortly.');
               err.statusCode = 409;
               throw err;
             }
@@ -464,17 +461,17 @@ class RefundService {
               alreadyCompleted = true;
               return;
             }
-            const err = new Error('Đơn hàng đã được hoàn tiền trước đó');
+            const err = new Error('Order is already refunded');
             err.statusCode = 400;
             throw err;
           }
           if (dbOrder.refund_status === 'PROCESSING') {
-            const err = new Error('Yêu cầu hoàn tiền đang được xử lý, vui lòng không gửi yêu cầu trùng lặp.');
+            const err = new Error('Refund request is currently processing, duplicate requests rejected.');
             err.statusCode = 400;
             throw err;
           }
           if (dbOrder.refund_status === 'PENDING_RECONCILIATION') {
-            const err = new Error('Giao dịch hoàn tiền đang chờ đối soát với cổng thanh toán (PENDING_RECONCILIATION). Không thể xử lý lại lúc này.');
+            const err = new Error('Refund transaction is awaiting gateway resolution.');
             err.statusCode = 409;
             throw err;
           }
@@ -490,7 +487,7 @@ class RefundService {
         }
 
         if (dbOrder.status !== 'COMPLETED' && dbOrder.status !== 'PAID') {
-          const err = new Error(`Chỉ có thể hoàn tiền cho đơn hàng đã thanh toán thành công (hiện tại: ${dbOrder.status})`);
+          const err = new Error(`Refunds are only permitted for completed orders (current: ${dbOrder.status})`);
           err.statusCode = 400;
           throw err;
         }
@@ -516,12 +513,12 @@ class RefundService {
             alreadyCompleted = true;
             return;
           }
-          const err = new Error('Đơn hàng đã được hoàn tiền trước đó');
+          const err = new Error('Order is already refunded');
           err.statusCode = 400;
           throw err;
         }
         if (memOrder.refund_status === 'PROCESSING') {
-          const err = new Error('Yêu cầu hoàn tiền đang được xử lý');
+          const err = new Error('Refund request is already in progress');
           err.statusCode = 400;
           throw err;
         }
@@ -537,7 +534,7 @@ class RefundService {
         refund_id: idempotencyKey,
         gateway_refund_id: order.refund_gateway_ref,
         settlement_confirmed: true,
-        message: 'Giao dịch hoàn tiền đã được xử lý thành công trước đó (idempotent)',
+        message: 'Refund transaction has already been completed (idempotent)',
         refund_amount: Number(order.total_refunded || order.total_gross || 0),
         refund_percentage: 100,
         order,
@@ -568,7 +565,7 @@ class RefundService {
       });
 
       if (!gwResult || (!gwResult.settled && !gwResult.accepted)) {
-        throw new Error('Cổng thanh toán từ chối giao dịch hoàn tiền. Khoản tiền chưa được khấu trừ.');
+        throw new Error('Payment gateway declined refund request. Funds were not deducted.');
       }
     } catch (gatewayErr) {
       // Revert processing state on gateway failure (V6-03)
@@ -608,7 +605,7 @@ class RefundService {
         if (finLock.rowCount === 0) return;
         const currentOrder = finLock.rows[0];
         if (currentOrder.refund_status !== 'PROCESSING') {
-          const err = new Error(`Trạng thái hoàn tiền đơn hàng #${numId} không còn là PROCESSING (hiện tại: ${currentOrder.refund_status})`);
+          const err = new Error(`Refund status for order #${numId} is no longer PROCESSING (current: ${currentOrder.refund_status})`);
           err.statusCode = 409;
           throw err;
         }
@@ -664,7 +661,7 @@ class RefundService {
       refund_id: refundId,
       gateway_refund_id: gwResult?.gateway_refund_id,
       settlement_confirmed: true,
-      message: 'Hoàn vé và hoàn tiền trực tuyến thành công',
+      message: 'Ticket cancellation and refund processed successfully',
       refund_amount: refundAmount,
       refund_percentage: refundPercentage,
       order,
@@ -757,7 +754,7 @@ class RefundService {
       succeeded_orders: succeeded,
       failed_orders: failed,
       total_refunded: totalRefunded,
-      message: `Đã xử lý hoàn tiền sự kiện #${numEventId}: ${succeeded.length} thành công, ${failed.length} thất bại.`,
+      message: `Processed mass refund for event #${numEventId}: ${succeeded.length} succeeded, ${failed.length} failed.`,
     };
   }
 
@@ -982,7 +979,7 @@ class RefundService {
         // 1. respCode === '00'
         // 2. txnType === expectedType ('03' for partial, '02' for full; NEVER '01')
         // 3. rawAmt === Math.round(refundAmt * 100)
-        // 4. txnStatus === '00' (thành công)
+        // 4. txnStatus === '00' (success)
         const expectedAmtCents = Math.round(refundAmt * 100);
         const isTypeMatched = txnType === expectedType;
         const isAmountMatched = hasAmountInResponse ? (rawAmt === expectedAmtCents) : true;

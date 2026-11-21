@@ -6,6 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { money, formatDate, formatDateTime } from '../utils/display';
 import { QrCodeSvg } from '../utils/qr';
 import { Modal } from '../components/Modal';
+import { ReportModal } from '../components/common/ReportModal';
 import { Icon } from '../components/ui/Icon';
 import { VectorSpinner } from '../components/ui/VectorAnimation';
 import { EmptyStateIllustration } from '../components/ui/EmptyStateIllustration';
@@ -21,7 +22,6 @@ export const getOrderStatusInfo = (status) => {
     case 'RESERVED':
       return { label: 'Chờ thanh toán', badgeClass: 'badge-warning', isRefundable: false, isTicketActive: false };
     case 'EXPIRED_PAYMENT_PENDING_REFUND':
-    case 'PENDING_RECONCILIATION':
     case 'REFUND_REQUIRED':
     case 'REFUND_PROCESSING':
     case 'PENDING_REFUND':
@@ -48,12 +48,13 @@ export const MyTicketsPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE' | 'PROCESSING' | 'HISTORY'
+  const [activeTab, setActiveTab] = useState('ACTIVE'); // 'ACTIVE' | 'HISTORY'
   const [orderSearch, setOrderSearch] = useState('');
   const [orderVisibleCount, setOrderVisibleCount] = useState(10);
 
   // Refund Modal State
   const [refundTargetOrder, setRefundTargetOrder] = useState(null);
+  const [reportTargetOrder, setReportTargetOrder] = useState(null);
   const [refundReason, setRefundReason] = useState('Bận việc đột xuất không thể tham dự');
   const [refunding, setRefunding] = useState(false);
   const [refundNotice, setRefundNotice] = useState(null);
@@ -163,29 +164,6 @@ export const MyTicketsPage = () => {
       });
   }, [orders, orderSearch]);
 
-  const filteredProcessingOrders = useMemo(() => {
-    return orders
-      .filter((o) =>
-        [
-          'RESERVED',
-          'PENDING_PAYMENT',
-          'PENDING_RECONCILIATION',
-          'REFUND_REQUIRED',
-          'EXPIRED_PAYMENT_PENDING_REFUND',
-          'PENDING_REFUND',
-          'REFUND_PROCESSING',
-        ].includes(o.status)
-      )
-      .filter((o) => {
-        if (!orderSearch.trim()) return true;
-        const q = orderSearch.toLowerCase();
-        const code = (o.orderShortId || `TF-ORD-${o.id}`).toLowerCase();
-        const title = (o.event_title || '').toLowerCase();
-        const hasAttendee = o.attendees?.some((a) => (a.name || '').toLowerCase().includes(q) || (a.email || '').toLowerCase().includes(q));
-        return code.includes(q) || title.includes(q) || hasAttendee;
-      });
-  }, [orders, orderSearch]);
-
   // Lịch sử mua hàng: Toàn bộ vé / đơn hàng đã mua tự động xuất hiện với đầy đủ thông tin
   const filteredHistoryOrders = useMemo(() => {
     return orders.filter((o) => {
@@ -203,8 +181,6 @@ export const MyTicketsPage = () => {
   const targetOrders =
     activeTab === 'ACTIVE'
       ? filteredActiveOrders
-      : activeTab === 'PROCESSING'
-      ? filteredProcessingOrders
       : filteredHistoryOrders;
   const displayedOrders = targetOrders.slice(0, orderVisibleCount);
 
@@ -218,7 +194,7 @@ export const MyTicketsPage = () => {
         ? api.orders.refund(refundTargetOrder.id, { reason: refundReason })
         : api.post(`/orders/${refundTargetOrder.id}/cancel`, { reason: refundReason }));
 
-      const returnedStatus = res?.status || res?.order?.status || res?.data?.status || 'PENDING_RECONCILIATION';
+      const returnedStatus = res?.status || res?.order?.status || res?.data?.status || 'REFUNDED';
       const refundTimestamp = returnedStatus === 'REFUNDED' ? (res?.refunded_at || new Date().toISOString()) : null;
 
       // Update local state with authoritative server status
@@ -246,7 +222,7 @@ export const MyTicketsPage = () => {
         );
       } else {
         setRefundNotice(
-          `Yêu cầu hoàn vé cho đơn #${refundTargetOrder.orderShortId || refundTargetOrder.id} đã được tiếp nhận. Cổng thanh toán VNPay đang đối soát và tiến hành chuyển hoàn.`
+          `Yêu cầu hoàn vé cho đơn #${refundTargetOrder.orderShortId || refundTargetOrder.id} đã được tiếp nhận và đang tiến hành xử lý hoàn tiền.`
         );
       }
       setRefundTargetOrder(null);
@@ -298,7 +274,7 @@ export const MyTicketsPage = () => {
         </div>
       )}
 
-      {/* Tabs Filter & Search (UI-04: 3 distinct tabs for Active, Processing, and History) */}
+      {/* Tabs Filter & Search (2 distinct tabs for Active tickets and Purchase History) */}
       <div className="flex justify-between items-center gap-md flex-wrap mb-125">
         <nav className="tabs-nav m-0" aria-label="Bộ lọc đơn hàng">
           <button
@@ -308,14 +284,6 @@ export const MyTicketsPage = () => {
           >
             <span>{t('mytickets.tab_active', 'Vé đang hiệu lực')}</span>
             <span className="tab-count">{filteredActiveOrders.length}</span>
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === 'PROCESSING' ? 'active' : ''}`}
-            onClick={() => { setActiveTab('PROCESSING'); setOrderVisibleCount(10); }}
-          >
-            <span>{t('mytickets.tab_processing', 'Đang xử lý / Đối soát')}</span>
-            <span className="tab-count">{filteredProcessingOrders.length}</span>
           </button>
           <button
             type="button"
@@ -365,8 +333,6 @@ export const MyTicketsPage = () => {
               ? `Không có kết quả nào khớp với "${orderSearch}".`
               : activeTab === 'ACTIVE'
               ? 'Bạn hiện không có vé sự kiện nào đang hiệu lực.'
-              : activeTab === 'PROCESSING'
-              ? 'Không có đơn hàng nào đang trong quá trình xử lý hoặc chờ đối soát.'
               : 'Bạn chưa có đơn hàng nào trong lịch sử mua hàng.'}
           </p>
           {orderSearch ? (
@@ -415,6 +381,15 @@ export const MyTicketsPage = () => {
                     Biên lai
                   </Link>
 
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setReportTargetOrder(order)}
+                    title="Báo cáo sự cố hoặc khiếu nại lên Admin"
+                  >
+                    Báo cáo
+                  </button>
+
                   {/* Self-service Refund / Cancel Button (UI-04: Only for eligible paid orders) */}
                   {statusInfo.isRefundable && (
                     <button
@@ -432,8 +407,18 @@ export const MyTicketsPage = () => {
               <div className="order-event-title-banner">
                 <h2>{order.event_title || 'Sự kiện Ticketflow'}</h2>
                 <div className="flex flex-wrap items-center gap-3 text-xs muted mt-1">
-                  {order.event_location && <span className="event-loc">📍 {order.event_location}</span>}
-                  {order.event_date && <span className="event-date">🗓️ {formatDateTime(order.event_date)}</span>}
+                  {order.event_location && (
+                    <span className="event-loc inline-flex items-center gap-1">
+                      <Icon name="location" size="xs" ariaHidden />
+                      <span>{order.event_location}</span>
+                    </span>
+                  )}
+                  {order.event_date && (
+                    <span className="event-date inline-flex items-center gap-1">
+                      <Icon name="calendar" size="xs" ariaHidden />
+                      <span>{formatDateTime(order.event_date)}</span>
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -645,6 +630,18 @@ export const MyTicketsPage = () => {
           </div>
         )}
       </Modal>
+
+      {/* Attendee Report Modal */}
+      {reportTargetOrder && (
+        <ReportModal
+          isOpen={Boolean(reportTargetOrder)}
+          onClose={() => setReportTargetOrder(null)}
+          targetType="EVENT"
+          targetId={reportTargetOrder.event_id || reportTargetOrder.id}
+          targetTitle={`Đơn #${reportTargetOrder.orderShortId || reportTargetOrder.id} - ${reportTargetOrder.event_title || 'Sự kiện'}`}
+          onSuccess={() => setRefundNotice('Báo cáo của bạn đã được gửi thành công đến Ban Quản Trị!')}
+        />
+      )}
     </div>
   );
 };

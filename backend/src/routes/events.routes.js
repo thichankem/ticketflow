@@ -4,6 +4,7 @@ import eventsController from '../controllers/events.controller.js';
 import ticketsController from '../controllers/tickets.controller.js';
 import promosController from '../controllers/promos.controller.js';
 import ordersController from '../controllers/orders.controller.js';
+import reportsController from '../controllers/reports.controller.js';
 import { authenticateToken, optionalAuthenticateToken } from '../middleware/auth.middleware.js';
 import { requireRole } from '../middleware/rbac.middleware.js';
 
@@ -19,7 +20,7 @@ const handleUploadMiddleware = (req, res, next) => {
     memoryUpload.single('file')(req, res, (err) => {
       if (err) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ error: 'Kích thước tệp vượt quá giới hạn tối đa cho phép (10MB).' });
+          return res.status(400).json({ error: 'File size exceeds the maximum allowed limit (10MB).' });
         }
         return res.status(400).json({ error: err.message });
       }
@@ -32,10 +33,6 @@ const handleUploadMiddleware = (req, res, next) => {
 
 // Organizer Dashboard (Must be before /:id)
 router.get('/organizer/dashboard', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.organizerDashboard);
-
-// User Favorites (Must be before /:id)
-router.get('/user/favorites', optionalAuthenticateToken, eventsController.getUserFavorites);
-router.get('/favorites', optionalAuthenticateToken, eventsController.getUserFavorites);
 
 // User In-App Notifications (Must be before /:id)
 router.get('/notifications', authenticateToken, eventsController.getNotifications);
@@ -59,10 +56,6 @@ router.delete('/images', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), e
 router.get('/', eventsController.list);
 router.get('/:id', optionalAuthenticateToken, eventsController.getById);
 
-// Virtual Waiting Room (Phân hệ 2.7)
-router.get('/:id/queue', eventsController.getQueueStatus);
-router.post('/:id/queue/configure', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.configureQueue);
-
 // Protected event routes
 router.post('/', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.create);
 router.put('/:id', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.update);
@@ -74,20 +67,26 @@ router.delete('/:id/images/:type', authenticateToken, requireRole('ORGANIZER', '
 router.delete('/:id/images', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.deleteImage);
 
 // Behavioral tracking & interactions
-router.post('/:id/favorite', optionalAuthenticateToken, eventsController.toggleFavorite);
 router.post('/:id/view', optionalAuthenticateToken, eventsController.trackView);
+router.post('/:id/report', optionalAuthenticateToken, (req, res, next) => {
+  req.body = {
+    ...req.body,
+    target_type: 'EVENT',
+    target_id: req.params.id,
+  };
+  return reportsController.createReport(req, res, next);
+});
 
-// CSV & Excel Reporting (Phân hệ 2.14 & SPEC.md Section 5.4)
+// CSV & Excel Reporting (Module 2.14 & SPEC.md Section 5.4)
 router.get('/:id/export/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.exportAttendees);
 router.get('/:id/attendees/export', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.exportAttendees);
 router.get('/:id/export/sales', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.exportSales);
 
-// Seating & Auto-allocation
-router.get('/:id/seats', eventsController.getSeats);
-router.post('/:id/seats', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.configureSeats);
-
-// PDF Attachment Management
-router.post('/:id/attachments', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.uploadAttachment);
+// PDF Attachment Management (Full CRUD: List, Create, Update, Delete, Download)
+router.get('/:id/attachments', eventsController.listAttachments);
+router.post('/:id/attachments', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), handleUploadMiddleware, eventsController.uploadAttachment);
+router.put('/:id/attachments/:attachmentId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.updateAttachment);
+router.delete('/:id/attachments/:attachmentId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.deleteAttachment);
 router.get('/:id/attachments/:attachmentId', eventsController.getAttachment);
 
 // Ticket Tiers
