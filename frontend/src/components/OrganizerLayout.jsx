@@ -3,6 +3,8 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { Icon } from './ui/Icon';
+import { BrandMark } from './ui/BrandLogo';
 
 export const OrganizerLayout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -22,11 +24,14 @@ export const OrganizerLayout = ({ children }) => {
 
   return (
     <div className="portal-wrapper portal-organizer">
+      <a href="#main-content" className="skip-link">
+        {t('common.skip_to_content', 'Chuyển đến nội dung chính')}
+      </a>
       <header className="site-header organizer-header">
         <div className="header-container">
           <div className="header-left">
             <Link to="/organizer" className="logo" aria-label="Ticketflow Organizer Studio">
-              <img src="/ticketflow-mark.svg" alt="Ticketflow Logo" width="34" height="34" />
+              <BrandMark size={34} />
               <div className="logo-text">
                 <span className="brand-name">Ticketflow</span>
                 <span className="portal-subtag organizer-subtag">{t('role.organizer_sub', 'Studio Ban Tổ Chức')}</span>
@@ -36,20 +41,13 @@ export const OrganizerLayout = ({ children }) => {
 
           <nav className="portal-nav organizer-nav desktop-nav" aria-label="Organizer Navigation">
             <NavLink to="/organizer" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect width="18" height="18" x="3" y="3" rx="2" />
-                <path d="M3 9h18" /><path d="M9 21V9" />
-              </svg>
+              <Icon name="studio" size="sm" ariaHidden />
               <span>{t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}</span>
             </NavLink>
 
             <NavLink to="/organizer/events/new" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="16" />
-                <line x1="8" y1="12" x2="16" y2="12" />
-              </svg>
-              <span>{t('nav.create_event', '➕ Tạo Sự Kiện Mới')}</span>
+              <Icon name="plus" size="sm" ariaHidden />
+              <span>{t('nav.create_event', 'Tạo Sự Kiện Mới')}</span>
             </NavLink>
 
             {isAuthenticated ? (
@@ -57,10 +55,7 @@ export const OrganizerLayout = ({ children }) => {
                 <NotificationBell />
 
                 <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Hồ sơ tài khoản">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
+                  <Icon name="user" size="sm" ariaHidden />
                   <span>{t('nav.profile', 'Hồ Sơ')}</span>
                 </NavLink>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
@@ -104,19 +99,30 @@ export const OrganizerLayout = ({ children }) => {
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Đóng menu"
               >
-                ✕
+                <Icon name="x" size="md" ariaHidden />
               </button>
             </div>
 
             <div className="mobile-drawer-links">
-              <NavLink to="/organizer" end className="drawer-link active">
+              <NavLink to="/organizer" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="studio" size="sm" ariaHidden className="mr-2" />
                 {t('nav.organizer_studio', 'Bảng Quản Trị Sự Kiện')}
               </NavLink>
-              <NavLink to="/notifications" className="drawer-link">
-                🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}
+              <NavLink to="/organizer/events/new" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="plus" size="sm" ariaHidden className="mr-2" />
+                {t('nav.create_event', 'Tạo Sự Kiện Mới')}
               </NavLink>
-              <NavLink to="/profile" className="drawer-link">
+              <NavLink to="/notifications" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="bell" size="sm" ariaHidden className="mr-2" />
+                {t('nav.notifications', 'Thông Báo Hộp Thư')}
+              </NavLink>
+              <NavLink to="/profile" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="user" size="sm" ariaHidden className="mr-2" />
                 {t('nav.profile', 'Hồ Sơ Cá Nhân')}
+              </NavLink>
+              <NavLink to="/" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="ticket" size="sm" ariaHidden className="mr-2" />
+                {t('role.attendee', 'Trang Khách Mua Vé')}
               </NavLink>
             </div>
 
@@ -136,7 +142,7 @@ export const OrganizerLayout = ({ children }) => {
         </div>
       )}
 
-      <main className="portal-main organizer-main">
+      <main id="main-content" tabIndex={-1} className="portal-main organizer-main">
         {children}
       </main>
 

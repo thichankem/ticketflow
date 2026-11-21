@@ -3,6 +3,8 @@ import { Link, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { Icon } from './ui/Icon';
+import { BrandMark } from './ui/BrandLogo';
 
 export const AdminLayout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -22,11 +24,14 @@ export const AdminLayout = ({ children }) => {
 
   return (
     <div className="portal-wrapper portal-admin">
+      <a href="#main-content" className="skip-link">
+        {t('common.skip_to_content', 'Chuyển đến nội dung chính')}
+      </a>
       <header className="site-header admin-header">
         <div className="header-container">
           <div className="header-left">
             <Link to="/admin" className="logo" aria-label="Ticketflow Quản Trị Sàn">
-              <img src="/ticketflow-mark.svg" alt="Ticketflow Logo" width="34" height="34" />
+              <BrandMark size={34} />
               <div className="logo-text">
                 <span className="brand-name">Ticketflow</span>
                 <span className="portal-subtag admin-subtag">{t('role.admin_sub', 'Trung Tâm Quản Trị Sàn')}</span>
@@ -43,9 +48,7 @@ export const AdminLayout = ({ children }) => {
 
           <nav className="portal-nav admin-nav desktop-nav" aria-label="Admin Navigation">
             <NavLink to="/admin" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
+              <Icon name="shield" size="sm" ariaHidden />
               <span>{t('nav.admin_console', 'Bảng Điều Hành')}</span>
             </NavLink>
 
@@ -54,10 +57,7 @@ export const AdminLayout = ({ children }) => {
                 <NotificationBell />
 
                 <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Hồ sơ tài khoản">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
+                  <Icon name="user" size="sm" ariaHidden />
                   <span>{t('nav.profile', 'Hồ Sơ')}</span>
                 </NavLink>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
@@ -101,19 +101,26 @@ export const AdminLayout = ({ children }) => {
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Đóng menu"
               >
-                ✕
+                <Icon name="x" size="md" ariaHidden />
               </button>
             </div>
 
             <div className="mobile-drawer-links">
-              <NavLink to="/admin" end className="drawer-link active">
+              <NavLink to="/admin" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="shield" size="sm" ariaHidden className="mr-2" />
                 {t('nav.admin_console', 'Bảng Điều Hành')}
               </NavLink>
-              <NavLink to="/notifications" className="drawer-link">
-                🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}
+              <NavLink to="/notifications" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="bell" size="sm" ariaHidden className="mr-2" />
+                {t('nav.notifications', 'Thông Báo Hộp Thư')}
               </NavLink>
-              <NavLink to="/profile" className="drawer-link">
+              <NavLink to="/profile" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="user" size="sm" ariaHidden className="mr-2" />
                 {t('nav.profile', 'Hồ Sơ Cá Nhân')}
+              </NavLink>
+              <NavLink to="/" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="ticket" size="sm" ariaHidden className="mr-2" />
+                {t('role.attendee', 'Trang Khách Mua Vé')}
               </NavLink>
             </div>
 
@@ -133,7 +140,7 @@ export const AdminLayout = ({ children }) => {
         </div>
       )}
 
-      <main className="portal-main admin-main">
+      <main id="main-content" tabIndex={-1} className="portal-main admin-main">
         {children}
       </main>
 
@@ -143,6 +150,8 @@ export const AdminLayout = ({ children }) => {
             <div className="footer-brand">Ticketflow · Admin</div>
           </div>
           <div className="footer-links">
+            <Link to="/" className="footer-link">{t('role.attendee', 'Trang Khách Mua Vé')}</Link>
+            <span className="divider" aria-hidden="true">&bull;</span>
             <span className="footer-copyright">© 2026 Ticketflow</span>
           </div>
         </div>

@@ -370,13 +370,15 @@ class StorageService {
           oldStoragePath.startsWith('events/') &&
           oldStoragePath !== storagePath
         ) {
-          await this.deleteFile(bucket, oldStoragePath);
-          await query('DELETE FROM event_media_assets WHERE storage_path = $1', [oldStoragePath]);
+          await this.deleteFile(bucket, oldStoragePath).catch(() => {});
+          await query('DELETE FROM event_media_assets WHERE storage_path = $1', [oldStoragePath]).catch(() => {});
         }
       } catch (updateErr) {
-        console.warn(
-          `[StorageService.uploadEventImage] Error updating event record with new image: ${updateErr.message}`
-        );
+        // Compensating cleanup on DB failure: remove uploaded storage object (TF-P1-D)
+        await this.deleteFile(bucket, storagePath).catch(() => {});
+        const err = new Error(`Lỗi cập nhật ảnh sự kiện vào cơ sở dữ liệu: ${updateErr.message}`);
+        err.statusCode = 500;
+        throw err;
       }
     }
 
@@ -473,17 +475,45 @@ class StorageService {
       throw err;
     }
 
+    // Tenant and Registered Asset Scoping Check (TF-P0-06 / TF-P1-D / TF-V3-P1-05 / TF-V4-P1-07)
+    const normalizedCoverPath = event.cover ? this.extractStoragePath(event.cover) : null;
+    const normalizedBannerPath = event.banner ? this.extractStoragePath(event.banner) : null;
+    const isEventCover = Boolean(normalizedCoverPath && targetPath === normalizedCoverPath);
+    const isEventBanner = Boolean(normalizedBannerPath && targetPath === normalizedBannerPath);
+    let isRegisteredAsset = isEventCover || isEventBanner;
+    let registeredMediaType = isEventCover ? 'cover' : isEventBanner ? 'banner' : null;
+
+    if (!isRegisteredAsset) {
+      try {
+        const assetRes = await query(
+          'SELECT id, media_type FROM event_media_assets WHERE event_id = $1 AND storage_path = $2 LIMIT 1',
+          [numEventId, targetPath]
+        );
+        if (assetRes.rowCount > 0) {
+          isRegisteredAsset = true;
+          registeredMediaType = assetRes.rows[0].media_type;
+        }
+      } catch {}
+    }
+
+    // Both Admin and Organizer MUST only delete assets registered to the specified event
+    if (!isRegisteredAsset) {
+      const err = new Error('Forbidden: Không thể xóa đối tượng lưu trữ không thuộc tài sản đăng ký của sự kiện này.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Database state update first: only clear cover/banner if this specific asset was actually the cover/banner
+    if (isEventCover || registeredMediaType === 'cover') {
+      await query('UPDATE events SET cover = NULL, updated_at = NOW() WHERE id = $1', [numEventId]);
+    } else if (isEventBanner || registeredMediaType === 'banner') {
+      await query('UPDATE events SET banner = NULL, updated_at = NOW() WHERE id = $1', [numEventId]);
+    }
+    await query('DELETE FROM event_media_assets WHERE event_id = $1 AND storage_path = $2', [numEventId, targetPath]).catch(() => {});
+
     // Delete from Supabase Storage
     if (targetPath && targetPath.startsWith('events/')) {
       await this.deleteFile(bucket, targetPath);
-      await query('DELETE FROM event_media_assets WHERE storage_path = $1', [targetPath]);
-    }
-
-    // Clear event cover / banner column if it matched
-    if (mediaType === 'cover') {
-      await query('UPDATE events SET cover = NULL, updated_at = NOW() WHERE id = $1', [numEventId]);
-    } else if (mediaType === 'banner') {
-      await query('UPDATE events SET banner = NULL, updated_at = NOW() WHERE id = $1', [numEventId]);
     }
 
     return {

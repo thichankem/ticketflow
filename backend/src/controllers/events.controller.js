@@ -50,6 +50,12 @@ class EventsController {
     try {
       const { id } = req.params;
       const result = await eventsService.deleteEvent(req.user, id);
+      if (result?.status === 'PARTIALLY_REFUNDED' || result?.success === false) {
+        return res.status(409).json({
+          message: result?.message || 'Event could not be completely deleted due to partial refund failures',
+          ...result,
+        });
+      }
       return res.status(200).json({
         message: result?.message || 'Event deleted',
         ...result,
@@ -93,11 +99,29 @@ class EventsController {
     try {
       const { id } = req.params;
       const userId = req.user ? req.user.id : (req.body.user_id || req.ip);
-      const result = recommendationService.toggleFavorite(userId, id);
+      const action = req.body?.action;
+      let result;
+      if (action === 'SUBSCRIBE' || action === 'FAVORITE' || req.body?.favorited === true) {
+        result = recommendationService.setFavorite(userId, id, true);
+      } else if (action === 'UNFAVORITE' || req.body?.favorited === false) {
+        result = recommendationService.setFavorite(userId, id, false);
+      } else {
+        result = recommendationService.toggleFavorite(userId, id);
+      }
       return res.status(200).json({
         message: result.favorited ? 'Đã thêm vào sự kiện yêu thích' : 'Đã bỏ yêu thích sự kiện',
         ...result,
       });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getUserFavorites(req, res, next) {
+    try {
+      const userId = req.user ? req.user.id : (req.query?.user_id || req.ip);
+      const favorites = await recommendationService.getUserFavorites(userId);
+      return res.status(200).json({ favorites });
     } catch (err) {
       next(err);
     }
@@ -248,17 +272,6 @@ class EventsController {
     }
   }
 
-  async checkinAttendee(req, res, next) {
-    try {
-      const { id } = req.params;
-      const { barcode, ticket_code } = req.body || {};
-      const result = await eventsService.checkinAttendee(id, barcode || ticket_code, req.user);
-      return res.status(200).json(result);
-    } catch (err) {
-      next(err);
-    }
-  }
-
   async getAttachment(req, res, next) {
     try {
       const { id, attachmentId } = req.params;
@@ -271,17 +284,29 @@ class EventsController {
         (a) => a.id === attachmentId || a.filename === attachmentId
       );
 
-      // Return PDF attachment metadata and secure stream download headers
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Content-Disposition', `inline; filename="${att?.filename || 'document.pdf'}"`);
+      if (!att) {
+        const err = new Error('Không tìm thấy tài liệu đính kèm yêu cầu');
+        err.statusCode = 404;
+        throw err;
+      }
 
-      // Mock safe minimal valid PDF buffer for testing/downloading
-      const minimalPdf = Buffer.from(
-        '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000010 00000 n\n0000000060 00000 n\n0000000117 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n218\n%%EOF'
-      );
+      // Stream / redirect to real cloud storage file if available (TF-P1-12)
+      if (att?.url && att.url.startsWith('http')) {
+        return res.redirect(302, att.url);
+      }
+      if (att?.storage_path) {
+        try {
+          const signed = await storageService.createSignedUrl('event-attachments', att.storage_path, 3600);
+          if (signed?.signedUrl) {
+            return res.redirect(302, signed.signedUrl);
+          }
+        } catch {}
+      }
 
-      return res.status(200).send(minimalPdf);
+      // Strictly reject fake mock PDF generation; fail closed with 404 (TF-P1-E)
+      const err = new Error('Tài liệu đính kèm chưa được tải lên hoặc không tồn tại trong hệ thống lưu trữ');
+      err.statusCode = 404;
+      throw err;
     } catch (err) {
       next(err);
     }
@@ -394,7 +419,7 @@ class EventsController {
       const attendees = await ordersService.getAttendeesByEvent(id, req.user);
 
       // Generate UTF-8 CSV with BOM for proper Excel compatibility (Phân hệ 2.14 & Open Seating)
-      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Trạng Thái,Thời Gian Soát Vé\n';
+      let csv = '\uFEFFSTT,Mã Định Danh Vé,Họ và Tên,Email,Hạng Vé,Trạng Thái\n';
       (attendees || []).forEach((att, idx) => {
         const row = [
           idx + 1,
@@ -403,7 +428,6 @@ class EventsController {
           sanitizeCsvCell(att.email || ''),
           sanitizeCsvCell(att.tier_name || att.ticket_tier_id || 'Vé Tiêu Chuẩn'),
           sanitizeCsvCell(att.status || 'ACTIVE'),
-          sanitizeCsvCell(att.checked_in_at ? new Date(att.checked_in_at).toLocaleString('vi-VN') : 'Chưa vào cửa'),
         ];
         csv += row.join(',') + '\n';
       });

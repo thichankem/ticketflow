@@ -11,6 +11,13 @@ export const CartProvider = ({ children }) => {
 
   // Reservation state
   const [activeOrder, setActiveOrder] = useState(null);
+  const [guestToken, setGuestToken] = useState(() => {
+    try {
+      return sessionStorage.getItem('tf_active_guest_token') || null;
+    } catch {
+      return null;
+    }
+  });
   const [expiresAt, setExpiresAt] = useState(null);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
 
@@ -102,27 +109,78 @@ export const CartProvider = ({ children }) => {
       promo_code: promoCode || undefined,
     });
 
-    setActiveOrder(res.order || { id: res.orderId, orderShortId: res.orderShortId });
+    const token = res.session_token || res.guest_session_token || res.order?.session_token || res.order?.guest_session_token;
+    if (token) {
+      setGuestToken(token);
+      try {
+        sessionStorage.setItem(`tf_guest_token_${res.orderId}`, token);
+        sessionStorage.setItem('tf_active_guest_token', token);
+      } catch {}
+    }
+
+    const orderData = {
+      ...(res.order || {}),
+      id: res.orderId,
+      orderShortId: res.orderShortId,
+      session_token: token,
+      guest_session_token: token,
+    };
+
+    setActiveOrder(orderData);
     setExpiresAt(res.expires_at);
-    return res;
+    return { ...res, order: orderData, session_token: token };
   };
 
-  const finalizeCheckout = async (orderId, buyer, attendees, paymentMethod = 'CARD') => {
-    const res = await api.post(`/orders/${orderId}/checkout`, {
-      buyer,
-      attendees,
-      payment_method: paymentMethod,
-    });
-    setActiveOrder(res.order);
+  const finalizeCheckout = async (orderId, buyer, attendees, paymentMethod = 'VNPAY') => {
+    const token =
+      guestToken ||
+      activeOrder?.session_token ||
+      (typeof sessionStorage !== 'undefined' ? (sessionStorage.getItem(`tf_guest_token_${orderId}`) || sessionStorage.getItem('tf_active_guest_token')) : null);
+
+    const res = await (api.orders.checkout
+      ? api.orders.checkout(orderId, { buyer, attendees, payment_method: paymentMethod }, token)
+      : api.post(`/orders/${orderId}/checkout`, {
+          buyer,
+          attendees,
+          payment_method: paymentMethod,
+          order_token: token,
+          session_token: token,
+        }));
+
+    const finalOrder = res.order || { id: orderId, session_token: token };
+    setActiveOrder({ ...finalOrder, session_token: token });
     setExpiresAt(null);
-    return res;
+    return { ...res, order: { ...finalOrder, session_token: token }, session_token: token };
   };
 
   const cancelActiveOrder = async (orderId) => {
     const targetId = orderId || activeOrder?.id;
     if (!targetId) return;
-    const res = await api.post(`/orders/${targetId}/cancel`, {});
+    const token =
+      guestToken ||
+      activeOrder?.session_token ||
+      (typeof sessionStorage !== 'undefined' ? (sessionStorage.getItem(`tf_guest_token_${targetId}`) || sessionStorage.getItem('tf_active_guest_token')) : null);
+
+    const res = await (api.orders.cancel
+      ? api.orders.cancel(targetId, {}, token)
+      : api.post(`/orders/${targetId}/cancel`, { order_token: token }));
+
     clearCart();
+    return res;
+  };
+
+  const initiatePayment = async (orderId, paymentMethod = 'VNPAY') => {
+    const targetId = orderId || activeOrder?.id;
+    if (!targetId) throw new Error('Order ID required');
+    const token =
+      guestToken ||
+      activeOrder?.session_token ||
+      (typeof sessionStorage !== 'undefined' ? (sessionStorage.getItem(`tf_guest_token_${targetId}`) || sessionStorage.getItem('tf_active_guest_token')) : null);
+
+    const res = await (api.orders.processPayment
+      ? api.orders.processPayment(targetId, { gateway: 'VNPAY', payment_method: paymentMethod }, token)
+      : api.post(`/orders/${targetId}/payment`, { gateway: 'VNPAY', payment_method: paymentMethod, order_token: token }));
+
     return res;
   };
 
@@ -130,6 +188,7 @@ export const CartProvider = ({ children }) => {
     <CartContext.Provider
       value={{
         cartItems,
+        guestToken,
         updateQuantity,
         clearCart,
         subtotal,
@@ -144,6 +203,7 @@ export const CartProvider = ({ children }) => {
         reserveTickets,
         finalizeCheckout,
         cancelActiveOrder,
+        initiatePayment,
       }}
     >
       {children}

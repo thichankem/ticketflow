@@ -60,14 +60,18 @@ const RoleGate = ({ allowedRoles, title, children }) => {
             <Link to="/admin" className="btn btn-primary">
               Quay Về Bảng Quản Trị Sàn
             </Link>
-          ) : (
+          ) : import.meta.env.DEV ? (
             <button
               type="button"
               className="btn btn-primary"
               onClick={() => switchDemoRole(targetDemoRole)}
             >
-              Chuyển Sang Không Gian {targetDemoRole}
+              Chuyển Sang Không Gian {targetDemoRole} (Demo)
             </button>
+          ) : (
+            <Link to="/login" className="btn btn-primary">
+              Đăng Nhập Bằng Tài Khoản Khác
+            </Link>
           )}
           <Link to="/" className="btn btn-secondary">
             Quay Về Trang Chủ
@@ -184,6 +188,16 @@ export function App() {
           element={
             <OrganizerLayout>
               <RoleGate allowedRoles={['ORGANIZER']} title="Ban Tổ Chức Sự Kiện">
+                <OrganizerPage />
+              </RoleGate>
+            </OrganizerLayout>
+          }
+        />
+        <Route
+          path="/organizer/events/:id"
+          element={
+            <OrganizerLayout>
+              <RoleGate allowedRoles={['ORGANIZER']} title="Chi Tiết Sự Kiện">
                 <OrganizerPage />
               </RoleGate>
             </OrganizerLayout>

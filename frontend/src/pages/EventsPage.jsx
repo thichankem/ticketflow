@@ -1,13 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
-import { eventStart, formatDate, money, plainText, startingPrice, toneClass, EVENT_CATEGORIES } from '../utils/display';
+import { useFavorites } from '../context/FavoritesContext';
+import { eventStart, formatDate, money, plainText, startingPrice, toneClass, eventCoverImage, EVENT_CATEGORIES } from '../utils/display';
 import { VIETNAM_PROVINCES } from '../utils/location';
+import { Icon } from '../components/ui/Icon';
+import { VectorSpinner } from '../components/ui/VectorAnimation';
+import { EmptyStateIllustration } from '../components/ui/EmptyStateIllustration';
 
 const CATEGORIES = EVENT_CATEGORIES;
 
 export const EventsPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   // Initial state from URL params
   const initialCategory = searchParams.get('category') || 'ALL';
@@ -28,15 +33,6 @@ export const EventsPage = () => {
   // Toast feedback
   const [notificationState, setNotificationState] = useState(null);
 
-  // Favorites from localStorage
-  const [favorites, setFavorites] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('tf_favorites') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
   const showToast = (message) => {
     setNotificationState(message);
     setTimeout(() => {
@@ -44,17 +40,22 @@ export const EventsPage = () => {
     }, 3500);
   };
 
-  // Toggle favorite / Thả tim
-  const toggleFavorite = (eventId, e) => {
+  // UI-17: Sync state when URL params change from external navigation
+  useEffect(() => {
+    const cat = searchParams.get('category') || 'ALL';
+    const q = searchParams.get('search') || searchParams.get('q') || '';
+    const prov = searchParams.get('province') || 'ALL';
+    setSelectedCategory(cat);
+    setSearch(q);
+    setSelectedProvinceFilter(prov);
+  }, [searchParams]);
+
+  // Toggle favorite
+  const handleToggleFav = async (eventId, e) => {
     e.preventDefault();
     e.stopPropagation();
-    setFavorites((prev) => {
-      const isFav = prev.includes(eventId);
-      const next = isFav ? prev.filter((id) => id !== eventId) : [...prev, eventId];
-      localStorage.setItem('tf_favorites', JSON.stringify(next));
-      showToast(isFav ? 'Đã bỏ lưu sự kiện' : 'Đã lưu sự kiện');
-      return next;
-    });
+    const isNowFav = await toggleFavorite(eventId);
+    showToast(isNowFav ? 'Đã lưu sự kiện vào danh sách yêu thích' : 'Đã bỏ lưu sự kiện');
   };
 
   // Sync params with URL when filter changes
@@ -139,6 +140,8 @@ export const EventsPage = () => {
 
       const matchesProvince =
         selectedProvinceFilter === 'ALL' ||
+        (ev.province_code && ev.province_code.toLowerCase() === selectedProvinceFilter.toLowerCase()) ||
+        (ev.province && ev.province.toLowerCase() === selectedProvinceFilter.toLowerCase()) ||
         (ev.location && ev.location.toLowerCase().includes(selectedProvinceFilter.toLowerCase()));
 
       return matchesSearch && matchesCategory && matchesProvince;
@@ -179,9 +182,9 @@ export const EventsPage = () => {
 
   return (
     <div className="home-container pt-lg pb-4xl">
-      {/* Toast Notification */}
+      {/* Toast Notification (UI-24: Accessible toast) */}
       {notificationState && (
-        <div className="toast-floating flex items-center gap-sm">
+        <div className="toast-floating flex items-center gap-sm" role="status" aria-live="polite">
           <span>{notificationState}</span>
         </div>
       )}
@@ -196,10 +199,7 @@ export const EventsPage = () => {
       {/* Search Bar & Quick Filters */}
       <div className="hero-search-wrapper mb-175">
         <div className="hero-search-field">
-          <svg className="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
+          <Icon name="search" size="md" className="search-icon" ariaHidden />
           <label htmlFor="events-search-input" className="sr-only">Tìm kiếm sự kiện</label>
           <input
             id="events-search-input"
@@ -214,20 +214,17 @@ export const EventsPage = () => {
             <button
               type="button"
               onClick={() => handleSearchChange('')}
-              className="btn-clear-search"
+              className="btn-clear-search flex items-center justify-center"
               title="Xóa tìm kiếm"
               aria-label="Xóa nội dung tìm kiếm"
             >
-              ✕
+              <Icon name="x" size="xs" ariaHidden />
             </button>
           )}
         </div>
 
         <div className="hero-location-picker">
-          <svg className="pin-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-            <circle cx="12" cy="10" r="3" />
-          </svg>
+          <Icon name="location" size={18} className="pin-icon" ariaHidden />
           <label htmlFor="events-province-select" className="sr-only">Lọc theo tỉnh thành</label>
           <select
             id="events-province-select"
@@ -253,10 +250,11 @@ export const EventsPage = () => {
           <button
             key={cat.id}
             type="button"
-            className={`category-pill ${selectedCategory === cat.id ? 'active' : ''}`}
+            className={`category-pill flex items-center gap-1.5 ${selectedCategory === cat.id ? 'active' : ''}`}
             onClick={() => handleCategoryChange(cat.id)}
           >
-            <span>{cat.icon}</span> {cat.label}
+            <Icon name={cat.icon} size="sm" ariaHidden />
+            <span>{cat.label}</span>
           </button>
         ))}
       </nav>
@@ -281,9 +279,11 @@ export const EventsPage = () => {
         <div className="flex items-center gap-md flex-wrap">
           {/* Sorting Dropdown */}
           <div className="flex items-center gap-xs">
-            <span className="muted text-sm font-semibold">Sắp xếp:</span>
+            <label htmlFor="events-sort-select" className="muted text-sm font-semibold">Sắp xếp:</label>
             <select
+              id="events-sort-select"
               className="select select-compact"
+              aria-label="Sắp xếp danh sách sự kiện"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
             >
@@ -299,9 +299,9 @@ export const EventsPage = () => {
 
       {/* Loading state */}
       {loading && (
-        <div className="card loading-state">
-          <div className="spinner" />
-          <p className="muted">Đang tải danh sách sự kiện...</p>
+        <div className="card loading-state flex flex-col items-center justify-center p-6 text-center">
+          <VectorSpinner size={36} />
+          <p className="muted mt-3">Đang tải danh sách sự kiện...</p>
         </div>
       )}
 
@@ -314,16 +314,17 @@ export const EventsPage = () => {
 
       {/* Empty state */}
       {!loading && !error && filteredEvents.length === 0 && (
-        <div className="card empty-state empty-state-dashed">
-          <h3 className="empty-state-card-heading">
+        <div className="card empty-state empty-state-dashed text-center p-6">
+          <EmptyStateIllustration type="empty-search" size={110} />
+          <h2 className="empty-state-card-heading">
             {events.length === 0 ? 'Chưa có sự kiện nào' : 'Không tìm thấy sự kiện phù hợp'}
-          </h3>
+          </h2>
           <p className="muted empty-state-card-desc">
             {events.length === 0
               ? 'Hệ thống hiện tại chưa có sự kiện nào đang mở bán.'
               : 'Hãy thử thay đổi từ khóa tìm kiếm hoặc chọn thể loại khác.'}
           </p>
-          <div className="flex gap-sm justify-center flex-wrap">
+          <div className="flex gap-sm justify-center flex-wrap mt-3">
             {events.length === 0 ? (
               <Link to="/organizer" className="btn btn-primary btn-pill">
                 Tạo sự kiện
@@ -346,19 +347,17 @@ export const EventsPage = () => {
         <div className="grid-cards">
           {displayedEvents.map((event) => {
             const from = startingPrice(event.ticket_tiers || event.tiers);
-            const isFav = favorites.includes(event.id);
+            const isFav = isFavorite(event.id);
 
             return (
               <article key={event.id} className="event-card">
                 <div className={`event-cover ${toneClass(event.category)}`}>
-                  {(event.cover || event.banner) && (
-                    <img
-                      src={event.cover || event.banner}
-                      alt={event.title}
-                      loading="lazy"
-                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
-                    />
-                  )}
+                  <img
+                    src={eventCoverImage(event)}
+                    alt={event.title}
+                    loading="lazy"
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+                  />
                   <div className="cover-meta">
                     <span className="status-pill">{event.category || event.status}</span>
                     <span className="price-chip">
@@ -367,12 +366,13 @@ export const EventsPage = () => {
                   </div>
                   <button
                     type="button"
-                    className={`btn-favorite ${isFav ? 'active' : ''}`}
-                    onClick={(e) => toggleFavorite(event.id, e)}
+                    className={`btn-favorite flex items-center justify-center ${isFav ? 'active' : ''}`}
+                    onClick={(e) => handleToggleFav(event.id, e)}
                     title={isFav ? 'Bỏ lưu' : 'Lưu sự kiện'}
-                    aria-label="Lưu sự kiện"
+                    aria-label={isFav ? `Bỏ lưu sự kiện ${event.title}` : `Lưu sự kiện ${event.title}`}
+                    aria-pressed={isFav}
                   >
-                    ♥
+                    <Icon name="heart" size="sm" fill={isFav ? 'currentColor' : 'none'} ariaHidden />
                   </button>
                 </div>
 
@@ -382,9 +382,9 @@ export const EventsPage = () => {
                     <span className="location-chip">{event.location ? event.location.split(',')[0] : 'Toàn quốc'}</span>
                   </div>
 
-                  <h3 className="event-title">
+                  <h2 className="event-title">
                     <Link to={`/events/${event.id}`}>{event.title}</Link>
-                  </h3>
+                  </h2>
 
                   <p className="event-excerpt">
                     {plainText(event.description).slice(0, 130)}...

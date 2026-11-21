@@ -1,15 +1,20 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { api } from '../services/api';
 import { formatFileSize, validateImageFile } from '../utils/imageOptimizer';
+import { Icon } from './ui/Icon';
+import { VectorSpinner } from './ui/VectorAnimation';
 
 export const ImageUploader = ({
   id = 'image-uploader',
   label = 'Tải ảnh lên',
   hint = '',
-  value = '',
-  onChange = () => {},
+  value,
+  initialUrl = '',
+  onChange,
+  onUploadComplete,
   eventId = null,
   mediaType = null,
+  targetType = null,
   aspect = 'banner', // 'banner' (16:9) | 'cover' (4:3) | 'square' (1:1)
   maxWidth = 1920,
   maxHeight = 1080,
@@ -32,7 +37,19 @@ export const ImageUploader = ({
     };
   }, [localPreview]);
 
-  const effectiveMediaType = mediaType || (aspect === 'banner' ? 'banner' : 'cover');
+  // Support both canonical and backward-compatible props
+  const effectiveValue = value !== undefined && value !== null ? value : (initialUrl || '');
+  const effectiveMediaType = mediaType || targetType || (aspect === 'banner' ? 'banner' : 'cover');
+  const effectiveAspect = aspect !== 'banner' ? aspect : (effectiveMediaType === 'cover' ? 'cover' : aspect);
+
+  const triggerChange = (url, metadata = null) => {
+    if (typeof onChange === 'function') {
+      onChange(url, metadata);
+    }
+    if (typeof onUploadComplete === 'function') {
+      onUploadComplete(url, metadata);
+    }
+  };
 
   const handleProcessFile = async (file) => {
     if (!file) return;
@@ -72,7 +89,7 @@ export const ImageUploader = ({
       });
 
       // 5. Notify parent with the permanent Supabase Storage public URL
-      onChange(res.url, res.metadata);
+      triggerChange(res.url, res.metadata);
     } catch (err) {
       setErrorMessage(err.message || 'Không thể xử lý và tải lên hình ảnh');
       // If upload failed, clear temporary preview
@@ -119,8 +136,8 @@ export const ImageUploader = ({
   };
 
   const handleClear = async () => {
-    const previousValue = value;
-    onChange('', null);
+    const previousValue = effectiveValue;
+    triggerChange('', null);
     setCompressionStats(null);
     setErrorMessage(null);
     if (localPreview && localPreview.startsWith('blob:')) {
@@ -152,7 +169,7 @@ export const ImageUploader = ({
   };
 
   // Preview source: either active value or local blob while processing
-  const displaySource = localPreview || value;
+  const displaySource = localPreview || effectiveValue;
 
   return (
     <div className="image-uploader-wrapper">
@@ -163,12 +180,13 @@ export const ImageUploader = ({
         {displaySource && (
           <button
             type="button"
-            className="btn btn-ghost btn-xs text-danger"
+            className="btn btn-ghost btn-xs text-danger flex items-center gap-1"
             onClick={handleClear}
             title="Xóa hình ảnh này"
             disabled={processing}
           >
-            ✕ Xóa ảnh
+            <Icon name="trash" size="xs" ariaHidden />
+            <span>Xóa ảnh</span>
           </button>
         )}
       </div>
@@ -189,20 +207,24 @@ export const ImageUploader = ({
       {/* Error alert if forbidden format, size, or upload error occurred */}
       {errorMessage && (
         <div className="alert alert-error text-xs mb-05 flex items-center justify-between" role="alert">
-          <span>{errorMessage}</span>
+          <span className="flex items-center gap-1">
+            <Icon name="alert-circle" size="xs" ariaHidden />
+            {errorMessage}
+          </span>
           <button
             type="button"
             className="btn btn-ghost btn-xs p-0 text-danger"
             onClick={() => setErrorMessage(null)}
+            aria-label="Đóng thông báo"
           >
-            ✕
+            <Icon name="x" size="xs" ariaHidden />
           </button>
         </div>
       )}
 
       {/* Image Preview or Dropzone */}
       {displaySource ? (
-        <div className={`uploader-preview-card aspect-${aspect}`}>
+        <div className={`uploader-preview-card aspect-${effectiveAspect}`}>
           <img
             src={displaySource}
             alt={label}
@@ -217,34 +239,37 @@ export const ImageUploader = ({
           <div className="uploader-preview-overlay">
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm flex items-center gap-1"
               onClick={triggerSelect}
               disabled={processing}
             >
-              🔄 Thay đổi ảnh
+              <Icon name="refresh" size="sm" ariaHidden />
+              <span>Thay đổi ảnh</span>
             </button>
             <button
               type="button"
-              className="btn btn-danger btn-sm"
+              className="btn btn-danger btn-sm flex items-center gap-1"
               onClick={handleClear}
               disabled={processing}
             >
-              🗑️ Xóa
+              <Icon name="trash" size="sm" ariaHidden />
+              <span>Xóa</span>
             </button>
           </div>
 
           {processing && (
             <div className="uploader-overlay-loading">
-              <div className="spinner" />
+              <VectorSpinner size={28} color="#ffffff" />
               <span className="text-xs font-semibold text-white mt-1">Đang tải lên Supabase Storage...</span>
             </div>
           )}
 
           {compressionStats && (
-            <div className="uploader-stats-badge" title="Thông số ảnh đã tự động tối ưu qua Supabase Storage">
-              ⚡ Đã tối ưu: {formatFileSize(compressionStats.originalSize)} ➔{' '}
+            <div className="uploader-stats-badge flex items-center gap-1" title="Thông số ảnh đã tự động tối ưu qua Supabase Storage">
+              <Icon name="zap" size="xs" ariaHidden />
+              <span>Đã tối ưu: {formatFileSize(compressionStats.originalSize)} &rarr;{' '}
               {formatFileSize(compressionStats.compressedSize)} ({compressionStats.format},{' '}
-              {compressionStats.width}×{compressionStats.height}){' '}
+              {compressionStats.width}x{compressionStats.height}){' '}</span>
               <span className="badge-saving">-{compressionStats.savingsPercent}%</span>
             </div>
           )}
@@ -267,21 +292,24 @@ export const ImageUploader = ({
         >
           {processing ? (
             <div className="uploader-processing-state">
-              <div className="spinner" />
+              <VectorSpinner size={32} />
               <p className="font-semibold text-sm mt-05">Đang xử lý & tải lên Supabase Storage...</p>
               <p className="muted text-xs">Tự động nén WebP và lưu trữ đám mây</p>
             </div>
           ) : (
             <div className="uploader-empty-state">
-              <div className="uploader-icon">🖼️</div>
+              <div className="uploader-icon">
+                <Icon name="image" size="2xl" color="var(--teal-600, #0d9488)" />
+              </div>
               <p className="uploader-prompt">
                 <strong>Nhấp để chọn ảnh</strong> hoặc kéo thả tệp ảnh vào đây
               </p>
               <p className="uploader-subtext">
                 Hỗ trợ <strong>PNG, JPG, WebP</strong> • Tối đa <strong>10MB</strong> • Lưu trữ đám mây Supabase Storage
               </p>
-              <div className="uploader-restriction-pill">
-                ⛔ Không hỗ trợ tệp Video & tệp PDF
+              <div className="uploader-restriction-pill flex items-center justify-center gap-1">
+                <Icon name="alert-circle" size="xs" ariaHidden />
+                <span>Không hỗ trợ tệp Video & tệp PDF</span>
               </div>
             </div>
           )}

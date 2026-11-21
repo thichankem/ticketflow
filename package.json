@@ -11,7 +11,8 @@
   "scripts": {
     "build": "npm run build --workspace=frontend",
     "start": "node backend/src/server.js",
-    "test": "node tests/run-e2e.js"
+    "test": "node tests/run-e2e.js",
+    "test:uiux": "node tests/e2e-ui-ux.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

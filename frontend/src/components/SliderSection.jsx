@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { Icon } from './ui/Icon';
 
 /**
  * Modern Accessible Slider / Carousel Section
@@ -114,27 +115,23 @@ export const SliderSection = ({
           <div className="tkb-slider-header-arrows">
             <button
               type="button"
-              className="tkb-arrow-btn"
+              className="tkb-arrow-btn flex items-center justify-center"
               onClick={() => scroll('prev')}
               disabled={!canScrollLeft}
               aria-label="Cuộn sang trái"
               title="Xem các mục trước"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
+              <Icon name="chevron-left" size={18} ariaHidden />
             </button>
             <button
               type="button"
-              className="tkb-arrow-btn"
+              className="tkb-arrow-btn flex items-center justify-center"
               onClick={() => scroll('next')}
               disabled={!canScrollRight}
               aria-label="Cuộn sang phải"
               title="Xem các mục tiếp theo"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
+              <Icon name="chevron-right" size={18} ariaHidden />
             </button>
           </div>
         </div>
@@ -143,17 +140,16 @@ export const SliderSection = ({
       {/* Slider Viewport with Edge Floating Buttons */}
       <div className="tkb-slider-viewport">
         {/* Floating Start Arrow */}
-        <div className="tkb-floating-controls tkb-control-start" aria-hidden="true">
+        <div className="tkb-floating-controls tkb-control-start">
           <button
             type="button"
-            className="tkb-floating-arrow-btn"
+            className="tkb-floating-arrow-btn flex items-center justify-center"
             onClick={() => scroll('prev')}
             disabled={!canScrollLeft}
-            tabIndex={-1}
+            aria-label="Cuộn danh sách sang trái"
+            title="Xem các mục trước"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
+            <Icon name="chevron-left" size={20} ariaHidden />
           </button>
         </div>
 
@@ -181,17 +177,16 @@ export const SliderSection = ({
         </div>
 
         {/* Floating End Arrow */}
-        <div className="tkb-floating-controls tkb-control-end" aria-hidden="true">
+        <div className="tkb-floating-controls tkb-control-end">
           <button
             type="button"
-            className="tkb-floating-arrow-btn"
+            className="tkb-floating-arrow-btn flex items-center justify-center"
             onClick={() => scroll('next')}
             disabled={!canScrollRight}
-            tabIndex={-1}
+            aria-label="Cuộn danh sách sang phải"
+            title="Xem các mục tiếp theo"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
+            <Icon name="chevron-right" size={20} ariaHidden />
           </button>
         </div>
       </div>

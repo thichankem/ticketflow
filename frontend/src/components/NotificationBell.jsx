@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
+import { Icon } from './ui/Icon';
+import { EmptyStateIllustration } from './ui/EmptyStateIllustration';
 
 // Helper to format timestamps gracefully
 const formatRelativeTime = (timestamp) => {
@@ -32,12 +34,15 @@ export const NotificationBell = ({ className = '' }) => {
   const [notifications, setNotifications] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const dropdownRef = useRef(null);
 
   // Fetch notifications
   const loadNotifications = async () => {
     if (!isAuthenticated) return;
     try {
+      setLoading(true);
+      setError(null);
       const res = await api.notifications.list();
       const list = Array.isArray(res) ? res : res?.notifications || [];
       // Sort newest first
@@ -45,8 +50,10 @@ export const NotificationBell = ({ className = '' }) => {
         (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
       );
       setNotifications(sorted);
-    } catch {
-      // ignore
+    } catch (err) {
+      setError(err.message || 'Không thể tải thông báo');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -161,20 +168,7 @@ export const NotificationBell = ({ className = '' }) => {
         aria-expanded={showDropdown}
         aria-haspopup="dialog"
       >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-        </svg>
+        <Icon name="bell" size={18} ariaHidden />
         {unreadCount > 0 && (
           <span className="notif-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}
@@ -185,7 +179,10 @@ export const NotificationBell = ({ className = '' }) => {
           {/* Header */}
           <div className="notif-dropdown-header">
             <div className="notif-dropdown-title-group">
-              <strong className="notif-dropdown-title">🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}</strong>
+              <strong className="notif-dropdown-title">
+                <Icon name="bell" size="sm" ariaHidden className="mr-1 inline-block" />
+                {t('nav.notifications', 'Thông Báo Hộp Thư')}
+              </strong>
               <span className="notif-dropdown-count-badge">
                 {notifications.length > 3 ? `3 / ${notifications.length} tin` : `${notifications.length} tin`}
               </span>
@@ -196,29 +193,38 @@ export const NotificationBell = ({ className = '' }) => {
                 {unreadCount > 0 && (
                   <button
                     type="button"
-                    className="notif-action-btn read-all-btn"
+                    className="notif-action-btn read-all-btn flex items-center gap-1"
                     onClick={handleMarkAllRead}
                     title="Đánh dấu tất cả đã đọc"
                   >
-                    ✓ Đọc hết
+                    <Icon name="check" size="xs" ariaHidden />
+                    <span>Đọc hết</span>
                   </button>
                 )}
                 <button
                   type="button"
-                  className="notif-action-btn clear-all-btn"
+                  className="notif-action-btn clear-all-btn flex items-center gap-1"
                   onClick={handleClearAll}
                   title="Xóa tất cả thông báo"
                 >
-                  🗑️ Xóa hết
+                  <Icon name="trash" size="xs" ariaHidden />
+                  <span>Xóa hết</span>
                 </button>
               </div>
             )}
           </div>
 
           {/* Body: Strictly 3 Most Recent Items */}
-          {notifications.length === 0 ? (
+          {error ? (
+            <div className="notif-dropdown-empty text-center p-4">
+              <p className="text-xs text-danger mb-2">{error}</p>
+              <button type="button" className="btn btn-secondary btn-xs" onClick={loadNotifications}>
+                Thử lại
+              </button>
+            </div>
+          ) : notifications.length === 0 ? (
             <div className="notif-dropdown-empty">
-              <div className="notif-empty-icon" aria-hidden="true">📭</div>
+              <EmptyStateIllustration type="empty-notifications" size={88} />
               <p className="notif-empty-title">{t('nav.no_notifications', 'Chưa có thông báo mới nào')}</p>
               <p className="notif-empty-desc">Bạn sẽ nhận thông báo khi có vé mới, restock hoặc tin từ sàn.</p>
             </div>
@@ -257,7 +263,7 @@ export const NotificationBell = ({ className = '' }) => {
                     aria-label="Xóa thông báo này"
                     onClick={(e) => handleDeleteNotification(e, n.id)}
                   >
-                    ✕
+                    <Icon name="x" size="xs" ariaHidden />
                   </button>
                 </div>
               ))}
@@ -268,24 +274,11 @@ export const NotificationBell = ({ className = '' }) => {
           <div className="notif-dropdown-footer">
             <Link
               to="/notifications"
-              className="notif-view-all-link"
+              className="notif-view-all-link flex items-center justify-between"
               onClick={() => setShowDropdown(false)}
             >
               <span>Xem toàn bộ thông báo ({notifications.length})</span>
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
+              <Icon name="arrow-right" size="sm" ariaHidden />
             </Link>
           </div>
         </div>

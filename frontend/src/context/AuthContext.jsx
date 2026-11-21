@@ -75,6 +75,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const switchDemoRole = async (targetRole) => {
+    if (!import.meta.env.DEV) {
+      console.warn('[SECURITY] Demo role switching is strictly disabled in production builds.');
+      return;
+    }
     let email = 'attendee@ticketflow.local';
     if (targetRole === 'ADMIN') email = 'admin@ticketflow.local';
     else if (targetRole === 'ORGANIZER') email = 'organizer@ticketflow.local';

@@ -3,7 +3,7 @@ import { demoEvents } from '../data/demo-catalog.js';
 import storageService from './storage.service.js';
 
 // In-memory fallback. Id 1 stays the original summit so list order matches the E2E suite.
-const memoryEvents = new Map(demoEvents.map((event) => [event.id, { ...event }]));
+export const memoryEvents = new Map(demoEvents.map((event) => [event.id, { ...event }]));
 let nextEventId = Math.max(...demoEvents.map((event) => event.id));
 
 export function resolveImageUrl(pathOrUrl) {
@@ -77,6 +77,9 @@ function formatEvent(r) {
     banner_url: bannerImg,
     tags: r.tags || locDetails.tags || ['Sự kiện', r.category || 'Tech'],
     blog_blocks: r.blog_blocks || locDetails.blog_blocks || (r.description ? [
+      { type: 'paragraph', text: r.description }
+    ] : []),
+    blocks: r.blocks || r.blog_blocks || locDetails.blog_blocks || (r.description ? [
       { type: 'paragraph', text: r.description }
     ] : []),
     pdf_attachments: [],
@@ -188,6 +191,13 @@ class EventsService {
       if (res.rowCount > 0) {
         return formatEvent(res.rows[0]);
       }
+      if (memoryEvents.has(numId)) {
+        const ev = memoryEvents.get(numId);
+        if (!ev || ev.deleted_at) return null;
+        const { default: ticketsService } = await import('./tickets.service.js');
+        const tiers = await ticketsService.listByEventId(ev.id, includeHidden);
+        return formatEvent({ ...ev, ticket_tiers: tiers });
+      }
       return null;
     } catch (dbErr) {
       console.warn('[EventsService.getEventById] Database query error, using fallback:', dbErr.message);
@@ -215,6 +225,7 @@ class EventsService {
       province_code = 'HCM',
       tags = [],
       blog_blocks = [],
+      blocks = [],
       cover,
       image_url,
       banner,
@@ -246,7 +257,11 @@ class EventsService {
       location_name: finalLocationName,
       province_code: finalProvinceCode,
       tags: finalTags,
-      blog_blocks: blog_blocks && blog_blocks.length > 0 ? blog_blocks : [{ type: 'paragraph', text: description || '' }],
+      blog_blocks: (blog_blocks && blog_blocks.length > 0)
+        ? blog_blocks
+        : ((blocks && blocks.length > 0)
+          ? blocks
+          : [{ type: 'paragraph', text: description || '' }]),
       cover: finalCover,
       banner: finalBanner,
       refund_policy: finalRefundPolicy,
@@ -394,7 +409,7 @@ class EventsService {
       cover: updatedCover,
       banner: updatedBanner,
       tags: updates.tags || existing.tags || currentDetails.tags,
-      blog_blocks: updates.blog_blocks || existing.blog_blocks || currentDetails.blog_blocks,
+      blog_blocks: updates.blog_blocks || updates.blocks || existing.blog_blocks || currentDetails.blog_blocks,
       refund_policy: updates.refund_policy || existing.refund_policy || currentDetails.refund_policy,
       seat_map_url: updates.seat_map_url || existing.seat_map_url || currentDetails.seat_map_url,
     });
@@ -510,105 +525,6 @@ class EventsService {
     return newAtt;
   }
 
-  async checkinAttendee(eventId, barcode, user) {
-    if (!barcode || !String(barcode).trim()) {
-      const err = new Error('Mã barcode hoặc ticket code là bắt buộc');
-      err.statusCode = 400;
-      throw err;
-    }
-    const cleanCode = String(barcode).trim();
-    const numEventId = Number(eventId);
-    const event = await this.getEventById(numEventId);
-    if (!event) {
-      const err = new Error('Sự kiện không tồn tại');
-      err.statusCode = 404;
-      throw err;
-    }
-
-    if (user.role !== 'ADMIN' && Number(event.organizer_id) !== Number(user.id) && Number(event.account_id) !== Number(user.account_id)) {
-      const err = new Error('Forbidden: Bạn không có quyền soát vé cho sự kiện này');
-      err.statusCode = 403;
-      throw err;
-    }
-
-    let attendee = null;
-    try {
-      const res = await query(
-        'SELECT * FROM attendees WHERE event_id = $1 AND (barcode = $2 OR short_id = $2 OR public_id = $2) LIMIT 1',
-        [numEventId, cleanCode]
-      );
-      if (res.rowCount > 0) {
-        attendee = res.rows[0];
-      }
-    } catch {}
-
-    const { default: ordersService } = await import('./orders.service.js');
-    if (!attendee && ordersService.getMemoryAttendees) {
-      for (const a of ordersService.getMemoryAttendees()) {
-        if (Number(a.event_id) === numEventId && (a.barcode === cleanCode || a.ticket_code === cleanCode || a.short_id === cleanCode)) {
-          attendee = a;
-          break;
-        }
-      }
-    }
-
-    if (!attendee) {
-      const err = new Error('Vé không tồn tại hoặc không thuộc sự kiện này');
-      err.statusCode = 404;
-      throw err;
-    }
-
-    if (attendee.status === 'CHECKED_IN') {
-      const err = new Error(`Vé này đã được check-in trước đó vào lúc ${attendee.checked_in_at || 'trước đây'}`);
-      err.statusCode = 400;
-      throw err;
-    }
-
-    if (attendee.status === 'CANCELLED') {
-      const err = new Error('Vé không hợp lệ: Vé đã bị hủy hoặc hoàn tiền');
-      err.statusCode = 400;
-      throw err;
-    }
-
-    if (attendee.status === 'TRANSFERRED') {
-      const err = new Error('Vé không hợp lệ: Vé đã được chuyển nhượng cho người khác và mã cũ đã bị vô hiệu hóa');
-      err.statusCode = 400;
-      throw err;
-    }
-
-    if (attendee.status !== 'ACTIVE') {
-      const err = new Error(`Trạng thái vé không hợp lệ để check-in: ${attendee.status}`);
-      err.statusCode = 400;
-      throw err;
-    }
-
-    const nowIso = new Date().toISOString();
-    attendee.status = 'CHECKED_IN';
-    attendee.checked_in_at = nowIso;
-    attendee.checked_in_by = user.id;
-
-    try {
-      await query(
-        "UPDATE attendees SET status = 'CHECKED_IN', checked_in_at = NOW(), checked_in_by = $1, updated_at = NOW() WHERE id = $2",
-        [user.id, attendee.id]
-      );
-    } catch {}
-
-    return {
-      success: true,
-      message: 'Check-in thành công!',
-      attendee: {
-        id: attendee.id,
-        name: attendee.first_name || attendee.name || 'Khách Tham Dự',
-        email: attendee.email,
-        ticket_tier_id: attendee.ticket_tier_id,
-        barcode: attendee.barcode,
-        status: 'CHECKED_IN',
-        checked_in_at: nowIso,
-      },
-    };
-  }
-
   async deleteEvent(user, id) {
     const numId = Number(id);
     let existing = await this.getEventById(numId, user).catch(() => null);
@@ -638,96 +554,44 @@ class EventsService {
     let refundedAmount = 0;
     const notifiedUserIds = new Set();
 
-    // 1. In-memory refund processing
-    if (ordersService.getMemoryOrders) {
-      const allOrders = ordersService.getMemoryOrders();
-      for (const order of allOrders) {
-        if (Number(order.event_id) === numId) {
-          if (order.status === 'COMPLETED') {
-            order.status = 'REFUNDED';
-            const amt = Number(order.total || order.total_gross || 0);
-            order.total_refunded = amt;
-            order.refunded_at = new Date().toISOString();
-            refundedAmount += amt;
-            refundedOrdersCount++;
-            if (order.user_id) notifiedUserIds.add(Number(order.user_id));
-          } else if (order.status === 'RESERVED' || order.status === 'AWAITING_OFFLINE_PAYMENT') {
-            order.status = 'CANCELLED';
-          }
-          if (Array.isArray(order.attendees)) {
-            for (const att of order.attendees) {
-              att.status = 'CANCELLED';
-            }
-          }
-        }
-      }
-    }
-
-    // In-memory attendees cancellation
-    if (ordersService.getMemoryAttendees) {
-      const allAtt = ordersService.getMemoryAttendees();
-      for (const att of allAtt) {
-        if (Number(att.event_id) === numId) {
-          att.status = 'CANCELLED';
-        }
-      }
-    }
-
-    // 2. Database refund & cleanup processing
-    let hasDbOrders = false;
+    // Authoritative mass refund & settlement processing via refundService (TF-P0-A, TF-V4-P1-04, TF-V4-F10)
+    const { default: refundService } = await import('./refund.service.js');
+    let massRefundResult = null;
+    let refundError = null;
     try {
-      // Find completed orders to count and accumulate refunds
-      const completedRes = await query(`
-        SELECT id, user_id, email, total_gross
-        FROM orders
-        WHERE event_id = $1 AND status = 'COMPLETED'
-      `, [numId]);
+      massRefundResult = await refundService.massRefundEvent(numId, user);
+    } catch (refErr) {
+      console.warn('[deleteEvent] massRefundEvent error:', refErr.message);
+      refundError = refErr;
+    }
 
-      if (completedRes && completedRes.rows && completedRes.rows.length > 0) {
-        hasDbOrders = true;
-        for (const row of completedRes.rows) {
-          const amt = Number(row.total_gross || 0);
-          if (refundedOrdersCount === 0) {
-            refundedAmount += amt;
-            refundedOrdersCount++;
-          }
-          if (row.user_id) notifiedUserIds.add(Number(row.user_id));
-        }
+    const hasFailedRefunds = Boolean(refundError || (massRefundResult && massRefundResult.failed_count > 0));
 
-        // Mark completed orders as REFUNDED with 100% refund
-        await query(`
-          UPDATE orders
-          SET status = 'REFUNDED', total_refunded = total_gross, updated_at = NOW()
-          WHERE event_id = $1 AND status = 'COMPLETED'
-        `, [numId]);
-      }
+    // If mass refund has failures or pending obligations, preserve cancellation state and halt deletion (TF-V4-P1-04)
+    if (hasFailedRefunds) {
+      await query(
+        "UPDATE events SET status = 'CANCELLED', updated_at = NOW() WHERE id = $1",
+        [numId]
+      );
+      if (existing) existing.status = 'CANCELLED';
+      const memEv = memoryEvents.get(numId);
+      if (memEv) memEv.status = 'CANCELLED';
 
-      // Mark other open orders as CANCELLED
-      await query(`
-        UPDATE orders
-        SET status = 'CANCELLED', updated_at = NOW()
-        WHERE event_id = $1 AND status NOT IN ('REFUNDED', 'CANCELLED')
-      `, [numId]);
+      return {
+        success: false,
+        status: 'PARTIALLY_REFUNDED',
+        event_status: 'CANCELLED',
+        message: 'Sự kiện đã chuyển sang trạng thái CANCELLED nhưng vẫn còn đơn hàng chưa hoàn tiền thành công. Nghĩa vụ hoàn tiền được bảo lưu.',
+        mass_refund: massRefundResult || { error: refundError?.message },
+      };
+    }
 
-      // Invalidate and cancel all attendee tickets
-      await query(`
-        UPDATE attendees
-        SET status = 'CANCELLED', updated_at = NOW()
-        WHERE event_id = $1
-      `, [numId]);
-
-      // Adjust escrow account: 100% refund
-      await query(`
-        UPDATE escrow_accounts
-        SET refunded_amount = gross_revenue, current_balance = 0, updated_at = NOW()
-        WHERE event_id = $1
-      `, [numId]).catch(() => {});
-
+    try {
       // Check if any orders ever existed for this event
       const anyOrdersRes = await query(`SELECT COUNT(*) AS cnt FROM orders WHERE event_id = $1`, [numId]);
       const anyOrdersCount = Number(anyOrdersRes?.rows?.[0]?.cnt || 0);
 
-      if (anyOrdersCount > 0 || hasDbOrders) {
+      if (anyOrdersCount > 0) {
         // Soft delete event to preserve historical audit trail & order visibility for buyers
         await query(`
           UPDATE events
@@ -755,10 +619,11 @@ class EventsService {
         await query('DELETE FROM events WHERE id = $1', [numId]);
       }
     } catch (dbErr) {
-      console.warn('[EventsService.deleteEvent] Database query error:', dbErr.message);
+      console.error('[EventsService.deleteEvent] Database deletion failed:', dbErr.message);
+      throw dbErr;
     }
 
-    // Always remove from active in-memory events map
+    // Only remove from active in-memory events map if database deletion succeeded (V6-07)
     memoryEvents.delete(numId);
 
     // Send notifications to buyers
@@ -796,7 +661,10 @@ class EventsService {
           e.end_date AS ends_at,
           e.created_at,
           COALESCE(SUM(t.initial_quantity), 0)::int AS total_tickets,
-          COALESCE(SUM(t.initial_quantity - t.remaining_quantity), 0)::int AS sold_tickets,
+          COALESCE(
+            (SELECT SUM(oi.quantity) FROM order_items oi JOIN orders o ON oi.order_id = o.id WHERE o.event_id = e.id AND o.status = 'COMPLETED'),
+            0
+          )::int AS sold_tickets,
           COALESCE(
             (SELECT SUM(total_gross) FROM orders o WHERE o.event_id = e.id AND o.status = 'COMPLETED'),
             0
@@ -915,11 +783,7 @@ class EventsService {
           COALESCE(
             (SELECT COUNT(*) FROM attendees a WHERE a.event_id = e.id AND a.status != 'CANCELLED'),
             0
-          )::int AS attendee_count,
-          COALESCE(
-            (SELECT COUNT(*) FROM attendees a WHERE a.event_id = e.id AND a.status = 'CHECKED_IN'),
-            0
-          )::int AS checked_in_count
+          )::int AS attendee_count
         FROM events e
         LEFT JOIN ticket_tiers t ON e.id = t.event_id
         WHERE ($1 = TRUE OR e.account_id = $2) AND e.deleted_at IS NULL
@@ -936,7 +800,6 @@ class EventsService {
         tickets_sold: Number(r.tickets_sold),
         gross_revenue: Number(r.gross_revenue),
         attendee_count: Number(r.attendee_count),
-        checked_in_count: Number(r.checked_in_count),
       }));
     } catch (dbErr) {
       console.warn('[EventsService.getOrganizerDashboard] DB error, using fallback:', dbErr.message);
@@ -959,7 +822,6 @@ class EventsService {
       const gross_revenue = evOrders.reduce((sum, o) => sum + Number(o.total || o.total_gross || 0), 0);
       const evAttendees = allAttendees.filter(a => a.event_id === ev.id && a.status !== 'CANCELLED');
       const attendee_count = evAttendees.length;
-      const checked_in_count = evAttendees.filter(a => a.status === 'CHECKED_IN').length;
 
       list.push({
         ...ev,
@@ -968,7 +830,6 @@ class EventsService {
         tickets_sold,
         gross_revenue,
         attendee_count,
-        checked_in_count,
       });
     }
     list.sort((a, b) => a.id - b.id);

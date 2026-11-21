@@ -226,14 +226,37 @@ export const api = {
   orders: {
     getMyOrders: () => apiFetch('/orders/my'),
     list: () => apiFetch('/orders'),
-    getById: (id) => apiFetch(`/orders/${id}`),
+    getById: (id, token = null) => {
+      const q = token ? `?token=${encodeURIComponent(token)}` : '';
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}${q}`, { headers });
+    },
     reserve: (eventId, data) => apiFetch(`/public/events/${eventId}/order`, { method: 'POST', body: data }),
-    checkout: (id, data) => apiFetch(`/orders/${id}/checkout`, { method: 'POST', body: data }),
-    refund: (id, data) => apiFetch(`/orders/${id}/refund`, { method: 'POST', body: data }),
-    cancel: (id, data = {}) => apiFetch(`/orders/${id}/cancel`, { method: 'POST', body: data }),
-    transferTicket: (attendeeId, data) => apiFetch(`/orders/attendees/${attendeeId}/transfer`, { method: 'POST', body: data }),
-    processPayment: (id, data) => apiFetch(`/orders/${id}/payment`, { method: 'POST', body: data }),
-    getReceipt: (id) => apiFetch(`/orders/${id}/receipt`),
+    checkout: (id, data, token = null) => {
+      const payload = token ? { ...data, order_token: token, session_token: token } : data;
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}/checkout`, { method: 'POST', body: payload, headers });
+    },
+    refund: (id, data, token = null) => {
+      const payload = token ? { ...data, order_token: token, session_token: token } : data;
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}/refund`, { method: 'POST', body: payload, headers });
+    },
+    cancel: (id, data = {}, token = null) => {
+      const payload = token ? { ...data, order_token: token, session_token: token } : data;
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}/cancel`, { method: 'POST', body: payload, headers });
+    },
+    processPayment: (id, data, token = null) => {
+      const payload = token ? { ...data, order_token: token, session_token: token } : data;
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}/payment`, { method: 'POST', body: payload, headers });
+    },
+    getReceipt: (id, token = null) => {
+      const q = token ? `?token=${encodeURIComponent(token)}` : '';
+      const headers = token ? { 'x-order-token': token } : {};
+      return apiFetch(`/orders/${id}/receipt${q}`, { headers });
+    },
   },
 
   // Auth & Profile APIs

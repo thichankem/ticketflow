@@ -5,13 +5,14 @@ import { formatDate } from '../../utils/display';
 import { Modal } from '../Modal';
 import { ConfirmModal } from '../common/ConfirmModal';
 
-export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent, notify }) => {
+export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent, notify, hideEventSelector = false }) => {
   const { t } = useLanguage();
   const [promos, setPromos] = useState([]);
   const [loadingPromos, setLoadingPromos] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [promoEditId, setPromoEditId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     code: '',
@@ -68,8 +69,9 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
 
   const handleSavePromo = async (e) => {
     e.preventDefault();
-    if (!selectedEventId) return;
+    if (!selectedEventId || submitting) return;
     try {
+      setSubmitting(true);
       const payload = {
         code: formData.code.toUpperCase().trim(),
         discount_type: formData.discount_type,
@@ -95,6 +97,8 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
       setShowModal(false);
     } catch (err) {
       notify(`Lỗi lưu mã giảm giá: ${err.message}`, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -113,8 +117,9 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
   return (
     <div className="stack">
       {/* Event Selector Toolbar */}
-      {events.length > 0 && (
-        <div className="card toolbar flex items-center justify-between">
+      {/* Event Selector / Action Toolbar */}
+      <div className="card toolbar flex items-center justify-between flex-wrap gap-sm">
+        {!hideEventSelector && events.length > 0 ? (
           <div className="flex items-center gap-sm flex-1">
             <label htmlFor="promoEvSelect" className="font-bold whitespace-nowrap">
               Chọn sự kiện:
@@ -123,7 +128,7 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
               id="promoEvSelect"
               className="select max-w-400"
               value={selectedEventId || ''}
-              onChange={(e) => onSelectEvent(e.target.value)}
+              onChange={(e) => onSelectEvent && onSelectEvent(e.target.value)}
             >
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
@@ -132,11 +137,16 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
               ))}
             </select>
           </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenCreate}>
-            + Thêm Mã Giảm Giá
-          </button>
-        </div>
-      )}
+        ) : (
+          <div>
+            <h3 className="text-base font-semibold m-0">{t('organizer.tab_promos', 'Mã Giảm Giá & Voucher')}</h3>
+            <p className="muted text-xs m-0">Thiết lập các chiến dịch chiết khấu phần trăm hoặc số tiền cố định</p>
+          </div>
+        )}
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenCreate}>
+          + Thêm Mã Giảm Giá
+        </button>
+      </div>
 
       {/* Promos List */}
       <section className="card">
@@ -226,29 +236,33 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
       {/* Promo Create/Edit Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => { if (!submitting) setShowModal(false); }}
         title={promoEditId ? 'Chỉnh Sửa Mã Giảm Giá' : 'Tạo Mã Giảm Giá Mới'}
       >
         <form onSubmit={handleSavePromo} className="stack">
           <div className="form-group">
-            <label className="form-label required">Mã Voucher</label>
+            <label htmlFor="promo-code-input" className="form-label required">Mã Voucher</label>
             <input
+              id="promo-code-input"
               type="text"
               className="input uppercase"
               value={formData.code}
               onChange={(e) => setFormData((p) => ({ ...p, code: e.target.value.toUpperCase() }))}
               placeholder="VD: TECHSALE20, EARLYBIRD"
               required
+              disabled={submitting}
             />
           </div>
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group">
-              <label className="form-label">Loại chiết khấu</label>
+              <label htmlFor="promo-discount-type" className="form-label">Loại chiết khấu</label>
               <select
+                id="promo-discount-type"
                 className="select"
                 value={formData.discount_type}
                 onChange={(e) => setFormData((p) => ({ ...p, discount_type: e.target.value }))}
+                disabled={submitting}
               >
                 <option value="PERCENTAGE">Theo phần trăm (%)</option>
                 <option value="FIXED">Số tiền cố định (VNĐ)</option>
@@ -256,10 +270,11 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
             </div>
 
             <div className="form-group">
-              <label className="form-label required">
+              <label htmlFor="promo-discount-value" className="form-label required">
                 {formData.discount_type === 'PERCENTAGE' ? 'Mức giảm (%)' : 'Số tiền giảm (VNĐ)'}
               </label>
               <input
+                id="promo-discount-value"
                 type="number"
                 className="input"
                 value={formData.discount}
@@ -267,40 +282,63 @@ export const OrganizerPromosTab = ({ selectedEventId, events = [], onSelectEvent
                 min="1"
                 max={formData.discount_type === 'PERCENTAGE' ? 100 : undefined}
                 required
+                disabled={submitting}
               />
             </div>
           </div>
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group">
-              <label className="form-label required">Số lượt dùng tối đa</label>
+              <label htmlFor="promo-max-uses" className="form-label required">Số lượt dùng tối đa</label>
               <input
+                id="promo-max-uses"
                 type="number"
                 className="input"
                 value={formData.max_uses}
                 onChange={(e) => setFormData((p) => ({ ...p, max_uses: e.target.value }))}
                 min="1"
                 required
+                disabled={submitting}
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Ngày hết hạn (tùy chọn)</label>
+              <label htmlFor="promo-expires-at" className="form-label">Ngày hết hạn (tùy chọn)</label>
               <input
+                id="promo-expires-at"
                 type="date"
                 className="input"
                 value={formData.expires_at}
                 onChange={(e) => setFormData((p) => ({ ...p, expires_at: e.target.value }))}
+                disabled={submitting}
               />
             </div>
           </div>
 
           <div className="flex justify-end gap-sm mt-md">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowModal(false)}
+              disabled={submitting}
+            >
               Hủy
             </button>
-            <button type="submit" className="btn btn-primary">
-              {promoEditId ? 'Cập Nhật Mã' : 'Tạo Mã Giảm Giá'}
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || loadingPromos}
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="spinner-sm" aria-hidden="true" style={{ display: 'inline-block', width: '0.85rem', height: '0.85rem', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+                  <span>Đang lưu...</span>
+                </span>
+              ) : promoEditId ? (
+                'Cập Nhật Mã'
+              ) : (
+                'Tạo Mã Giảm Giá'
+              )}
             </button>
           </div>
         </form>

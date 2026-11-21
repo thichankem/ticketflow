@@ -1,4 +1,5 @@
 import React from 'react';
+import { VectorSpinner } from '../ui/VectorAnimation';
 
 /**
  * Reusable, accessible DataTable component with loading, empty state, and pagination.
@@ -34,8 +35,8 @@ export const DataTable = ({
           {loading ? (
             <tr>
               <td colSpan={columns.length} style={{ textAlign: 'center', padding: '2rem' }}>
-                <div className="spinner" style={{ margin: '0 auto 0.5rem' }} />
-                <span className="text-muted">Đang tải dữ liệu...</span>
+                <VectorSpinner size={28} />
+                <div className="text-muted mt-2" style={{ fontSize: '0.875rem' }}>Đang tải dữ liệu...</div>
               </td>
             </tr>
           ) : data.length === 0 ? (

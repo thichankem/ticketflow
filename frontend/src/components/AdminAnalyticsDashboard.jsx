@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Icon } from './ui/Icon';
 
 // Color palette for order status fulfillment and charts (SPEC-ISSUE-002)
 const STATUS_CONFIG = {
@@ -113,19 +114,8 @@ export const AdminAnalyticsDashboard = ({
       }
     });
 
-    // If all event totals are 0 (e.g. mock events have future/custom dates), distribute proportionally
-    const totalEventsInBuckets = buckets.reduce((sum, b) => sum + b.eventsTotal, 0);
-    if (totalEventsInBuckets === 0 && events.length > 0) {
-      events.forEach((ev, idx) => {
-        const bucket = buckets[idx % buckets.length];
-        bucket.eventsTotal += 1;
-        if (ev.status === 'LIVE' || ev.status === 'PUBLISHED') {
-          bucket.eventsLive += 1;
-        } else {
-          bucket.eventsCompleted += 1;
-        }
-      });
-    }
+    // UI-12: Strict authentic timeline aggregation — no artificial cyclic distribution
+    // Buckets outside data range remain honestly at zero.
 
     // 3. Aggregate Users into Months
     users.forEach((u) => {
@@ -144,19 +134,6 @@ export const AdminAnalyticsDashboard = ({
       }
     });
 
-    // If user counts are 0, populate base distribution from user list
-    const totalUsersInBuckets = buckets.reduce((sum, b) => sum + b.usersNew, 0);
-    if (totalUsersInBuckets === 0 && users.length > 0) {
-      users.forEach((u, idx) => {
-        const bucket = buckets[idx % buckets.length];
-        bucket.usersNew += 1;
-        const role = (u.role || '').toUpperCase();
-        if (role === 'ORGANIZER') bucket.organizersNew += 1;
-        else if (role === 'ADMIN') bucket.adminsNew += 1;
-        else bucket.attendeesNew += 1;
-      });
-    }
-
     // Compute cumulative users
     let runningUsers = Math.max(0, users.length - buckets.reduce((sum, b) => sum + b.usersNew, 0));
     buckets.forEach((b) => {
@@ -167,8 +144,8 @@ export const AdminAnalyticsDashboard = ({
     return buckets;
   }, [events, users, timeRange]);
 
-  // 4. Aggregate Order Status Fulfillment & Real Platform Metrics (SPEC-ISSUE-002)
-  const premiumAnalytics = useMemo(() => {
+  // 4. Aggregate Order Status Fulfillment & Real Platform Metrics (UI-07: Genuine Order Metrics, no fake Premium/MRR)
+  const orderStatusAnalytics = useMemo(() => {
     const counts = {
       COMPLETED: 0,
       PENDING: 0,
@@ -184,7 +161,7 @@ export const AdminAnalyticsDashboard = ({
       const val = Number(o.total || o.total_gross || 0);
       totalGrossRevenue += val;
 
-      if (st === 'COMPLETED') {
+      if (st === 'COMPLETED' || st === 'PAID' || st === 'CONFIRMED') {
         counts.COMPLETED += 1;
         completedRevenue += val;
       } else if (st === 'REFUNDED') {
@@ -248,8 +225,7 @@ export const AdminAnalyticsDashboard = ({
       packagesList,
       slices,
       totalCount: orders.length,
-      premiumCount: counts.COMPLETED,
-      adoptionRate: completionRate,
+      completedCount: counts.COMPLETED,
       completionRate,
       completedRevenue,
       totalGrossRevenue,
@@ -399,94 +375,143 @@ export const AdminAnalyticsDashboard = ({
           <div className="filter-pills" role="group" aria-label="Chế độ hiển thị">
             <button
               type="button"
-              className={`filter-pill ${viewMode === 'charts' ? 'active' : ''}`}
+              className={`filter-pill flex items-center gap-1.5 ${viewMode === 'charts' ? 'active' : ''}`}
               onClick={() => setViewMode('charts')}
               title="Xem biểu đồ trực quan"
             >
-              📊 Biểu đồ
+              <Icon name="chart" size="xs" ariaHidden />
+              <span>Biểu đồ</span>
             </button>
             <button
               type="button"
-              className={`filter-pill ${viewMode === 'table' ? 'active' : ''}`}
+              className={`filter-pill flex items-center gap-1.5 ${viewMode === 'table' ? 'active' : ''}`}
               onClick={() => setViewMode('table')}
               title="Xem bảng số liệu chi tiết"
             >
-              📋 Bảng số liệu
+              <Icon name="table" size="xs" ariaHidden />
+              <span>Bảng số liệu</span>
             </button>
           </div>
 
           {onRefresh && (
             <button
               type="button"
-              className="btn btn-secondary btn-sm"
+              className="btn btn-secondary btn-sm flex items-center gap-1.5"
               onClick={onRefresh}
               title="Làm mới dữ liệu từ máy chủ"
             >
-              🔄 Làm mới
+              <Icon name="refresh" size="xs" ariaHidden />
+              <span>Làm mới</span>
             </button>
           )}
         </div>
       </div>
 
       {/* KPI Ribbon Summary */}
-      <div className="kpi-grid">
-        <article className="card analytics-kpi-card">
-          <div className="flex justify-between items-start">
-            <span className="muted text-xs font-semibold uppercase">Tổng Sự Kiện Toàn Sàn</span>
-            <span className="badge badge-primary text-xs">Event Catalog</span>
+      <div className="kpi-grid admin-kpi-grid">
+        <article className="card analytics-kpi-card admin-kpi-card">
+          <div className="admin-kpi-top-bar" style={{ background: 'linear-gradient(90deg, #3b82f6, #60a5fa)' }} />
+          <div className="admin-kpi-label-row">
+            <span className="admin-kpi-title">Tổng Sự Kiện Toàn Sàn</span>
+            <span className="badge badge-primary admin-kpi-tag">Event Catalog</span>
           </div>
-          <strong className="text-2xl mt-02">{events.length}</strong>
-          <div className="flex items-center gap-sm mt-02 text-xs">
+          <div className="admin-kpi-number">{events.length}</div>
+          <div className="admin-micro-track">
+            <div
+              className="admin-micro-fill"
+              style={{
+                width: `${events.length > 0 ? Math.round((events.filter((e) => e.status === 'LIVE' || e.status === 'PUBLISHED').length / events.length) * 100) : 0}%`,
+                background: '#3b82f6'
+              }}
+            />
+          </div>
+          <div className="admin-kpi-footer">
             <span className="text-good font-semibold">
               ● {events.filter((e) => e.status === 'LIVE' || e.status === 'PUBLISHED').length} Đang mở bán
             </span>
-            <span className="muted">|</span>
-            <span className="muted">{events.filter((e) => e.status !== 'LIVE' && e.status !== 'PUBLISHED').length} Hoàn thành / Bản nháp</span>
+            <span className="muted font-mono">
+              {events.filter((e) => e.status !== 'LIVE' && e.status !== 'PUBLISHED').length} bản nháp / kết thúc
+            </span>
           </div>
         </article>
 
-        <article className="card analytics-kpi-card">
-          <div className="flex justify-between items-start">
-            <span className="muted text-xs font-semibold uppercase">Người Dùng Ứng Dụng</span>
-            <span className="badge badge-teal text-xs">Users Growth</span>
+        <article className="card analytics-kpi-card admin-kpi-card">
+          <div className="admin-kpi-top-bar" style={{ background: 'linear-gradient(90deg, #8b5cf6, #a78bfa)' }} />
+          <div className="admin-kpi-label-row">
+            <span className="admin-kpi-title">Người Dùng Ứng Dụng</span>
+            <span className="badge badge-teal admin-kpi-tag">Users Growth</span>
           </div>
-          <strong className="text-2xl mt-02">{users.length}</strong>
-          <div className="flex items-center gap-sm mt-02 text-xs">
+          <div className="admin-kpi-number">{users.length}</div>
+          <div className="admin-micro-track">
+            <div
+              className="admin-micro-fill"
+              style={{
+                width: `${users.length > 0 ? Math.round((users.filter((u) => u.role === 'ATTENDEE').length / users.length) * 100) : 0}%`,
+                background: '#8b5cf6'
+              }}
+            />
+          </div>
+          <div className="admin-kpi-footer">
             <span className="text-good font-semibold">
               ● {users.filter((u) => u.role === 'ATTENDEE').length} Khán giả
             </span>
-            <span className="muted">|</span>
-            <span className="font-semibold text-purple">
+            <span className="font-semibold text-purple font-mono">
               ● {users.filter((u) => u.role === 'ORGANIZER').length} Ban tổ chức
             </span>
           </div>
         </article>
 
-        <article className="card analytics-kpi-card">
-          <div className="flex justify-between items-start">
-            <span className="muted text-xs font-semibold uppercase">Người Dùng Premium</span>
-            <span className="badge badge-amber text-xs">VIP Subscription</span>
+        <article className="card analytics-kpi-card admin-kpi-card">
+          <div className="admin-kpi-top-bar" style={{ background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+          <div className="admin-kpi-label-row">
+            <span className="admin-kpi-title">Tỷ Lệ Hoàn Tất Đơn</span>
+            <span className="badge badge-success admin-kpi-tag">Fulfillment</span>
           </div>
-          <strong className="text-2xl mt-02">{premiumAnalytics.premiumCount}</strong>
-          <div className="flex items-center justify-between mt-02 text-xs">
-            <span className="text-amber font-semibold">
-              Tỷ lệ nâng cấp: {premiumAnalytics.adoptionRate}%
+          <div className="admin-kpi-number">{orderStatusAnalytics.completionRate}%</div>
+          <div className="admin-micro-track">
+            <div
+              className="admin-micro-fill"
+              style={{
+                width: `${orderStatusAnalytics.completionRate}%`,
+                background: '#10b981'
+              }}
+            />
+          </div>
+          <div className="admin-kpi-footer">
+            <span className="text-good font-semibold">
+              {orderStatusAnalytics.completedCount} / {orderStatusAnalytics.totalCount} đơn thành công
             </span>
-            <span className="muted font-mono">{formatVND(premiumAnalytics.monthlyMRR)}/tháng</span>
+            <span className="font-mono font-bold text-good">{formatVND(orderStatusAnalytics.completedRevenue)}</span>
           </div>
         </article>
 
-        <article className="card analytics-kpi-card">
-          <div className="flex justify-between items-start">
-            <span className="muted text-xs font-semibold uppercase">Tổng Lượt Mua Vé Sàn</span>
-            <span className="badge badge-success text-xs">Ticket Orders</span>
+        <article className="card analytics-kpi-card admin-kpi-card">
+          <div className="admin-kpi-top-bar" style={{ background: 'linear-gradient(90deg, #f59e0b, #fbbf24)' }} />
+          <div className="admin-kpi-label-row">
+            <span className="admin-kpi-title">Tổng Lượt Mua Vé Sàn</span>
+            <span className="badge badge-warning admin-kpi-tag">GMV Gross</span>
           </div>
-          <strong className="text-2xl mt-02">{orders.length || eventPurchasesList.reduce((s, e) => s + e.purchases, 0)}</strong>
-          <div className="flex items-center justify-between mt-02 text-xs">
-            <span className="text-good font-semibold">
+          <div className="admin-kpi-number">{orders.length || eventPurchasesList.reduce((s, e) => s + e.purchases, 0)}</div>
+          <div className="admin-micro-track">
+            <div
+              className="admin-micro-fill"
+              style={{
+                width: '100%',
+                background: '#f59e0b'
+              }}
+            />
+          </div>
+          <div className="admin-kpi-footer">
+            <span className="text-good font-semibold font-mono">
               GMV: {formatVND(stats?.gross_sales || stats?.grossRevenue || eventPurchasesList.reduce((s, e) => s + e.revenue, 0))}
             </span>
-            <span className="muted">5% Commission</span>
+            <span className="muted font-mono">
+              {stats?.platform_fee
+                ? `Hoa hồng: ${formatVND(stats.platform_fee)}`
+                : stats?.total_commission
+                ? `Hoa hồng: ${formatVND(stats.total_commission)}`
+                : 'Phí sàn 10%'}
+            </span>
           </div>
         </article>
       </div>
@@ -926,7 +951,7 @@ export const AdminAnalyticsDashboard = ({
                 </div>
                 <div className="text-right">
                   <span className="text-xs muted d-block">Tỷ lệ hoàn thành</span>
-                  <strong className="text-sm text-good">{premiumAnalytics.adoptionRate}% đơn hàng</strong>
+                  <strong className="text-sm text-good">{orderStatusAnalytics.completionRate}% đơn hàng</strong>
                 </div>
               </div>
 
@@ -950,7 +975,7 @@ export const AdminAnalyticsDashboard = ({
                     <circle cx="110" cy="110" r="85" fill="none" stroke="var(--border-subtle, #f1f5f9)" strokeWidth="32" />
 
                     {/* Donut Slices */}
-                    {premiumAnalytics.slices.map((slice) => {
+                    {orderStatusAnalytics.slices.map((slice) => {
                       const isHovered = activePackageKey === slice.key;
                       const path = describeArc(110, 110, isHovered ? 96 : 90, isHovered ? 56 : 60, slice.startAngle, slice.endAngle);
 
@@ -994,17 +1019,17 @@ export const AdminAnalyticsDashboard = ({
                   >
                     <span className="text-xs muted font-semibold">TỔNG ĐƠN</span>
                     <strong className="text-xl text-primary leading-none mt-01">
-                      {premiumAnalytics.totalCount}
+                      {orderStatusAnalytics.totalCount}
                     </strong>
                     <span className="text-2xs text-good font-bold mt-01">
-                      {premiumAnalytics.adoptionRate}% Thành công
+                      {orderStatusAnalytics.completionRate}% Thành công
                     </span>
                   </div>
                 </div>
 
                 {/* Donut Breakdown Legend Cards */}
                 <div className="flex-1 stack gap-xs min-w-240">
-                  {premiumAnalytics.packagesList.map((pkg) => {
+                  {orderStatusAnalytics.packagesList.map((pkg) => {
                     const isHovered = activePackageKey === pkg.key;
                     return (
                       <div

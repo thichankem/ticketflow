@@ -60,6 +60,24 @@ export function toneClass(category) {
   return known.includes(key) ? `tone-${key}` : 'tone-tech';
 }
 
+export function eventCoverImage(event) {
+  if (event?.cover && typeof event.cover === 'string' && event.cover.trim() && !event.cover.includes('placeholder')) {
+    return event.cover;
+  }
+  if (event?.banner && typeof event.banner === 'string' && event.banner.trim() && !event.banner.includes('placeholder')) {
+    return event.banner;
+  }
+  const cat = String(event?.category || '').toLowerCase();
+  if (cat.includes('music')) return '/images/events/jazz.svg';
+  if (cat.includes('sport')) return '/images/events/marathon.svg';
+  if (cat.includes('film') || cat.includes('cinema')) return '/images/events/film.svg';
+  if (cat.includes('community')) return '/images/events/meetup.svg';
+  if (cat.includes('business') || cat.includes('pitch') || cat.includes('startup')) return '/images/events/pitch.svg';
+  if (cat.includes('design') || cat.includes('workshop') || cat.includes('ux')) return '/images/events/ux.svg';
+  if (cat.includes('edm') || cat.includes('night') || cat.includes('party')) return '/images/events/edm.svg';
+  return '/images/events/summit.svg';
+}
+
 export function plainText(value) {
   return String(value || '')
     .replace(/<[^>]*>/g, ' ')
@@ -71,11 +89,11 @@ export function plainText(value) {
 }
 
 export const EVENT_CATEGORIES = [
-  { id: 'ALL', label: 'Tất cả sự kiện', icon: '🎟️' },
-  { id: 'Music', label: 'Nhạc sống & Concert', icon: '🎵' },
-  { id: 'Design', label: 'Sân khấu & Nghệ thuật', icon: '🎭' },
-  { id: 'Tech', label: 'Công nghệ & Triển lãm', icon: '💻' },
-  { id: 'Business', label: 'Hội thảo & Workshop', icon: '📈' },
-  { id: 'Sports', label: 'Thể thao & Giải trí', icon: '⚽' },
-  { id: 'Community', label: 'Tham quan & Trải nghiệm', icon: '🎡' },
+  { id: 'ALL', label: 'Tất cả sự kiện', icon: 'ticket' },
+  { id: 'Music', label: 'Nhạc sống & Concert', icon: 'music' },
+  { id: 'Design', label: 'Sân khấu & Nghệ thuật', icon: 'design' },
+  { id: 'Tech', label: 'Công nghệ & Triển lãm', icon: 'tech' },
+  { id: 'Business', label: 'Hội thảo & Workshop', icon: 'business' },
+  { id: 'Sports', label: 'Thể thao & Giải trí', icon: 'sports' },
+  { id: 'Community', label: 'Tham quan & Trải nghiệm', icon: 'community' },
 ];

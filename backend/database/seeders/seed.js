@@ -10,7 +10,7 @@
  * - 130+ Ticket Tiers (Standard, VIP, Early Bird, 0 VND Free, Donation, Backstage, Combo).
  * - 60+ Promo Codes (% and fixed discounts with usage bounds).
  * - 85+ Orders (COMPLETED, REFUNDED, RESERVED, CANCELLED).
- * - 165+ Attendees with valid QR barcodes, row/seat assignments, and check-in records.
+ * - 165+ Attendees with valid QR barcodes, row/seat assignments, and attendee records.
  * - Interaction signals for Recommendation Engine.
  *
  * Fully preserves Milestone 1 canonical invariants and test suite compatibility.
@@ -147,7 +147,7 @@ export async function seedDatabase() {
         tags: [ev.category, 'TicketFlow', 'Sự kiện nổi bật'],
         blog_blocks: [
           { type: 'paragraph', text: ev.description },
-          { type: 'schedule', items: [{ time: '08:30', title: 'Check-in & Đón khách' }, { time: '09:30', title: 'Phiên thảo luận chính' }, { time: '16:30', title: 'Bế mạc & Giao lưu' }] }
+          { type: 'schedule', items: [{ time: '08:30', title: 'Đón tiếp khách tham dự' }, { time: '09:30', title: 'Phiên thảo luận chính' }, { time: '16:30', title: 'Bế mạc & Giao lưu' }] }
         ],
         pdf_attachments: [
           { id: `att_${ev.id}_1`, title: 'Cẩm nang tham dự sự kiện (PDF)', filename: 'handbook.pdf', size: '1.4 MB', url: `/api/events/${ev.id}/attachments/handbook.pdf`, uploaded_at: new Date().toISOString() }
@@ -348,7 +348,7 @@ export async function seedDatabase() {
           { type: 'heading', level: 1, text: `Tổng quan về ${title}` },
           { type: 'paragraph', text: `Chào mừng bạn đến với ${title} tổ chức tại ${prov.venue}, ${prov.name}. Trải nghiệm đỉnh cao với hàng nghìn người tham dự.` },
           { type: 'schedule', items: [
-            { time: '08:00', title: 'Đón tiếp & Quét mã QR check-in tại cổng' },
+            { time: '08:00', title: 'Đón tiếp khách tham dự tại cổng' },
             { time: '09:30', title: 'Khai mạc & Tiết mục nghệ thuật chào mừng' },
             { time: '14:00', title: 'Phiên hội thảo chuyên đề & Trải nghiệm thực tế' },
             { time: '18:00', title: 'Bế mạc & Giao lưu kết nối' }
@@ -474,7 +474,7 @@ export async function seedDatabase() {
     }
 
     // 11. Massive Orders & Attendees Generation (85+ Orders, 170+ Attendees)
-    console.log('[SEED] Generating 85+ Orders and 170+ Attendees with barcodes, seats, and check-in statuses...');
+    console.log('[SEED] Generating 85+ Orders and 170+ Attendees with barcodes, seats, and valid statuses...');
     const orderStatuses = ['COMPLETED', 'COMPLETED', 'COMPLETED', 'REFUNDED', 'COMPLETED', 'RESERVED', 'CANCELLED'];
     const paymentGateways = ['VNPAY', 'MOMO', 'CREDIT_CARD', 'STRIPE'];
     const rows = ['A', 'B', 'C', 'D', 'E', 'F'];

@@ -34,24 +34,24 @@ export function validateImageFile(file) {
   // 1. Prohibit video uploads
   const isVideo = type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|flv|wmv|m4v|3gp|ts)$/i.test(name);
   if (isVideo) {
-    throw new Error('⛔ Không cho phép tải video lên! Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPG, WebP).');
+    throw new Error('Không cho phép tải video lên! Hệ thống chỉ hỗ trợ tệp hình ảnh (PNG, JPG, WebP).');
   }
 
   // 2. Prohibit PDF uploads
   const isPdf = type === 'application/pdf' || /\.pdf$/i.test(name);
   if (isPdf) {
-    throw new Error('⛔ Không hỗ trợ tệp PDF nữa! Vui lòng chỉ tải lên tệp hình ảnh (PNG, JPG, WebP).');
+    throw new Error('Không hỗ trợ tệp PDF nữa! Vui lòng chỉ tải lên tệp hình ảnh (PNG, JPG, WebP).');
   }
 
   // 3. Prohibit other non-image files
   const isImage = type.startsWith('image/') || /\.(png|jpe?g|webp|svg|gif)$/i.test(name);
   if (!isImage) {
-    throw new Error('⛔ Định dạng tệp không hợp lệ! Vui lòng chỉ tải lên tệp hình ảnh (PNG, JPG, WebP).');
+    throw new Error('Định dạng tệp không hợp lệ! Vui lòng chỉ tải lên tệp hình ảnh (PNG, JPG, WebP).');
   }
 
   // 4. Maximum size constraint (10MB)
   if (file.size > MAX_RAW_FILE_SIZE_BYTES) {
-    throw new Error(`⛔ Dung lượng ảnh (${formatFileSize(file.size)}) vượt quá giới hạn tối đa cho phép (${formatFileSize(MAX_RAW_FILE_SIZE_BYTES)}).`);
+    throw new Error(`Dung lượng ảnh (${formatFileSize(file.size)}) vượt quá giới hạn tối đa cho phép (${formatFileSize(MAX_RAW_FILE_SIZE_BYTES)}).`);
   }
 
   return true;

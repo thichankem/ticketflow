@@ -33,6 +33,10 @@ const handleUploadMiddleware = (req, res, next) => {
 // Organizer Dashboard (Must be before /:id)
 router.get('/organizer/dashboard', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.organizerDashboard);
 
+// User Favorites (Must be before /:id)
+router.get('/user/favorites', optionalAuthenticateToken, eventsController.getUserFavorites);
+router.get('/favorites', optionalAuthenticateToken, eventsController.getUserFavorites);
+
 // User In-App Notifications (Must be before /:id)
 router.get('/notifications', authenticateToken, eventsController.getNotifications);
 router.put('/notifications/read-all', authenticateToken, eventsController.markAllNotificationsRead);
@@ -107,6 +111,5 @@ router.get('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'
 router.post('/:id/attendees', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.createAttendee);
 router.put('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.updateAttendee);
 router.delete('/:id/attendees/:attendeeId', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), ordersController.deleteAttendee);
-router.post('/:id/checkin', authenticateToken, requireRole('ORGANIZER', 'ADMIN'), eventsController.checkinAttendee);
 
 export default router;

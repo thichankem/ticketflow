@@ -4,6 +4,8 @@ import { api } from '../services/api';
 import { useLanguage } from '../context/LanguageContext';
 import { money, formatDateTime } from '../utils/display';
 import { QrCodeSvg } from '../utils/qr';
+import { Icon } from '../components/ui/Icon';
+import { SuccessVectorAnimation } from '../components/ui/VectorAnimation';
 
 export const ReceiptPage = () => {
   const { id } = useParams();
@@ -52,7 +54,9 @@ export const ReceiptPage = () => {
     <section className="receipt-page-view">
       <div className="receipt-page-container">
         <div className="receipt-header">
-          <div className="receipt-icon-circle">✓</div>
+          <div className="receipt-icon-circle flex items-center justify-center mb-2" style={{ background: 'none', border: 'none', width: 'auto', height: 'auto' }}>
+            <SuccessVectorAnimation size={56} />
+          </div>
           <span className="badge badge-success">{t('receipt.header_badge', 'Biên lai thanh toán')}</span>
           <h1 className="receipt-title">{t('receipt.headline', 'Biên lai thanh toán')}</h1>
           <p className="receipt-subtitle">
@@ -79,7 +83,7 @@ export const ReceiptPage = () => {
             </div>
           </div>
 
-          <h3>Chi tiết các hạng vé:</h3>
+          <h2 className="section-title text-base">Chi tiết các hạng vé:</h2>
           <div className="receipt-table-wrapper">
             <table className="receipt-data-table">
               <thead>
@@ -152,12 +156,14 @@ export const ReceiptPage = () => {
           </div>
         </div>
 
-        <div className="receipt-action-bar">
-          <Link to="/my-tickets" className="btn btn-primary">
-            🎟️ {t('receipt.manage_tickets', 'Quản lý trong Vé của tôi')}
+        <div className="receipt-action-bar flex gap-3">
+          <Link to="/my-tickets" className="btn btn-primary flex items-center gap-1.5">
+            <Icon name="ticket" size="sm" ariaHidden />
+            <span>{t('receipt.manage_tickets', 'Quản lý trong Vé của tôi')}</span>
           </Link>
-          <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
-            🖨️ {t('action.print', 'In biên lai / Lưu PDF')}
+          <button type="button" className="btn btn-secondary flex items-center gap-1.5" onClick={() => window.print()}>
+            <Icon name="printer" size="sm" ariaHidden />
+            <span>{t('action.print', 'In biên lai / Lưu PDF')}</span>
           </button>
         </div>
       </div>

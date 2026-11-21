@@ -8,6 +8,9 @@ import AttendeeLayout from '../components/AttendeeLayout';
 import OrganizerLayout from '../components/OrganizerLayout';
 import AdminLayout from '../components/AdminLayout';
 import Modal from '../components/Modal';
+import { Icon } from '../components/ui/Icon';
+import { VectorSpinner } from '../components/ui/VectorAnimation';
+import { EmptyStateIllustration } from '../components/ui/EmptyStateIllustration';
 
 // Timestamp formatter
 const formatFullDateTime = (timestamp) => {
@@ -59,19 +62,21 @@ export const NotificationsPage = () => {
     }
   }, [authLoading, isAuthenticated, navigate]);
 
-  // Load all notifications
+  // Load all notifications (UI-14: Explicit error state and feedback)
   const loadNotifications = async () => {
     if (!isAuthenticated) return;
     try {
       setLoading(true);
+      setError(null);
       const res = await api.notifications.list();
       const list = Array.isArray(res) ? res : res?.notifications || [];
       const sorted = [...list].sort(
         (a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)
       );
       setNotifications(sorted);
-    } catch {
-      // fallback
+    } catch (err) {
+      console.warn('[NotificationsPage] Load error:', err.message);
+      setError(err.message || 'Không thể kết nối đến máy chủ để tải thông báo.');
     } finally {
       setLoading(false);
     }
@@ -110,7 +115,7 @@ export const NotificationsPage = () => {
     }
   }, [isAuthenticated, user?.id]);
 
-  // Actions
+  // Actions with error handling and user feedback
   const handleToggleRead = async (notif) => {
     try {
       if (!notif.is_read) {
@@ -119,7 +124,10 @@ export const NotificationsPage = () => {
           prev.map((n) => (n.id === notif.id ? { ...n, is_read: true } : n))
         );
       }
-    } catch {}
+    } catch (err) {
+      setActionMessage(`Lỗi đánh dấu đã đọc: ${err.message}`);
+      setTimeout(() => setActionMessage(null), 3500);
+    }
   };
 
   const handleMarkAllRead = async () => {
@@ -128,14 +136,22 @@ export const NotificationsPage = () => {
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       setActionMessage('Đã đánh dấu tất cả thông báo là đã đọc.');
       setTimeout(() => setActionMessage(null), 3000);
-    } catch {}
+    } catch (err) {
+      setActionMessage(`Lỗi cập nhật thông báo: ${err.message}`);
+      setTimeout(() => setActionMessage(null), 3500);
+    }
   };
 
   const handleDeleteNotification = async (notifId) => {
     try {
       await api.notifications.delete(notifId);
       setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-    } catch {}
+      setActionMessage('Đã xóa thông báo.');
+      setTimeout(() => setActionMessage(null), 3000);
+    } catch (err) {
+      setActionMessage(`Lỗi xóa thông báo: ${err.message}`);
+      setTimeout(() => setActionMessage(null), 3500);
+    }
   };
 
   const handleConfirmClearAll = async () => {
@@ -145,7 +161,10 @@ export const NotificationsPage = () => {
       setClearModalOpen(false);
       setActionMessage('Đã dọn sạch toàn bộ thông báo hộp thư.');
       setTimeout(() => setActionMessage(null), 3000);
-    } catch {}
+    } catch (err) {
+      setActionMessage(`Lỗi dọn sạch thông báo: ${err.message}`);
+      setTimeout(() => setActionMessage(null), 3500);
+    }
   };
 
   // Metrics
@@ -206,11 +225,8 @@ export const NotificationsPage = () => {
         {/* Hero Header */}
         <div className="notif-page-header">
           <div className="notif-header-content">
-            <div className="notif-header-icon-wrap" aria-hidden="true">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-              </svg>
+            <div className="notif-header-icon-wrap flex items-center justify-center" aria-hidden="true">
+              <Icon name="bell" size={28} ariaHidden />
             </div>
             <div>
               <h1 className="notif-page-title">Hộp Thư & Trung Tâm Thông Báo</h1>
@@ -220,23 +236,25 @@ export const NotificationsPage = () => {
             </div>
           </div>
 
-          <div className="notif-header-actions">
+          <div className="notif-header-actions flex gap-2">
             {unreadCount > 0 && (
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary btn-sm flex items-center gap-1.5"
                 onClick={handleMarkAllRead}
               >
-                ✓ Đọc tất cả ({unreadCount})
+                <Icon name="check-check" size="xs" ariaHidden />
+                <span>Đọc tất cả ({unreadCount})</span>
               </button>
             )}
             {totalCount > 0 && (
               <button
                 type="button"
-                className="btn btn-secondary btn-sm text-danger"
+                className="btn btn-secondary btn-sm text-danger flex items-center gap-1.5"
                 onClick={() => setClearModalOpen(true)}
               >
-                🗑️ Xóa tất cả
+                <Icon name="trash" size="xs" ariaHidden />
+                <span>Xóa tất cả</span>
               </button>
             )}
           </div>
@@ -244,9 +262,14 @@ export const NotificationsPage = () => {
 
         {/* Feedback alert */}
         {actionMessage && (
-          <div className="alert alert-success notif-alert-banner" role="status">
-            <span>✓ {actionMessage}</span>
-            <button type="button" className="alert-close-btn" onClick={() => setActionMessage(null)}>✕</button>
+          <div className="alert alert-success notif-alert-banner flex items-center justify-between" role="status">
+            <span className="flex items-center gap-1.5">
+              <Icon name="check" size="xs" ariaHidden />
+              <span>{actionMessage}</span>
+            </span>
+            <button type="button" className="alert-close-btn flex items-center justify-center" onClick={() => setActionMessage(null)} aria-label="Đóng thông báo">
+              <Icon name="x" size="xs" ariaHidden />
+            </button>
           </div>
         )}
 
@@ -297,11 +320,8 @@ export const NotificationsPage = () => {
             </button>
           </div>
 
-          <div className="notif-search-box">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.3-4.3" />
-            </svg>
+          <div className="notif-search-box flex items-center">
+            <Icon name="search" size={16} ariaHidden className="notif-search-icon" />
             <input
               type="search"
               placeholder="Tìm kiếm theo tiêu đề hoặc nội dung..."
@@ -313,31 +333,41 @@ export const NotificationsPage = () => {
             {searchQuery && (
               <button
                 type="button"
-                className="notif-search-clear"
+                className="notif-search-clear flex items-center justify-center"
                 onClick={() => setSearchQuery('')}
                 aria-label="Xóa từ khóa tìm kiếm"
               >
-                ✕
+                <Icon name="x" size="xs" ariaHidden />
               </button>
             )}
           </div>
         </div>
 
+        {/* Error state (UI-14) */}
+        {error && (
+          <div className="alert alert-error mb-md flex justify-between items-center">
+            <span>{error}</span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={loadNotifications}>
+              Thử lại
+            </button>
+          </div>
+        )}
+
         {/* Notifications List */}
         {loading ? (
           <div className="page-suspense-fallback" style={{ minHeight: '30vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div className="spinner" />
+            <VectorSpinner size={36} />
           </div>
         ) : filteredNotifications.length === 0 ? (
-          <div className="card notif-empty-card">
-            <div className="notif-empty-illustration">📭</div>
-            <h3 className="notif-empty-title">
+          <div className="card notif-empty-card text-center p-8">
+            <EmptyStateIllustration type="empty-notifications" size={120} />
+            <h2 className="notif-empty-title">
               {searchQuery.trim()
                 ? 'Không tìm thấy thông báo phù hợp'
                 : activeFilter === 'unread'
                 ? 'Không có thông báo chưa đọc'
                 : 'Hộp thư của bạn hiện đang trống'}
-            </h3>
+            </h2>
             <p className="notif-empty-desc">
               {searchQuery.trim()
                 ? `Không có kết quả nào cho "${searchQuery}". Hãy thử tìm kiếm với từ khóa khác.`
@@ -370,18 +400,33 @@ export const NotificationsPage = () => {
                         {!n.is_read ? 'Mới • Chưa đọc' : 'Đã đọc'}
                       </span>
                       {n.type && (
-                        <span className="notif-card-type-tag">
-                          {n.type === 'RESTOCK'
-                            ? '🎫 Restock Vé'
-                            : n.type === 'BROADCAST'
-                            ? '📢 Thông Báo Chung'
-                            : n.type === 'REFUND'
-                            ? '💸 Hoàn Tiền'
-                            : '🔔 Thông Báo'}
+                        <span className="notif-card-type-tag flex items-center gap-1">
+                          {n.type === 'RESTOCK' ? (
+                            <>
+                              <Icon name="ticket" size="xs" ariaHidden />
+                              <span>Restock Vé</span>
+                            </>
+                          ) : n.type === 'BROADCAST' ? (
+                            <>
+                              <Icon name="bell" size="xs" ariaHidden />
+                              <span>Thông Báo Chung</span>
+                            </>
+                          ) : n.type === 'REFUND' ? (
+                            <>
+                              <Icon name="refresh" size="xs" ariaHidden />
+                              <span>Hoàn Tiền</span>
+                            </>
+                          ) : (
+                            <>
+                              <Icon name="bell" size="xs" ariaHidden />
+                              <span>Thông Báo</span>
+                            </>
+                          )}
                         </span>
                       )}
-                      <span className="notif-card-timestamp" title={formatFullDateTime(n.created_at)}>
-                        🕒 {formatRelativeTime(n.created_at)}
+                      <span className="notif-card-timestamp flex items-center gap-1" title={formatFullDateTime(n.created_at)}>
+                        <Icon name="clock" size="xs" ariaHidden />
+                        <span>{formatRelativeTime(n.created_at)}</span>
                       </span>
                     </div>
 
@@ -389,21 +434,23 @@ export const NotificationsPage = () => {
                       {!n.is_read && (
                         <button
                           type="button"
-                          className="btn btn-ghost btn-xs text-primary"
+                          className="btn btn-ghost btn-xs text-primary flex items-center gap-1"
                           onClick={() => handleToggleRead(n)}
                           title="Đánh dấu đã đọc"
                         >
-                          ✓ Đã đọc
+                          <Icon name="check" size="xs" ariaHidden />
+                          <span>Đã đọc</span>
                         </button>
                       )}
                       <button
                         type="button"
-                        className="btn btn-ghost btn-xs text-muted hover:text-danger"
+                        className="btn btn-ghost btn-xs text-muted hover:text-danger flex items-center gap-1"
                         onClick={() => handleDeleteNotification(n.id)}
                         title="Xóa thông báo"
                         aria-label="Xóa thông báo"
                       >
-                        🗑️ Xóa
+                        <Icon name="trash" size="xs" ariaHidden />
+                        <span>Xóa</span>
                       </button>
                     </div>
                   </div>
@@ -420,7 +467,7 @@ export const NotificationsPage = () => {
         <Modal
           isOpen={clearModalOpen}
           onClose={() => setClearModalOpen(false)}
-          title="🗑️ Xác Nhận Xóa Toàn Bộ Thông Báo"
+          title="Xác Nhận Xóa Toàn Bộ Thông Báo"
           subtitle="Hành động này sẽ xóa vĩnh viễn tất cả thông báo trong hộp thư của bạn."
           size="sm"
           footer={

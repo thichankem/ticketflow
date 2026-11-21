@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" viewBox="0 0 1200 640" role="img" aria-label="Cinema and Film Abstract Cover">
+  <defs>
+    <linearGradient id="film-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d16"/>
+      <stop offset="50%" stop-color="#1e1b4b"/>
+      <stop offset="100%" stop-color="#090d16"/>
+    </linearGradient>
+    <radialGradient id="lens-flare" cx="80%" cy="30%" r="55%">
+      <stop offset="0%" stop-color="#a855f7" stop-opacity="0.6"/>
+      <stop offset="40%" stop-color="#6366f1" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#090d16" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="640" fill="url(#film-bg)"/>
+  <rect width="1200" height="640" fill="url(#lens-flare)"/>
+  <polygon points="900,120 0,640 400,640" fill="url(#beam)"/>
+  <polygon points="900,120 200,640 700,640" fill="url(#beam)" opacity="0.4"/>
+  <circle cx="900" cy="180" r="160" fill="none" stroke="#c084fc" stroke-width="2" opacity="0.4"/>
+  <circle cx="900" cy="180" r="110" fill="none" stroke="#38bdf8" stroke-width="3" opacity="0.5"/>
+  <circle cx="900" cy="180" r="60" fill="#a855f7" opacity="0.8"/>
+  <circle cx="900" cy="180" r="20" fill="#ffffff"/>
+  <path d="M-40 420 Q 320 280, 680 440 T 1240 320" fill="none" stroke="#6366f1" stroke-width="28" stroke-dasharray="14 10" opacity="0.3"/>
+  <path d="M-40 420 Q 320 280, 680 440 T 1240 320" fill="none" stroke="#818cf8" stroke-width="2" opacity="0.7"/>
+</svg>

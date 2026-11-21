@@ -2,14 +2,19 @@ import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 
 /**
- * Standard ISO/IEC 18004 Vector SVG QR Code Component (SPEC-ISSUE-011)
+ * Standard ISO/IEC 18004 Vector SVG QR Code Component (UI-27)
  */
 export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
   const [svgMarkup, setSvgMarkup] = useState('');
 
   useEffect(() => {
+    if (!value) {
+      setSvgMarkup('');
+      return;
+    }
+
     let isMounted = true;
-    QRCode.toString(String(value || 'TICKETFLOW'), {
+    QRCode.toString(String(value), {
       type: 'svg',
       width: size,
       margin: 1,
@@ -31,6 +36,19 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
     };
   }, [value, size]);
 
+  if (!value) {
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className={`qr-code-unavailable inline-flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg p-2 text-center text-xs border ${className}`}
+        aria-label="Mã QR chưa khả dụng"
+      >
+        <span className="font-mono text-xs font-bold">MÃ QR</span>
+        <span className="text-2xs text-muted mt-1">Chưa khả dụng</span>
+      </div>
+    );
+  }
+
   if (!svgMarkup) {
     return (
       <svg
@@ -50,7 +68,7 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
           fontSize="12"
           fontFamily="monospace"
         >
-          Loading QR...
+          Đang tải QR...
         </text>
       </svg>
     );
@@ -58,10 +76,9 @@ export const QrCodeSvg = ({ value, size = 160, className = '' }) => {
 
   return (
     <div
-      className={`qr-code-svg-container inline-block bg-white p-1 rounded-lg shadow-sm border border-slate-100 dark:border-slate-800 ${className}`}
-      style={{ width: size, height: size }}
-      aria-label={`QR Code for ${value}`}
+      className={`qr-code-container inline-block bg-white rounded-lg p-1.5 shadow-sm ${className}`}
       dangerouslySetInnerHTML={{ __html: svgMarkup }}
+      aria-label={`QR Code for ${value}`}
     />
   );
 };

@@ -5,8 +5,18 @@ import adminService, { memoryUsers } from './admin.service.js';
 
 let nextUserId = 100;
 
-// Initialize memory seed users
+// Dynamic environment evaluation (TF-P0-01 / TF-P1-01)
+export function isProduction() {
+  return process.env.NODE_ENV === 'production';
+}
+
+export function isDemoUsersAllowed() {
+  if (isProduction()) return false;
+  return process.env.ENABLE_DEMO_USERS === 'true' || process.env.NODE_ENV === 'test';
+}
+
 const initSeedUsers = async () => {
+  if (!isDemoUsersAllowed()) return;
   const hash = await bcrypt.hash('password123', 10);
   memoryUsers.set(1, { id: 1, name: 'Super Admin', email: 'admin@ticketflow.local', phone: '0901234567', password_hash: hash, role: 'ADMIN', account_id: 1, is_active: true, subscription_plan: 'ENTERPRISE', is_premium: true, created_at: '2026-05-10T08:00:00Z' });
   memoryUsers.set(2, { id: 2, name: 'Demo Organizer', email: 'organizer@ticketflow.local', phone: '0902345678', password_hash: hash, role: 'ORGANIZER', account_id: 2, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-06-12T09:30:00Z' });
@@ -21,7 +31,9 @@ const initSeedUsers = async () => {
   memoryUsers.set(11, { id: 11, name: 'Bùi Thảo Linh', email: 'linh.bui@youthhub.vn', phone: '0989012345', password_hash: hash, role: 'ATTENDEE', account_id: 11, is_active: true, subscription_plan: 'FREE', is_premium: false, created_at: '2026-11-03T11:40:00Z' });
   memoryUsers.set(12, { id: 12, name: 'Đỗ Hải Đăng', email: 'dang.do@vngcloud.vn', phone: '0990123456', password_hash: hash, role: 'ORGANIZER', account_id: 12, is_active: true, subscription_plan: 'PRO_ORGANIZER', is_premium: true, created_at: '2026-11-12T14:10:00Z' });
 };
-initSeedUsers();
+if (isDemoUsersAllowed()) {
+  initSeedUsers();
+}
 
 /**
  * Cohesive AuthService
@@ -116,6 +128,11 @@ class AuthService {
       return { user, token, refreshToken };
     } catch (err) {
       if (err.statusCode === 409) throw err;
+      if (isProduction() || !isDemoUsersAllowed()) {
+        const error = new Error('Lỗi kết nối cơ sở dữ liệu. Không thể hoàn tất đăng ký.');
+        error.statusCode = 500;
+        throw error;
+      }
       for (const u of memoryUsers.values()) {
         if (u.email?.toLowerCase() === normalizedEmail) {
           const error = new Error('Email already registered');
@@ -193,36 +210,50 @@ class AuthService {
           refreshToken,
         };
       }
+
+      if (isProduction() || !isDemoUsersAllowed()) {
+        const error = new Error('Tài khoản không tồn tại trong hệ thống');
+        error.statusCode = 401;
+        error.code = 'AUTH_TOKEN_INVALID';
+        throw error;
+      }
     } catch (err) {
       if (err.statusCode === 401) throw err;
+      if (isProduction() || !isDemoUsersAllowed()) {
+        const error = new Error('Lỗi kết nối cơ sở dữ liệu. Vui lòng thử lại sau.');
+        error.statusCode = 500;
+        throw error;
+      }
     }
 
-    for (const u of memoryUsers.values()) {
-      if (u.email.toLowerCase() === normalizedEmail) {
-        if (u.is_suspended || u.is_active === false || u.status === 'SUSPENDED') {
-          const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
-          error.statusCode = 401;
-          error.code = 'AUTH_TOKEN_INVALID';
-          throw error;
+    if (allowDemoUsers) {
+      for (const u of memoryUsers.values()) {
+        if (u.email.toLowerCase() === normalizedEmail) {
+          if (u.is_suspended || u.is_active === false || u.status === 'SUSPENDED') {
+            const error = new Error('Tài khoản đã bị tạm ngưng hoặc khóa quyền truy cập');
+            error.statusCode = 401;
+            error.code = 'AUTH_TOKEN_INVALID';
+            throw error;
+          }
+
+          const valid = await bcrypt.compare(password, u.password_hash || u.password);
+          if (!valid) {
+            const error = new Error('Mật khẩu không chính xác');
+            error.statusCode = 401;
+            error.code = 'AUTH_TOKEN_INVALID';
+            throw error;
+          }
+
+          const tokenPayload = { id: u.id, email: u.email, role: u.role, account_id: u.account_id, type: 'access' };
+          const token = generateAccessToken(tokenPayload);
+          const refreshToken = generateRefreshToken({ id: u.id, type: 'refresh' });
+
+          return {
+            user: { id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role, account_id: u.account_id },
+            token,
+            refreshToken,
+          };
         }
-
-        const valid = await bcrypt.compare(password, u.password_hash || u.password);
-        if (!valid) {
-          const error = new Error('Mật khẩu không chính xác');
-          error.statusCode = 401;
-          error.code = 'AUTH_TOKEN_INVALID';
-          throw error;
-        }
-
-        const tokenPayload = { id: u.id, email: u.email, role: u.role, account_id: u.account_id, type: 'access' };
-        const token = generateAccessToken(tokenPayload);
-        const refreshToken = generateRefreshToken({ id: u.id, type: 'refresh' });
-
-        return {
-          user: { id: u.id, name: u.name, email: u.email, phone: u.phone || '', role: u.role, account_id: u.account_id },
-          token,
-          refreshToken,
-        };
       }
     }
 
@@ -295,20 +326,28 @@ class AuthService {
           is_active: Boolean(u.is_active),
         };
       }
-    } catch {}
+    } catch (err) {
+      if (isProduction() || !isDemoUsersAllowed()) {
+        const error = new Error('Lỗi kết nối cơ sở dữ liệu');
+        error.statusCode = 500;
+        throw error;
+      }
+    }
 
-    const memUser = memoryUsers.get(numId);
-    if (memUser) {
-      return {
-        id: memUser.id,
-        name: memUser.name,
-        email: memUser.email,
-        phone: memUser.phone || '',
-        role: memUser.role,
-        account_id: memUser.account_id,
-        is_suspended: Boolean(memUser.is_suspended),
-        is_active: memUser.is_active !== false,
-      };
+    if (allowDemoUsers) {
+      const memUser = memoryUsers.get(numId);
+      if (memUser) {
+        return {
+          id: memUser.id,
+          name: memUser.name,
+          email: memUser.email,
+          phone: memUser.phone || '',
+          role: memUser.role,
+          account_id: memUser.account_id,
+          is_suspended: Boolean(memUser.is_suspended),
+          is_active: memUser.is_active !== false,
+        };
+      }
     }
 
     const error = new Error('User not found');

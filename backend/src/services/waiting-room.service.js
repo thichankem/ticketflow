@@ -37,6 +37,10 @@ class WaitingRoomService {
     return { enabled: true, maxConcurrent, admissionRatePerMin };
   }
 
+  activateWaitingRoom(eventId, options = {}) {
+    return this.configureWaitingRoom(eventId, { enabled: true, ...options });
+  }
+
   /**
    * Check if event requires waiting room
    */
@@ -99,12 +103,21 @@ class WaitingRoomService {
       activeQueue.push(entry);
     }
 
-    // Admit sessions if currently admitted count is below maxConcurrent
+    // Strict FIFO Queue Admission (TF-P1-09)
     const admittedCount = activeQueue.filter((i) => i.admitted).length;
-    if (!entry.admitted && admittedCount < config.maxConcurrent) {
-      entry.admitted = true;
-      entry.admittedAt = now;
-      entry.token = `TOKEN_ADMIT_${numEventId}_${sessionId}_${Date.now()}`;
+    const availableSlots = Math.max(0, config.maxConcurrent - admittedCount);
+
+    if (availableSlots > 0) {
+      const waitingSorted = activeQueue
+        .filter((i) => !i.admitted)
+        .sort((a, b) => a.joinedAt - b.joinedAt);
+
+      const toAdmit = waitingSorted.slice(0, availableSlots);
+      for (const item of toAdmit) {
+        item.admitted = true;
+        item.admittedAt = now;
+        item.token = `TOKEN_ADMIT_${numEventId}_${item.sessionId}_${Date.now()}`;
+      }
     }
 
     if (entry.admitted) {

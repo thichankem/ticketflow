@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { Icon } from './ui/Icon';
 
 // Color palette for ticket tiers in charts
 const TIER_COLORS = [
@@ -127,7 +128,7 @@ export const EventAnalyticsDashboard = ({
     // 3. Aggregate attendees / tickets by tier and date
     attendees.forEach((att) => {
       if (att.status === 'CANCELLED') return;
-      const dateSource = att.created_at || att.checked_in_at;
+      const dateSource = att.created_at;
       const key = dateSource ? new Date(dateSource).toISOString().split('T')[0] : now.toISOString().split('T')[0];
       let entry = dayMap.get(key);
       if (entry) {
@@ -286,10 +287,7 @@ export const EventAnalyticsDashboard = ({
         {/* 1. Tổng Doanh Thu */}
         <article className="card kpi analytics-kpi-card revenue-card">
           <div className="kpi-icon-wrap" style={{ background: 'rgba(15, 118, 110, 0.1)', color: '#0f766e' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" x2="12" y1="2" y2="22" />
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-            </svg>
+            <Icon name="dollar" size="lg" ariaHidden />
           </div>
           <span className="muted text-xs font-semibold uppercase tracking-wider">Tổng Doanh Thu (GMV)</span>
           <strong className="text-2xl text-primary font-bold">{formatVND(totalRevenue)}</strong>
@@ -302,11 +300,7 @@ export const EventAnalyticsDashboard = ({
         {/* 2. Số Lượt Mua (Orders Count) */}
         <article className="card kpi analytics-kpi-card orders-card">
           <div className="kpi-icon-wrap" style={{ background: 'rgba(99, 102, 241, 0.1)', color: '#6366f1' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="8" cy="21" r="1" />
-              <circle cx="19" cy="21" r="1" />
-              <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-            </svg>
+            <Icon name="cart" size="lg" ariaHidden />
           </div>
           <span className="muted text-xs font-semibold uppercase tracking-wider">Số Lượt Mua Vé</span>
           <strong className="text-2xl text-main font-bold">{totalPurchasesCount} lượt mua</strong>
@@ -319,10 +313,7 @@ export const EventAnalyticsDashboard = ({
         {/* 3. Tổng Vé Đã Bán & Tỷ Lệ Lấp Đầy */}
         <article className="card kpi analytics-kpi-card tickets-card">
           <div className="kpi-icon-wrap" style={{ background: 'rgba(245, 158, 11, 0.1)', color: '#d97706' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
-              <path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" />
-            </svg>
+            <Icon name="ticket" size="lg" ariaHidden />
           </div>
           <span className="muted text-xs font-semibold uppercase tracking-wider">Tiến Độ Phát Hành Vé</span>
           <strong className="text-2xl font-bold">{totalTicketsSold} / {totalCapacity} vé</strong>
@@ -338,12 +329,7 @@ export const EventAnalyticsDashboard = ({
         {/* 4. Khách Mời & Người Tham Dự */}
         <article className="card kpi analytics-kpi-card attendees-card">
           <div className="kpi-icon-wrap" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
+            <Icon name="users" size="lg" ariaHidden />
           </div>
           <span className="muted text-xs font-semibold uppercase tracking-wider">Khách Tham Dự Hợp Lệ</span>
           <strong className="text-2xl font-bold text-primary">
@@ -359,7 +345,10 @@ export const EventAnalyticsDashboard = ({
       {/* Control Toolbar: Time Filter & Refresh */}
       <div className="card analytics-control-bar flex justify-between items-center flex-wrap gap-sm p-sm">
         <div className="flex items-center gap-xs">
-          <span className="font-bold text-sm mr-xs">⏱️ Khoảng thời gian:</span>
+          <span className="font-bold text-sm mr-xs flex items-center gap-1">
+            <Icon name="clock" size="xs" ariaHidden />
+            <span>Khoảng thời gian:</span>
+          </span>
           <button
             type="button"
             className={`btn btn-xs ${timeRange === '7' ? 'btn-primary' : 'btn-secondary'}`}
@@ -397,12 +386,7 @@ export const EventAnalyticsDashboard = ({
             onClick={onRefresh}
             title="Làm mới dữ liệu thống kê"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-              <path d="M16 21h5v-5" />
-            </svg>
+            <Icon name="refresh" size="xs" ariaHidden />
             <span>Cập nhật</span>
           </button>
         )}
@@ -416,7 +400,10 @@ export const EventAnalyticsDashboard = ({
           <div>
             <div className="flex items-center gap-xs">
               <span className="chart-badge line-chart-badge">Biểu đồ đường</span>
-              <h3 className="panel-title m-0">📈 Số Lượt Mua Theo Thời Gian (Theo Ngày)</h3>
+              <h2 className="panel-title m-0 flex items-center gap-1.5 text-base">
+                <Icon name="trending-up" size="sm" ariaHidden className="text-primary" />
+                <span>Số Lượt Mua Theo Thời Gian (Theo Ngày)</span>
+              </h2>
             </div>
             <p className="muted text-xs mt-01 mb-0">
               Biểu diễn số lượng giao dịch và lượt mua vé phát sinh theo từng mốc thời gian ngày
@@ -561,7 +548,10 @@ export const EventAnalyticsDashboard = ({
           <div>
             <div className="flex items-center gap-xs">
               <span className="chart-badge bar-chart-badge">Biểu đồ cột</span>
-              <h3 className="panel-title m-0">📊 Số Lượng Loại Vé Theo Ngày</h3>
+              <h2 className="panel-title m-0 flex items-center gap-1.5 text-base">
+                <Icon name="chart" size="sm" ariaHidden className="text-primary" />
+                <span>Số Lượng Loại Vé Theo Ngày</span>
+              </h2>
             </div>
             <p className="muted text-xs mt-01 mb-0">
               So sánh cơ cấu tiêu thụ giữa các hạng vé (VIP, Standard, Early Bird...) theo từng ngày
@@ -723,7 +713,10 @@ export const EventAnalyticsDashboard = ({
       <section className="card">
         <div className="toolbar toolbar-row-flex mb-md">
           <div>
-            <h3 className="panel-title m-0">📋 Bảng Thống Kê Chi Tiết Số Liệu Theo Ngày</h3>
+            <h2 className="panel-title m-0 flex items-center gap-1.5 text-base">
+              <Icon name="table" size="sm" ariaHidden className="text-primary" />
+              <span>Bảng Thống Kê Chi Tiết Số Liệu Theo Ngày</span>
+            </h2>
             <p className="muted text-xs m-0">
               Bảng tra cứu số lượt mua, doanh thu và số lượng từng loại vé phát hành theo từng ngày
             </p>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDate } from '../../utils/display';
 import { StatusBadge } from '../common/StatusBadge';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { Icon } from '../ui/Icon';
 
 export const OrganizerEventsTab = ({
   events = [],
@@ -52,6 +53,7 @@ export const OrganizerEventsTab = ({
             className="input input-sm"
             style={{ width: '260px' }}
             placeholder="Tìm theo tên, thể loại, địa điểm..."
+            aria-label="Tìm kiếm sự kiện theo tên, thể loại hoặc địa điểm"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -98,8 +100,8 @@ export const OrganizerEventsTab = ({
                   <div
                     className="event-cover"
                     style={{ cursor: 'pointer' }}
-                    onClick={() => onSelectEvent(String(ev.id), 'event-dashboard')}
-                    title="Mở bảng điều khiển sự kiện"
+                    onClick={() => onSelectEvent(String(ev.id))}
+                    title="Xem chi tiết sự kiện"
                   >
                     {ev.cover || ev.banner ? (
                       <img
@@ -122,8 +124,8 @@ export const OrganizerEventsTab = ({
                   <div className="event-card-body">
                     <h3
                       style={{ cursor: 'pointer' }}
-                      onClick={() => onSelectEvent(String(ev.id), 'event-dashboard')}
-                      title="Mở bảng điều khiển sự kiện"
+                      onClick={() => onSelectEvent(String(ev.id))}
+                      title="Xem chi tiết sự kiện"
                     >
                       {ev.title}
                     </h3>
@@ -144,26 +146,30 @@ export const OrganizerEventsTab = ({
                     <div className="event-card-footer mt-md flex justify-between items-center gap-xs">
                       <button
                         type="button"
-                        className="btn btn-primary btn-sm flex-1"
-                        onClick={() => onSelectEvent(String(ev.id), 'event-dashboard')}
+                        className="btn btn-primary btn-sm flex-1 flex items-center justify-center gap-1"
+                        onClick={() => onSelectEvent(String(ev.id))}
+                        title="Xem chi tiết sự kiện"
                       >
-                        Quản lý
+                        <Icon name="eye" size="xs" ariaHidden />
+                        <span>Chi tiết sự kiện</span>
                       </button>
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-secondary btn-sm flex items-center justify-center gap-1"
                         onClick={() => onEditEvent(ev)}
                         title="Chỉnh sửa thông tin sự kiện"
                       >
-                        Sửa
+                        <Icon name="edit" size="xs" ariaHidden />
+                        <span>Sửa</span>
                       </button>
                       <button
                         type="button"
-                        className="btn btn-danger btn-sm"
+                        className="btn btn-danger btn-sm flex items-center justify-center gap-1"
                         onClick={() => setDeleteTarget(ev)}
                         title="Xóa sự kiện"
                       >
-                        Xóa
+                        <Icon name="trash" size="xs" ariaHidden />
+                        <span>Xóa</span>
                       </button>
                     </div>
                   </div>

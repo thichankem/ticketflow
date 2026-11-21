@@ -1,6 +1,20 @@
 import ordersService from '../services/orders.service.js';
 import eventsService from '../services/events.service.js';
 
+function extractSessionToken(req) {
+  return (
+    req.headers['x-order-token'] ||
+    req.headers['x-session-token'] ||
+    req.headers['x-guest-token'] ||
+    req.cookies?.order_session_token ||
+    req.body?.order_token ||
+    req.body?.session_token ||
+    req.body?.guest_session_token ||
+    req.query?.token ||
+    null
+  );
+}
+
 class OrdersController {
   async reserve(req, res, next) {
     try {
@@ -14,6 +28,14 @@ class OrdersController {
         user: req.user,
         queueToken,
       });
+      if (result.session_token) {
+        res.cookie('order_session_token', result.session_token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 15 * 60 * 1000,
+        });
+      }
       return res.status(201).json(result);
     } catch (err) {
       next(err);
@@ -23,7 +45,7 @@ class OrdersController {
   async getById(req, res, next) {
     try {
       const { id } = req.params;
-      const sessionToken = req.headers['x-order-token'] || req.query.token;
+      const sessionToken = extractSessionToken(req);
       const order = await ordersService.getOrderById(id, req.user, sessionToken);
       return res.status(200).json({ order });
     } catch (err) {
@@ -34,8 +56,8 @@ class OrdersController {
   async checkout(req, res, next) {
     try {
       const { id } = req.params;
-      const { buyer, attendees, payment_method, payment_intent_id, order_token } = req.body;
-      const sessionToken = req.headers['x-order-token'] || order_token;
+      const { buyer, attendees, payment_method, payment_intent_id } = req.body;
+      const sessionToken = extractSessionToken(req);
       const result = await ordersService.checkoutOrder(id, {
         buyer,
         attendees,
@@ -53,7 +75,7 @@ class OrdersController {
   async cancel(req, res, next) {
     try {
       const { id } = req.params;
-      const sessionToken = req.headers['x-order-token'] || req.query.token || req.body?.order_token;
+      const sessionToken = extractSessionToken(req);
       const result = await ordersService.cancelOrder(id, req.user, sessionToken);
       return res.status(200).json(result);
     } catch (err) {
@@ -120,7 +142,13 @@ class OrdersController {
   async refund(req, res, next) {
     try {
       const { id } = req.params;
-      const result = await ordersService.refundOrder(id, req.user);
+      const sessionToken = extractSessionToken(req);
+      const reason = req.body?.reason || 'Customer requested refund';
+      const idempotencyKey = req.headers['idempotency-key'] || req.body?.idempotency_key || null;
+      const result = await ordersService.refundOrder(id, req.user, reason, {
+        sessionToken,
+        idempotencyKey,
+      });
       return res.status(200).json(result);
     } catch (err) {
       next(err);
@@ -130,12 +158,100 @@ class OrdersController {
   async processPayment(req, res, next) {
     try {
       const { id } = req.params;
-      const { gateway, payment_method } = req.body;
+      const gateway = req.body?.gateway || req.query?.gateway || 'VNPAY';
+      const payment_method = req.body?.payment_method || req.query?.payment_method;
+      const sessionToken = extractSessionToken(req);
       const result = await ordersService.processPayment(id, {
         gateway,
         payment_method,
         user: req.user,
+        sessionToken,
+        ipAddr: req.ip || req.connection?.remoteAddress || '127.0.0.1',
       });
+      return res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async getPaymentStatus(req, res, next) {
+    try {
+      const { id } = req.params;
+      const sessionToken = extractSessionToken(req);
+      const order = await ordersService.getOrderById(id, req.user, sessionToken);
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      return res.status(200).json({
+        id: order.id,
+        status: order.status,
+        payment_status: order.payment_status,
+        payment_gateway: order.payment_gateway,
+        total: order.total_gross || order.total,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async vnpayCallback(req, res, next) {
+    try {
+      const queryParams = req.query;
+      const { gatewayAdapter } = await import('../services/payment.service.js');
+      const isValid = gatewayAdapter.verifyVNPaySignature(queryParams);
+      if (!isValid) {
+        return res.status(400).json({ success: false, message: 'Invalid VNPay checksum signature' });
+      }
+
+      const orderRef = queryParams['vnp_TxnRef'];
+      const responseCode = queryParams['vnp_ResponseCode'];
+      const transactionStatus = queryParams['vnp_TransactionStatus'];
+      const tmnCode = queryParams['vnp_TmnCode'];
+      const rawAmount = queryParams['vnp_Amount'];
+      const txnNo = queryParams['vnp_TransactionNo'] || null;
+      const payDate = queryParams['vnp_PayDate'] || null;
+      const bankCode = queryParams['vnp_BankCode'] || null;
+      const amount = Number(rawAmount) / 100;
+
+      // V10-P0-01: Fail-closed verification of mandatory callback parameters.
+      // Mandatory: orderRef, tmnCode, rawAmount (>0), txnNo, responseCode, transactionStatus.
+      const hasMandatoryFields = Boolean(
+        orderRef &&
+        tmnCode &&
+        rawAmount !== undefined &&
+        rawAmount !== null &&
+        rawAmount !== '' &&
+        !isNaN(Number(rawAmount)) &&
+        Number(rawAmount) > 0 &&
+        txnNo &&
+        responseCode &&
+        transactionStatus
+      );
+
+      // Require explicit '00' for BOTH responseCode and transactionStatus
+      const isSuccess = hasMandatoryFields && responseCode === '00' && transactionStatus === '00';
+      const status = isSuccess ? 'SUCCESS' : 'FAILED';
+
+      const payload = `${orderRef}|${status}|${amount}|${txnNo || ''}`;
+      const signature = gatewayAdapter.signWebhookPayload(payload);
+
+      const result = await ordersService.handlePaymentWebhook({
+        order_public_id: orderRef,
+        payment_intent_id: txnNo,
+        payment_method: 'VNPAY',
+        amount_paid: amount,
+        signature,
+        status,
+        vnp_pay_date: payDate,
+        vnp_bank_code: bankCode,
+        vnp_txn_ref: orderRef,
+        vnp_response_code: responseCode,
+        vnp_transaction_status: transactionStatus,
+      });
+
+      if (req.accepts('html')) {
+        return res.redirect(`/orders/${orderRef}/receipt?payment_status=${status}`);
+      }
       return res.status(200).json(result);
     } catch (err) {
       next(err);
@@ -144,7 +260,19 @@ class OrdersController {
 
   async paymentWebhook(req, res, next) {
     try {
-      const { order_id, order_public_id, payment_intent_id, payment_method, amount_paid, status } = req.body;
+      const {
+        order_id,
+        order_public_id,
+        payment_intent_id,
+        payment_method,
+        amount_paid,
+        status,
+        vnp_pay_date,
+        vnp_bank_code,
+        vnp_txn_ref,
+        vnp_response_code,
+        vnp_transaction_status,
+      } = req.body;
       const signature = req.headers['x-signature'] || req.body.signature;
       const result = await ordersService.handlePaymentWebhook({
         order_id,
@@ -154,6 +282,11 @@ class OrdersController {
         amount_paid,
         signature,
         status,
+        vnp_pay_date,
+        vnp_bank_code,
+        vnp_txn_ref,
+        vnp_response_code,
+        vnp_transaction_status,
       });
       return res.status(200).json(result);
     } catch (err) {
@@ -164,26 +297,12 @@ class OrdersController {
   async getReceipt(req, res, next) {
     try {
       const { id } = req.params;
-      const receipt = await ordersService.getDigitalReceipt(id, { user: req.user });
+      const sessionToken = extractSessionToken(req);
+      const receipt = await ordersService.getDigitalReceipt(id, { user: req.user, sessionSecret: sessionToken });
       return res.status(200).json({
         receipt,
         order: receipt.order || receipt,
       });
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async transferTicket(req, res, next) {
-    try {
-      const { attendeeId } = req.params;
-      const { new_email, target_email, new_name, recipient_name } = req.body || {};
-      const result = await ordersService.transferTicket(attendeeId, {
-        new_email: new_email || target_email,
-        new_name: new_name || recipient_name,
-        user: req.user,
-      });
-      return res.status(200).json(result);
     } catch (err) {
       next(err);
     }

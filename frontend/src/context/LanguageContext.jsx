@@ -29,8 +29,8 @@ export const DICTIONARY = {
   'role.admin_sub': 'Quản Trị Viên',
   'role.session': 'Phiên:',
   'role.switching': 'Đang đổi phiên...',
-  'role.expand': '▼ Mở rộng',
-  'role.collapse': '▲ Thu gọn',
+  'role.expand': 'Mở rộng',
+  'role.collapse': 'Thu gọn',
 
   // Common Actions
   'action.search': 'Tìm kiếm',
@@ -160,12 +160,12 @@ export const DICTIONARY = {
   'tickets.page_title': 'Vé của tôi',
   'tickets.page_subtitle': '',
   'tickets.tab_active': 'Vé Sắp Diễn Ra',
-  'tickets.tab_history': 'Lịch Sử / Đã Hoàn',
+  'tickets.tab_history': 'Lịch Sử Mua Hàng',
+  'mytickets.tab_history': 'Lịch Sử Mua Hàng',
   'tickets.search_placeholder': 'Tìm theo mã đơn, sự kiện, người tham dự...',
   'tickets.empty': 'Bạn chưa có vé nào trong mục này.',
   'tickets.btn_view_receipt': 'Biên lai',
   'tickets.btn_refund': 'Hủy vé',
-  'tickets.btn_transfer': 'Chuyển nhượng',
 
   // Auth Pages
   'auth.login_title': 'Đăng Nhập',

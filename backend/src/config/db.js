@@ -252,7 +252,7 @@ export const releaseTickets = async (client, items) => {
 
     const restoreSql = `
       UPDATE ticket_tiers
-      SET remaining_quantity = remaining_quantity + $1
+      SET remaining_quantity = LEAST(initial_quantity, remaining_quantity + $1)
       WHERE id = $2
       RETURNING id, remaining_quantity;
     `;

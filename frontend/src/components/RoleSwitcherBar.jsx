@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { Icon } from './ui/Icon';
 
 export const RoleSwitcherBar = () => {
   const navigate = useNavigate();
@@ -116,7 +117,7 @@ export const RoleSwitcherBar = () => {
             title={collapsed ? t('role.expand', 'Mở rộng') : t('role.collapse', 'Thu gọn')}
             aria-label={collapsed ? 'Mở rộng thanh vai trò' : 'Thu gọn thanh vai trò'}
           >
-            {collapsed ? '▼' : '▲'}
+            <Icon name={collapsed ? 'chevron-down' : 'chevron-up'} size="sm" ariaHidden />
           </button>
         </div>
       </div>

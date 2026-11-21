@@ -29,8 +29,8 @@ export const CreateEventPage = () => {
 
   return (
     <div className="container py-lg max-w-4xl mx-auto">
-      <div className="flex justify-between items-center mb-md">
-        <Link to="/organizer" className="btn btn-secondary btn-sm flex items-center gap-xs">
+      <div className="flex justify-between items-center flex-wrap gap-sm mb-md">
+        <Link to="/organizer" className="btn btn-secondary btn-sm inline-flex items-center gap-xs">
           ← {t('common.back', 'Quay lại Studio')}
         </Link>
         <span className="badge badge-primary font-semibold">Khởi tạo sự kiện mới</span>

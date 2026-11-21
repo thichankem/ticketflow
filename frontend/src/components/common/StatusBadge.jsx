@@ -46,14 +46,6 @@ export const StatusBadge = ({ status, type = 'default' }) => {
       badgeClass = 'badge-danger';
       label = 'Đã hủy';
       break;
-    case 'CHECKED_IN':
-      badgeClass = 'badge-info';
-      label = 'Đã check-in';
-      break;
-    case 'TRANSFERRED':
-      badgeClass = 'badge-warning';
-      label = 'Đã chuyển nhượng';
-      break;
     case 'RESERVED':
       badgeClass = 'badge-primary';
       label = 'Đang giữ chỗ';

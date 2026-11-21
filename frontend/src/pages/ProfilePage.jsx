@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import AttendeeLayout from '../components/AttendeeLayout';
 import OrganizerLayout from '../components/OrganizerLayout';
 import AdminLayout from '../components/AdminLayout';
+import { Icon } from '../components/ui/Icon';
 
 export const ProfilePage = () => {
   const { user, isAuthenticated, loading: authLoading, updateProfile, changePassword, logout } = useAuth();
@@ -15,9 +16,12 @@ export const ProfilePage = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [phoneError, setPhoneError] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSuccess, setProfileSuccess] = useState(null);
   const [profileError, setProfileError] = useState(null);
+
+  const VN_PHONE_REGEX = /^(0|\+84)(3|5|7|8|9)[0-9]{8}$/;
 
   // Change Password Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -64,6 +68,7 @@ export const ProfilePage = () => {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+    if (profileLoading) return;
     setProfileError(null);
     setProfileSuccess(null);
 
@@ -76,12 +81,19 @@ export const ProfilePage = () => {
       return;
     }
 
+    const cleanPhone = phone.trim().replace(/[\s.-]+/g, '');
+    if (cleanPhone && !VN_PHONE_REGEX.test(cleanPhone)) {
+      setPhoneError('Số điện thoại không hợp lệ. Vui lòng nhập số di động Việt Nam (ví dụ: 0901234567 hoặc +84901234567).');
+      return;
+    }
+    setPhoneError(null);
+
     try {
       setProfileLoading(true);
       const res = await updateProfile({
         name: name.trim(),
         email: email.trim(),
-        phone: phone.trim(),
+        phone: cleanPhone,
       });
       setProfileSuccess(res?.message || t('profile.update_success', 'Cập nhật thông tin hồ sơ thành công!'));
     } catch (err) {
@@ -96,6 +108,7 @@ export const ProfilePage = () => {
       setName(user.name || '');
       setEmail(user.email || '');
       setPhone(user.phone || '');
+      setPhoneError(null);
       setProfileError(null);
       setProfileSuccess(null);
     }
@@ -190,25 +203,24 @@ export const ProfilePage = () => {
           {/* Card 1: Thông tin cá nhân (Tên, Email, SĐT) */}
           <div className="card profile-card">
             <div className="profile-card-header">
-              <h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                {t('profile.personal_info', 'Thông Tin Cá Nhân')}
+              <h2 className="flex items-center gap-2">
+                <Icon name="user" size="md" ariaHidden className="text-primary" />
+                <span>{t('profile.personal_info', 'Thông Tin Cá Nhân')}</span>
               </h2>
               <p>Cập nhật họ tên, địa chỉ email và số điện thoại liên hệ nhận vé</p>
             </div>
 
             {profileSuccess && (
-              <div className="alert alert-success" role="alert" style={{ marginBottom: '1rem' }}>
-                ✓ {profileSuccess}
+              <div className="alert alert-success flex items-center gap-2" role="alert" style={{ marginBottom: '1rem' }}>
+                <Icon name="check" size="xs" ariaHidden />
+                <span>{profileSuccess}</span>
               </div>
             )}
 
             {profileError && (
-              <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
-                ✕ {profileError}
+              <div className="alert alert-error flex items-center gap-2" role="alert" style={{ marginBottom: '1rem' }}>
+                <Icon name="alert-circle" size="xs" ariaHidden />
+                <span>{profileError}</span>
               </div>
             )}
 
@@ -249,11 +261,34 @@ export const ProfilePage = () => {
                 <input
                   id="profile-phone"
                   type="tel"
-                  className="input"
+                  className={`input ${phoneError ? 'input-error' : ''}`}
+                  aria-invalid={!!phoneError}
+                  aria-describedby={phoneError ? 'profile-phone-error' : undefined}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (phoneError) {
+                      const cleaned = e.target.value.trim().replace(/[\s.-]+/g, '');
+                      if (!cleaned || VN_PHONE_REGEX.test(cleaned)) {
+                        setPhoneError(null);
+                      }
+                    }
+                  }}
+                  onBlur={() => {
+                    const cleaned = phone.trim().replace(/[\s.-]+/g, '');
+                    if (cleaned && !VN_PHONE_REGEX.test(cleaned)) {
+                      setPhoneError('Số điện thoại không hợp lệ. Vui lòng nhập số di động Việt Nam (ví dụ: 0901234567 hoặc +84901234567).');
+                    } else {
+                      setPhoneError(null);
+                    }
+                  }}
                   placeholder={t('profile.phone_placeholder', 'Ví dụ: 0901234567')}
                 />
+                {phoneError && (
+                  <span id="profile-phone-error" className="form-error text-danger" style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.85rem' }}>
+                    {phoneError}
+                  </span>
+                )}
                 <small className="muted" style={{ display: 'block', marginTop: '0.25rem', fontSize: '0.78rem' }}>
                   Dùng để liên hệ khẩn cấp hoặc gửi thông báo sự kiện quan trọng.
                 </small>
@@ -295,25 +330,24 @@ export const ProfilePage = () => {
           {/* Card 2: Đổi Mật Khẩu */}
           <div className="card profile-card">
             <div className="profile-card-header">
-              <h2>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                </svg>
-                {t('profile.security_info', 'Đổi Mật Khẩu Bảo Mật')}
+              <h2 className="flex items-center gap-2">
+                <Icon name="lock" size="md" ariaHidden className="text-primary" />
+                <span>{t('profile.security_info', 'Đổi Mật Khẩu Bảo Mật')}</span>
               </h2>
               <p>Bảo vệ tài khoản bằng mật khẩu an toàn có độ dài tối thiểu 8 ký tự</p>
             </div>
 
             {passwordSuccess && (
-              <div className="alert alert-success" role="alert" style={{ marginBottom: '1rem' }}>
-                ✓ {passwordSuccess}
+              <div className="alert alert-success flex items-center gap-2" role="alert" style={{ marginBottom: '1rem' }}>
+                <Icon name="check" size="xs" ariaHidden />
+                <span>{passwordSuccess}</span>
               </div>
             )}
 
             {passwordError && (
-              <div className="alert alert-error" role="alert" style={{ marginBottom: '1rem' }}>
-                ✕ {passwordError}
+              <div className="alert alert-error flex items-center gap-2" role="alert" style={{ marginBottom: '1rem' }}>
+                <Icon name="alert-circle" size="xs" ariaHidden />
+                <span>{passwordError}</span>
               </div>
             )}
 
@@ -333,12 +367,12 @@ export const ProfilePage = () => {
                   />
                   <button
                     type="button"
-                    className="password-toggle-btn"
+                    className="password-toggle-btn flex items-center justify-center"
                     onClick={() => setShowCurrentPw(!showCurrentPw)}
                     aria-pressed={showCurrentPw}
                     aria-label={showCurrentPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showCurrentPw ? '👁️' : '👁️‍🗨️'}
+                    <Icon name={showCurrentPw ? 'eye-off' : 'eye'} size="sm" ariaHidden />
                   </button>
                 </div>
               </div>
@@ -358,12 +392,12 @@ export const ProfilePage = () => {
                   />
                   <button
                     type="button"
-                    className="password-toggle-btn"
+                    className="password-toggle-btn flex items-center justify-center"
                     onClick={() => setShowNewPw(!showNewPw)}
                     aria-pressed={showNewPw}
                     aria-label={showNewPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showNewPw ? '👁️' : '👁️‍🗨️'}
+                    <Icon name={showNewPw ? 'eye-off' : 'eye'} size="sm" ariaHidden />
                   </button>
                 </div>
               </div>
@@ -383,28 +417,28 @@ export const ProfilePage = () => {
                   />
                   <button
                     type="button"
-                    className="password-toggle-btn"
+                    className="password-toggle-btn flex items-center justify-center"
                     onClick={() => setShowConfirmPw(!showConfirmPw)}
                     aria-pressed={showConfirmPw}
                     aria-label={showConfirmPw ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                   >
-                    {showConfirmPw ? '👁️' : '👁️‍🗨️'}
+                    <Icon name={showConfirmPw ? 'eye-off' : 'eye'} size="sm" ariaHidden />
                   </button>
                 </div>
               </div>
 
               {/* Password Requirement Checklist */}
               <ul className="pw-requirements-list">
-                <li className={`pw-req-item ${hasMinLength ? 'is-valid' : ''}`}>
-                  <span>{hasMinLength ? '✓' : '○'}</span>
+                <li className={`pw-req-item flex items-center gap-2 ${hasMinLength ? 'is-valid' : ''}`}>
+                  <Icon name={hasMinLength ? 'check-circle' : 'circle'} size="xs" ariaHidden className={hasMinLength ? 'text-success' : 'text-muted'} />
                   <span>Độ dài tối thiểu 8 ký tự</span>
                 </li>
-                <li className={`pw-req-item ${hasLetterAndNumber ? 'is-valid' : ''}`}>
-                  <span>{hasLetterAndNumber ? '✓' : '○'}</span>
+                <li className={`pw-req-item flex items-center gap-2 ${hasLetterAndNumber ? 'is-valid' : ''}`}>
+                  <Icon name={hasLetterAndNumber ? 'check-circle' : 'circle'} size="xs" ariaHidden className={hasLetterAndNumber ? 'text-success' : 'text-muted'} />
                   <span>Bao gồm cả chữ cái và chữ số</span>
                 </li>
-                <li className={`pw-req-item ${passwordsMatch ? 'is-valid' : ''}`}>
-                  <span>{passwordsMatch ? '✓' : '○'}</span>
+                <li className={`pw-req-item flex items-center gap-2 ${passwordsMatch ? 'is-valid' : ''}`}>
+                  <Icon name={passwordsMatch ? 'check-circle' : 'circle'} size="xs" ariaHidden className={passwordsMatch ? 'text-success' : 'text-muted'} />
                   <span>Hai mật khẩu mới trùng khớp</span>
                 </li>
               </ul>
@@ -431,10 +465,7 @@ export const ProfilePage = () => {
           <div className="quick-links-grid">
             <Link to="/my-tickets" className="quick-link-card">
               <div className="quick-link-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
-                  <path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" />
-                </svg>
+                <Icon name="ticket" size="md" ariaHidden />
               </div>
               <div className="quick-link-info">
                 <h3>{t('nav.my_tickets', 'Vé Của Tôi')}</h3>
@@ -444,10 +475,7 @@ export const ProfilePage = () => {
 
             <Link to="/notifications" className="quick-link-card">
               <div className="quick-link-icon" style={{ color: '#0f766e', background: 'rgba(15, 118, 110, 0.1)' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
-                  <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
-                </svg>
+                <Icon name="bell" size="md" ariaHidden />
               </div>
               <div className="quick-link-info">
                 <h3>{t('nav.notifications', 'Hộp Thư & Thông Báo')}</h3>
@@ -457,12 +485,7 @@ export const ProfilePage = () => {
 
             <Link to="/events" className="quick-link-card">
               <div className="quick-link-icon">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-                  <line x1="16" x2="16" y1="2" y2="6" />
-                  <line x1="8" x2="8" y1="2" y2="6" />
-                  <line x1="3" x2="21" y1="10" y2="10" />
-                </svg>
+                <Icon name="calendar" size="md" ariaHidden />
               </div>
               <div className="quick-link-info">
                 <h3>{t('nav.explore', 'Khám Phá Sự Kiện')}</h3>
@@ -473,10 +496,7 @@ export const ProfilePage = () => {
             {user.role === 'ORGANIZER' && (
               <Link to="/organizer" className="quick-link-card">
                 <div className="quick-link-icon" style={{ color: '#7c3aed', background: 'rgba(124, 58, 237, 0.1)' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <rect width="18" height="18" x="3" y="3" rx="2" />
-                    <path d="M3 9h18" /><path d="M9 21V9" />
-                  </svg>
+                  <Icon name="studio" size="md" ariaHidden />
                 </div>
                 <div className="quick-link-info">
                   <h3>{t('nav.organizer_studio', 'Studio Ban Tổ Chức')}</h3>
@@ -488,9 +508,7 @@ export const ProfilePage = () => {
             {user.role === 'ADMIN' && (
               <Link to="/admin" className="quick-link-card">
                 <div className="quick-link-icon" style={{ color: '#ea580c', background: 'rgba(234, 88, 12, 0.1)' }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
+                  <Icon name="shield" size="md" ariaHidden />
                 </div>
                 <div className="quick-link-info">
                   <h3>{t('nav.admin_console', 'Bảng Điều Hành')}</h3>

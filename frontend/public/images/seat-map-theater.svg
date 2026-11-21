@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520" width="100%" height="100%" fill="none">
+  <defs>
+    <linearGradient id="stageGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0f766e" />
+      <stop offset="50%" stop-color="#14b8a6" />
+      <stop offset="100%" stop-color="#0f766e" />
+    </linearGradient>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="800" height="520" rx="20" fill="url(#bgGrad)" />
+  <rect x="1" y="1" width="798" height="518" rx="19" stroke="#334155" stroke-width="1.5" stroke-dasharray="6 4" />
+
+  <!-- Stage Arc & Banner -->
+  <path d="M 160 90 Q 400 30 640 90 L 620 120 Q 400 70 180 120 Z" fill="url(#stageGrad)" filter="url(#glow)" opacity="0.9" />
+  <text x="400" y="80" text-anchor="middle" fill="#ffffff" font-family="system-ui, sans-serif" font-size="14" font-weight="800" letter-spacing="3">SÂN KHẤU CHÍNH · MAIN STAGE</text>
+  <line x1="220" y1="135" x2="580" y2="135" stroke="#14b8a6" stroke-width="1.5" opacity="0.4" stroke-dasharray="4 4" />
+
+  <!-- VIP Section (Row A) -->
+  <g id="row-vip">
+    <text x="70" y="182" fill="#fbbf24" font-family="system-ui, sans-serif" font-size="12" font-weight="700">HÀNG A (VIP)</text>
+    <rect x="160" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="202" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="244" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="286" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="340" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="382" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="424" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="478" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="520" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="562" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <rect x="604" y="165" width="34" height="26" rx="6" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+  </g>
+
+  <!-- Standard Section (Row B) -->
+  <g id="row-b">
+    <text x="70" y="227" fill="#2dd4bf" font-family="system-ui, sans-serif" font-size="12" font-weight="700">HÀNG B (TIÊU CHUẨN)</text>
+    <rect x="160" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="202" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="244" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="286" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="340" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="382" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="424" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="478" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="520" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="562" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="604" y="210" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+  </g>
+
+  <!-- Standard Section (Row C) -->
+  <g id="row-c">
+    <text x="70" y="272" fill="#2dd4bf" font-family="system-ui, sans-serif" font-size="12" font-weight="700">HÀNG C (TIÊU CHUẨN)</text>
+    <rect x="160" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="202" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="244" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="286" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="340" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="382" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="424" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="478" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="520" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="562" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <rect x="604" y="255" width="34" height="26" rx="6" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+  </g>
+
+  <!-- Balcony Section (Row D) -->
+  <g id="row-d">
+    <text x="70" y="317" fill="#818cf8" font-family="system-ui, sans-serif" font-size="12" font-weight="700">HÀNG D (BAN CÔNG)</text>
+    <rect x="160" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="202" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="244" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="286" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="340" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="382" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="424" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="478" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="520" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="562" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <rect x="604" y="300" width="34" height="26" rx="6" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+  </g>
+
+  <!-- Divider -->
+  <line x1="80" y1="360" x2="720" y2="360" stroke="#334155" stroke-width="1" />
+
+  <!-- Legend & Contiguous Seating Info -->
+  <g id="legend" transform="translate(80, 390)">
+    <!-- Legend item 1 -->
+    <rect x="0" y="0" width="20" height="20" rx="4" fill="#f59e0b" stroke="#fbbf24" stroke-width="1.5" />
+    <text x="28" y="15" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="12">Khu VIP Vàng</text>
+
+    <!-- Legend item 2 -->
+    <rect x="160" y="0" width="20" height="20" rx="4" fill="#0d9488" stroke="#2dd4bf" stroke-width="1.5" />
+    <text x="188" y="15" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="12">Khu Tiêu chuẩn</text>
+
+    <!-- Legend item 3 -->
+    <rect x="340" y="0" width="20" height="20" rx="4" fill="#4f46e5" stroke="#818cf8" stroke-width="1.5" />
+    <text x="368" y="15" fill="#e2e8f0" font-family="system-ui, sans-serif" font-size="12">Khu Ban công</text>
+
+    <!-- Automated Contiguous badge -->
+    <g transform="translate(0, 40)">
+      <circle cx="8" cy="8" r="6" fill="#10b981" />
+      <text x="24" y="12" fill="#94a3b8" font-family="system-ui, sans-serif" font-size="12">
+        Thuật toán Auto-allocation tự động gán vị trí ghế liên tiếp (Contiguous Seating) theo thứ tự hàng &amp; số ghế khi thanh toán.
+      </text>
+    </g>
+  </g>
+</svg>

@@ -32,7 +32,7 @@ class OrdersService {
   async cleanupExpiredReservations() {
     try {
       const res = await query(
-        "SELECT id, event_id, promo_code FROM orders WHERE status = 'RESERVED' AND reserved_until < NOW()"
+        "SELECT id, event_id, promo_code FROM orders WHERE (status = 'RESERVED' OR status = 'PENDING_PAYMENT') AND reserved_until < NOW()"
       );
       if (res.rows && res.rows.length > 0) {
         for (const row of res.rows) {
@@ -41,19 +41,24 @@ class OrdersService {
 
           await withTransaction(async (client) => {
             const lockRes = await client.query(
-              "SELECT id, status FROM orders WHERE id = $1 AND status = 'RESERVED' FOR UPDATE",
+              "SELECT id, status, inventory_released_at FROM orders WHERE id = $1 AND (status = 'RESERVED' OR status = 'PENDING_PAYMENT') FOR UPDATE",
               [numOrderId]
             );
             if (lockRes.rowCount === 0) return;
 
-            const itemsRes = await client.query(
-              'SELECT ticket_tier_id, quantity FROM order_items WHERE order_id = $1',
-              [numOrderId]
-            );
-            if (itemsRes.rows && itemsRes.rows.length > 0) {
-              await releaseTickets(client, itemsRes.rows);
+            const alreadyReleased = Boolean(lockRes.rows[0].inventory_released_at);
+            if (!alreadyReleased) {
+              const itemsRes = await client.query(
+                'SELECT ticket_tier_id, quantity FROM order_items WHERE order_id = $1',
+                [numOrderId]
+              );
+              if (itemsRes.rows && itemsRes.rows.length > 0) {
+                await releaseTickets(client, itemsRes.rows);
+              }
             }
-            await client.query("UPDATE orders SET status = 'EXPIRED', updated_at = NOW() WHERE id = $1", [numOrderId]);
+            // Cancel any attendees created in PENDING state
+            await client.query("UPDATE attendees SET status = 'CANCELLED', updated_at = NOW() WHERE order_id = $1", [numOrderId]);
+            await client.query("UPDATE orders SET status = 'EXPIRED', inventory_released_at = COALESCE(inventory_released_at, NOW()), updated_at = NOW() WHERE id = $1", [numOrderId]);
           });
 
           await seatingService.releaseSeats(numEventId, numOrderId);
@@ -64,17 +69,25 @@ class OrdersService {
           const memOrder = memoryOrders.get(numOrderId);
           if (memOrder) {
             memOrder.status = 'EXPIRED';
+            if (memOrder.attendees && Array.isArray(memOrder.attendees)) {
+              for (const a of memOrder.attendees) a.status = 'CANCELLED';
+            }
           }
           notificationsService.triggerRestockNotification(numEventId).catch(() => {});
         }
       }
-    } catch {}
+    } catch (err) {
+      console.warn('[cleanupExpiredReservations] Cleanup error:', err.message);
+    }
 
     const nowMs = Date.now();
     for (const memOrder of memoryOrders.values()) {
-      if (memOrder.status === 'RESERVED' && memOrder.expires_at) {
+      if ((memOrder.status === 'RESERVED' || memOrder.status === 'PENDING_PAYMENT') && memOrder.expires_at) {
         if (nowMs > new Date(memOrder.expires_at).getTime()) {
           memOrder.status = 'EXPIRED';
+          if (memOrder.attendees && Array.isArray(memOrder.attendees)) {
+            for (const a of memOrder.attendees) a.status = 'CANCELLED';
+          }
           if (memOrder.items && Array.isArray(memOrder.items)) {
             for (const item of memOrder.items) {
               const memTier = ticketsService.getMemoryTier(item.ticket_tier_id);
@@ -104,6 +117,19 @@ class OrdersService {
       throw err;
     }
 
+    // Event Lifecycle & Sales Window Verification (TF-P1-07)
+    const eventStatus = (event.status || '').toUpperCase();
+    if (eventStatus !== 'PUBLISHED' && eventStatus !== 'LIVE') {
+      const err = new Error(`Sự kiện hiện không mở bán vé (trạng thái: ${eventStatus || 'DRAFT'})`);
+      err.statusCode = 400;
+      throw err;
+    }
+    if (event.end_date && new Date(event.end_date).getTime() < Date.now()) {
+      const err = new Error('Sự kiện đã kết thúc, không thể đặt vé');
+      err.statusCode = 400;
+      throw err;
+    }
+
     if (typeof waitingRoomService?.isWaitingRoomActive === 'function' && waitingRoomService.isWaitingRoomActive(eventId)) {
       if (!queueToken) {
         const err = new Error('Virtual Waiting Room is active: Queue token required to reserve tickets');
@@ -124,13 +150,25 @@ class OrdersService {
       throw err;
     }
 
+    // Consolidate duplicate cart items by ticket_tier_id before validating order limits (TF-V4-F08)
+    const consolidatedMap = new Map();
     for (const it of items) {
       if (!it.ticket_tier_id || !it.quantity || it.quantity <= 0) {
         const err = new Error('Invalid item: ticket_tier_id and positive quantity required');
         err.statusCode = 400;
         throw err;
       }
+      const tierId = Number(it.ticket_tier_id);
+      const qty = Number(it.quantity);
+      if (consolidatedMap.has(tierId)) {
+        consolidatedMap.get(tierId).quantity += qty;
+      } else {
+        consolidatedMap.set(tierId, { ...it, ticket_tier_id: tierId, quantity: qty });
+      }
+    }
+    const consolidatedItems = Array.from(consolidatedMap.values());
 
+    for (const it of consolidatedItems) {
       const tier = await ticketsService.getTierById(it.ticket_tier_id);
       if (!tier) {
         const err = new Error(`Ticket tier #${it.ticket_tier_id} not found`);
@@ -156,47 +194,187 @@ class OrdersService {
 
     let reservedItems = [];
     let subtotal = 0;
-    for (const it of items) {
-      const tier = await ticketsService.getTierById(it.ticket_tier_id);
-      const itemTotal = tier.price * it.quantity;
-      subtotal += itemTotal;
-      reservedItems.push({
-        ticket_tier_id: tier.id,
-        name: tier.name || tier.title,
-        quantity: it.quantity,
-        unit_price: tier.price,
-        total_price: itemTotal,
-      });
-    }
-
     let discount = 0;
+    let total = 0;
     let appliedPromo = null;
-    if (promoCode && eventId) {
-      try {
-        const promoRes = await promosService.validatePromo(eventId, promoCode, subtotal);
-        if (promoRes.valid) {
-          discount = promoRes.discount;
-          appliedPromo = promoRes.promo;
-        }
-      } catch {}
-    }
-
-    const total = Math.max(0, subtotal - discount);
     let orderId = getNextOrderId();
     let orderShortId = `ORD-${1000 + orderId}`;
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
+    // Cryptographically secure guest session secret and hash (TF-V3-P1-02)
+    const guestSessionSecret = crypto.randomBytes(32).toString('hex');
+    const guestSecretHash = crypto.createHash('sha256').update(guestSessionSecret).digest('hex');
+
     try {
       await withTransaction(async (client) => {
-        await reserveTickets(client, items);
+        // Atomic Tier Price Locking & Inventory Reservation on consolidated items (TF-V4-P1-03, TF-V4-F08)
+        const sortedItems = [...consolidatedItems].sort((a, b) => Number(a.ticket_tier_id) - Number(b.ticket_tier_id));
+        reservedItems = [];
+        subtotal = 0;
 
+        for (const it of sortedItems) {
+          const tierRes = await client.query(
+            'SELECT id, event_id, title, price, remaining_quantity, min_per_order, max_per_order FROM ticket_tiers WHERE id = $1 FOR UPDATE',
+            [it.ticket_tier_id]
+          );
+
+          if (tierRes.rowCount === 0) {
+            const err = new Error(`Ticket tier #${it.ticket_tier_id} not found`);
+            err.statusCode = 404;
+            throw err;
+          }
+
+          const tier = tierRes.rows[0];
+          if (Number(tier.event_id) !== numEventId) {
+            const err = new Error(`Ticket tier #${it.ticket_tier_id} does not belong to event #${eventId}`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          if (it.quantity > tier.max_per_order) {
+            const err = new Error(`Quantity ${it.quantity} exceeds maximum allowed of ${tier.max_per_order}`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          if (it.quantity < tier.min_per_order) {
+            const err = new Error(`Quantity ${it.quantity} below minimum required of ${tier.min_per_order}`);
+            err.statusCode = 400;
+            throw err;
+          }
+
+          if (Number(tier.remaining_quantity) < it.quantity) {
+            throw new InventoryExhaustedError(tier.id, it.quantity, tier.remaining_quantity);
+          }
+
+          // Atomically decrement remaining quantity under tier row lock
+          await client.query(
+            'UPDATE ticket_tiers SET remaining_quantity = remaining_quantity - $1, updated_at = NOW() WHERE id = $2',
+            [it.quantity, tier.id]
+          );
+
+          const unitPrice = Number(tier.price);
+          const itemTotal = unitPrice * it.quantity;
+          subtotal += itemTotal;
+          reservedItems.push({
+            ticket_tier_id: tier.id,
+            name: tier.name || tier.title,
+            quantity: it.quantity,
+            unit_price: unitPrice,
+            total_price: itemTotal,
+          });
+        }
+
+        // Atomic Voucher Validation & Claim within Database Transaction against real schema (TF-V4-F04, V6-10)
+        discount = 0;
+        appliedPromo = null;
+        if (promoCode && numEventId) {
+          const cleanCode = promoCode.toUpperCase().trim();
+          const promoLock = await client.query(
+            'SELECT id, event_id, code, discount, discount_type, discount_applies_to, applicable_ticket_ids, max_allowed_usages, order_usage_count, expiry_date, deleted_at FROM promo_codes WHERE event_id = $1 AND UPPER(code) = $2 FOR UPDATE',
+            [numEventId, cleanCode]
+          );
+
+          if (promoLock.rowCount === 0) {
+            const promoErr = new Error('Mã giảm giá không tồn tại hoặc không hợp lệ');
+            promoErr.statusCode = 400;
+            throw promoErr;
+          }
+
+          const pRow = promoLock.rows[0];
+          if (pRow.deleted_at != null) {
+            const promoErr = new Error('Mã giảm giá đã bị xóa hoặc tạm ngưng kích hoạt');
+            promoErr.statusCode = 400;
+            throw promoErr;
+          }
+
+          const now = new Date();
+          if (pRow.expiry_date && new Date(pRow.expiry_date) < now) {
+            const promoErr = new Error('Mã giảm giá đã hết hạn sử dụng');
+            promoErr.statusCode = 400;
+            throw promoErr;
+          }
+
+          if (pRow.max_allowed_usages != null && Number(pRow.order_usage_count || 0) >= Number(pRow.max_allowed_usages)) {
+            const promoErr = new Error('Mã giảm giá đã hết lượt sử dụng hoặc không hợp lệ');
+            promoErr.statusCode = 400;
+            throw promoErr;
+          }
+
+          // Tier targeting & applicable_ticket_ids filtering (V6-10, V7-14)
+          let applicableTierIds = null;
+          if (pRow.applicable_ticket_ids != null) {
+            try {
+              if (Array.isArray(pRow.applicable_ticket_ids)) {
+                applicableTierIds = pRow.applicable_ticket_ids.map(Number);
+              } else if (typeof pRow.applicable_ticket_ids === 'string') {
+                const parsed = JSON.parse(pRow.applicable_ticket_ids);
+                if (!Array.isArray(parsed)) {
+                  const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids must be an array)');
+                  err.statusCode = 400;
+                  throw err;
+                }
+                applicableTierIds = parsed.map(Number);
+              } else {
+                const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids format error)');
+                err.statusCode = 400;
+                throw err;
+              }
+            } catch (parseErr) {
+              const err = new Error('Cấu hình mã giảm giá không hợp lệ (applicable_ticket_ids format error)');
+              err.statusCode = 400;
+              throw err;
+            }
+
+            if (applicableTierIds.length === 0) {
+              const promoErr = new Error('Mã giảm giá chưa được gán cho bất kỳ hạng vé nào');
+              promoErr.statusCode = 400;
+              throw promoErr;
+            }
+          }
+
+          let eligibleItems = reservedItems;
+          if (applicableTierIds && applicableTierIds.length > 0) {
+            eligibleItems = reservedItems.filter((it) => applicableTierIds.includes(Number(it.ticket_tier_id)));
+            if (eligibleItems.length === 0) {
+              const promoErr = new Error('Mã giảm giá không áp dụng cho loại vé đã chọn');
+              promoErr.statusCode = 400;
+              throw promoErr;
+            }
+          }
+
+          const eligibleSubtotal = eligibleItems.reduce((acc, it) => acc + it.total_price, 0);
+
+          let disc = 0;
+          const discountType = (pRow.discount_type || 'PERCENTAGE').toUpperCase();
+          const discountVal = Number(pRow.discount || 0);
+          const appliesTo = (pRow.discount_applies_to || 'ORDER').toUpperCase();
+
+          if (discountType === 'PERCENT' || discountType === 'PERCENTAGE') {
+            disc = Math.round((eligibleSubtotal * discountVal) / 100);
+          } else if (appliesTo === 'EACH_PRODUCT') {
+            disc = eligibleItems.reduce((acc, it) => acc + (discountVal * it.quantity), 0);
+          } else {
+            disc = discountVal;
+          }
+
+          discount = Math.min(disc, eligibleSubtotal);
+          appliedPromo = pRow;
+
+          await client.query(
+            'UPDATE promo_codes SET order_usage_count = order_usage_count + 1, updated_at = NOW() WHERE id = $1',
+            [pRow.id]
+          );
+        }
+
+        total = Math.max(0, subtotal - discount);
         const publicId = `ord_pub_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
         const shortId = `ord_${Date.now().toString().slice(-6)}`;
         const orderInsertSql = `
           INSERT INTO orders (
             short_id, public_id, event_id, user_id, status, subtotal, total_before_additions,
-            discount_amount, total_gross, promo_code, reserved_until, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, 'RESERVED', $5, $5, $6, $7, $8, $9, NOW(), NOW())
+            discount_amount, total_gross, promo_code, session_secret_hash, reserved_until, currency, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, 'RESERVED', $5, $5, $6, $7, $8, $9, $10, 'VND', NOW(), NOW())
           RETURNING id, short_id, public_id, status
         `;
         const orderRes = await client.query(orderInsertSql, [
@@ -208,6 +386,7 @@ class OrdersService {
           discount,
           total,
           appliedPromo ? appliedPromo.code : null,
+          guestSecretHash,
           expiresAt,
         ]);
 
@@ -217,40 +396,23 @@ class OrdersService {
 
           for (const it of reservedItems) {
             await client.query(
-              `
-              INSERT INTO order_items (
-                order_id, ticket_tier_id, item_name, quantity, price,
-                total_before_additions, total_tax, total_service_fee, total_gross,
-                created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $6, NOW(), NOW())
-            `,
+              `INSERT INTO order_items (
+                 order_id, ticket_tier_id, item_name, quantity, price,
+                 total_before_additions, total_tax, total_service_fee, total_gross,
+                 created_at, updated_at
+               ) VALUES ($1, $2, $3, $4, $5, $6, 0, 0, $6, NOW(), NOW())`,
               [orderId, it.ticket_tier_id, it.name, it.quantity, it.unit_price, it.total_price]
             );
           }
         }
       });
-
-      if (appliedPromo) {
-        await promosService.incrementUsage(eventId, appliedPromo.code);
-      }
     } catch (err) {
-      if (err instanceof InventoryExhaustedError || err.statusCode === 409) {
+      if (err instanceof InventoryExhaustedError || err.statusCode === 409 || err.statusCode === 400 || err.statusCode === 404) {
         throw err;
       }
-      for (const it of items) {
-        const memTier = ticketsService.getMemoryTier(it.ticket_tier_id);
-        if (memTier) {
-          if (memTier.remaining_quantity < it.quantity) {
-            const outErr = new Error(`Ticket tier #${it.ticket_tier_id} is exhausted`);
-            outErr.statusCode = 409;
-            throw outErr;
-          }
-          memTier.remaining_quantity -= it.quantity;
-        }
-      }
-      if (appliedPromo) {
-        promosService.incrementUsage(eventId, appliedPromo.code);
-      }
+      // Fail closed: Never silently fallback to RAM when database operation fails (TF-V3-P0-06)
+      console.error('[OrdersService.reserveOrder] DB transaction failed, fail closed:', err.message);
+      throw err;
     }
 
     const reservedOrder = {
@@ -265,6 +427,8 @@ class OrdersService {
       total,
       status: 'RESERVED',
       expires_at: expiresAt,
+      session_secret: guestSessionSecret,
+      session_secret_hash: guestSecretHash,
       seats: [],
       created_at: new Date().toISOString(),
     };
@@ -280,12 +444,37 @@ class OrdersService {
       discount,
       total,
       expires_at: expiresAt,
+      guest_session_token: guestSessionSecret,
+      session_token: guestSessionSecret,
       seats: [],
       message: 'Tickets reserved successfully for 15 minutes',
     };
     responsePayload.order = { ...responsePayload };
 
     return responsePayload;
+  }
+
+  _verifyGuestSecret(providedSecret, order) {
+    if (!providedSecret || typeof providedSecret !== 'string') return false;
+    // Strictly reject public identifiers as secrets (TF-P1-B)
+    if (
+      providedSecret === order.public_id ||
+      providedSecret === order.short_id ||
+      providedSecret === order.orderShortId ||
+      providedSecret === String(order.id)
+    ) {
+      return false;
+    }
+    if (order.session_secret && providedSecret === order.session_secret) {
+      return true;
+    }
+    if (order.session_secret_hash) {
+      const providedHash = crypto.createHash('sha256').update(providedSecret).digest('hex');
+      const a = Buffer.from(providedHash, 'utf8');
+      const b = Buffer.from(order.session_secret_hash, 'utf8');
+      return a.length === b.length && crypto.timingSafeEqual(a, b);
+    }
+    return false;
   }
 
   async getOrderById(orderId, user = null, sessionSecret = null) {
@@ -328,8 +517,6 @@ class OrdersService {
                 barcode: a.barcode,
                 status: a.status,
                 checked_in_at: a.checked_in_at,
-                is_transferred: Boolean(a.is_transferred),
-                transferred_at: a.transferred_at,
               }));
             }
           } catch {}
@@ -337,12 +524,23 @@ class OrdersService {
           order = {
             id: Number(row.id),
             orderShortId: row.short_id,
+            public_id: row.public_id,
+            short_id: row.short_id,
+            session_secret_hash: row.session_secret_hash,
             event_id: Number(row.event_id),
             user_id: row.user_id ? Number(row.user_id) : null,
             subtotal: Number(row.subtotal),
             discount: Number(row.discount_amount),
             total: Number(row.total_gross),
             status: row.status,
+            payment_status: row.payment_status,
+            payment_gateway: row.payment_gateway,
+            payment_transaction_id: row.payment_transaction_id,
+            provider_txn_ref: row.provider_txn_ref,
+            refund_idempotency_key: row.refund_idempotency_key,
+            refund_gateway_ref: row.refund_gateway_ref,
+            total_refunded: Number(row.total_refunded || 0),
+            inventory_released_at: row.inventory_released_at,
             buyer: { name: row.first_name || '', email: row.email || '' },
             items,
             attendees,
@@ -373,25 +571,57 @@ class OrdersService {
       throw err;
     }
 
+    await this.authorizeOrderAccess(order, user, sessionSecret);
+
+    return order;
+  }
+
+  /**
+   * Unified authorization function for all order read/modify/cancel endpoints (TF-V3-P0-03).
+   */
+  async authorizeOrderAccess(order, user = null, sessionSecret = null) {
+    if (!order) {
+      const err = new Error('Order not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    const currentUser = user && user.user ? user.user : user;
+    const currentSecret = user && user.sessionSecret ? user.sessionSecret : sessionSecret;
+
+    if (currentUser && currentUser.role === 'ADMIN') {
+      return true;
+    }
+
     if (order.user_id) {
-      if (!user || (user.id !== order.user_id && user.role !== 'ADMIN' && user.role !== 'ORGANIZER')) {
-        const err = new Error('Forbidden: You do not own this order');
-        err.statusCode = 403;
-        throw err;
+      if (currentUser && Number(currentUser.id) === Number(order.user_id)) {
+        return true;
       }
-    } else {
-      const isAdminOrOrg = user && (user.role === 'ADMIN' || user.role === 'ORGANIZER');
-      const hasValidSecret =
-        sessionSecret &&
-        (sessionSecret === order.public_id || sessionSecret === order.short_id || sessionSecret === order.orderShortId);
-      if (!isAdminOrOrg && !hasValidSecret) {
-        const err = new Error('Forbidden: Accessing guest orders requires valid order session token');
-        err.statusCode = 403;
-        throw err;
+      if (currentUser && currentUser.role === 'ORGANIZER') {
+        const ev = await eventsService.getEventById(order.event_id);
+        if (ev && (Number(ev.account_id) === Number(currentUser.account_id) || Number(ev.organizer_id) === Number(currentUser.id) || Number(ev.user_id) === Number(currentUser.id))) {
+          return true;
+        }
+      }
+      const err = new Error('Forbidden: You do not own this order');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Guest order: order.user_id is null
+    if (currentUser && currentUser.role === 'ORGANIZER') {
+      const ev = await eventsService.getEventById(order.event_id);
+      if (ev && (Number(ev.account_id) === Number(currentUser.account_id) || Number(ev.organizer_id) === Number(currentUser.id) || Number(ev.user_id) === Number(currentUser.id))) {
+        return true;
       }
     }
 
-    return order;
+    const hasValidSecret = this._verifyGuestSecret(currentSecret, order);
+    if (!hasValidSecret) {
+      const err = new Error('Forbidden: Accessing or modifying guest orders requires valid cryptographic order session token');
+      err.statusCode = 403;
+      throw err;
+    }
+    return true;
   }
 
   async checkoutOrder(
@@ -399,32 +629,18 @@ class OrdersService {
     { buyer = {}, attendees = [], payment_method = 'VNPAY', payment_intent_id = null, user = null, sessionToken = null }
   ) {
     const numId = Number(orderId);
-    const order = memoryOrders.get(numId);
+    let order = memoryOrders.get(numId);
+    if (!order) {
+      order = await this.getOrderById(numId, user, sessionToken).catch(() => null);
+    }
     if (!order) {
       const err = new Error('Order not found');
       err.statusCode = 404;
       throw err;
     }
 
-    if (order.user_id) {
-      if (!user || (user.id !== order.user_id && user.role !== 'ADMIN')) {
-        const err = new Error('Forbidden: You do not have permission to checkout this order');
-        err.statusCode = 403;
-        throw err;
-      }
-    } else {
-      if (
-        order.public_id &&
-        sessionToken &&
-        sessionToken !== order.public_id &&
-        sessionToken !== order.short_id &&
-        sessionToken !== order.orderShortId
-      ) {
-        const err = new Error('Forbidden: Invalid order session token for guest checkout');
-        err.statusCode = 403;
-        throw err;
-      }
-    }
+    // Unified authorization check (TF-V3-P0-03)
+    await this.authorizeOrderAccess(order, user, sessionToken);
 
     if (order.status !== 'RESERVED') {
       const err = new Error(`Cannot checkout order in ${order.status} state`);
@@ -438,57 +654,134 @@ class OrdersService {
       throw err;
     }
 
-    order.buyer = {
-      name: buyer.name,
-      email: buyer.email.toLowerCase().trim(),
-    };
-    order.payment_method = payment_method;
-    order.payment_intent_id = payment_intent_id;
-
-    const isFreeOrder = order.total === 0 || order.subtotal - (order.discount || 0) <= 0;
-    const hasPreauthorizedPayment = Boolean(payment_intent_id);
-
-    if (isFreeOrder) {
-      order.payment_status = 'NO_PAYMENT_REQUIRED';
-      order.payment_gateway = 'FREE';
-      order.payment_method = 'FREE';
-      order.status = 'COMPLETED';
-    } else {
-      const method = payment_method || 'VNPAY';
-      order.payment_gateway = method;
-      order.payment_method = method;
-      order.payment_transaction_id = payment_intent_id || `TXN-${method}-${Date.now()}`;
-      order.payment_status = 'PAYMENT_RECEIVED';
-      order.status = 'COMPLETED';
-    }
-
     const createdAttendees = [];
     const attendeeSource = attendees && attendees.length > 0 ? attendees : [{ name: buyer.name, email: buyer.email }];
+    let resolvedOrderStatus = 'PENDING_PAYMENT';
+    let resolvedPaymentStatus = 'PENDING';
+    let resolvedPaymentGateway = payment_method || 'VNPAY';
+    let resolvedPaymentTxnId = payment_intent_id || `PI-${order.id}-${Date.now()}`;
+    let isFreeOrder = false;
 
-    for (let i = 0; i < attendeeSource.length; i++) {
-      const att = attendeeSource[i];
-      let attId = getNextAttendeeId();
-      const barcode = `TKT-${order.id}-${attId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-      const initialAttendeeStatus = 'ACTIVE';
-      const seat = order.seats && order.seats[i] ? order.seats[i] : null;
+    // Atomic Checkout Database Transaction under row lock (TF-V4-P1-02, TF-V4-F07)
+    await withTransaction(async (client) => {
+      const checkRes = await client.query(
+        'SELECT id, event_id, status, reserved_until, subtotal, discount_amount, total_gross FROM orders WHERE id = $1 FOR UPDATE',
+        [numId]
+      );
+      const isInDb = checkRes.rowCount > 0;
 
-      try {
+      if (!isInDb) {
+        if (process.env.NODE_ENV === 'production') {
+          const err = new Error('Order not found');
+          err.statusCode = 404;
+          throw err;
+        }
+        if (order.status !== 'RESERVED') {
+          const err = new Error(`Cannot checkout order in ${order.status} state`);
+          err.statusCode = 400;
+          throw err;
+        }
+        if (order.expires_at && new Date(order.expires_at).getTime() < Date.now()) {
+          const err = new Error('Thời gian giữ vé của đơn hàng đã hết hạn. Vui lòng đặt vé lại.');
+          err.statusCode = 400;
+          throw err;
+        }
+        isFreeOrder = order.total === 0 || order.subtotal - (order.discount || 0) <= 0;
+        if (isFreeOrder) {
+          resolvedPaymentStatus = 'NO_PAYMENT_REQUIRED';
+          resolvedPaymentGateway = 'FREE';
+          resolvedPaymentTxnId = null;
+          resolvedOrderStatus = 'COMPLETED';
+        }
+        for (let i = 0; i < attendeeSource.length; i++) {
+          const att = attendeeSource[i];
+          const attId = getNextAttendeeId();
+          const barcode = isFreeOrder
+            ? `TKT-${order.id}-${attId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
+            : null;
+          const initialAttendeeStatus = isFreeOrder ? 'ACTIVE' : 'PENDING';
+          const seat = order.seats && order.seats[i] ? order.seats[i] : null;
+
+          createdAttendees.push({
+            id: attId,
+            order_id: order.id,
+            event_id: order.event_id || 1,
+            name: att.name || buyer.name,
+            email: (att.email || buyer.email).toLowerCase().trim(),
+            ticket_tier_id: att.ticket_tier_id || (order.items && order.items[0] ? order.items[0].ticket_tier_id : 1),
+            ticket_code: barcode,
+            qr_hash: barcode,
+            barcode,
+            seat,
+            status: initialAttendeeStatus,
+          });
+        }
+        return;
+      }
+
+      const dbRow = checkRes.rows[0];
+      if (dbRow.status !== 'RESERVED') {
+        const err = new Error(`Cannot checkout order in ${dbRow.status} state`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (dbRow.reserved_until && new Date(dbRow.reserved_until).getTime() < Date.now()) {
+        const err = new Error('Thời gian giữ vé của đơn hàng đã hết hạn. Vui lòng đặt vé lại.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const sub = Number(dbRow.subtotal || 0);
+      const disc = Number(dbRow.discount_amount || 0);
+      const tot = Number(dbRow.total_gross || 0);
+      isFreeOrder = tot === 0 || sub - disc <= 0;
+
+      if (isFreeOrder) {
+        resolvedPaymentStatus = 'NO_PAYMENT_REQUIRED';
+        resolvedPaymentGateway = 'FREE';
+        resolvedPaymentTxnId = null;
+        resolvedOrderStatus = 'COMPLETED';
+      } else {
+        resolvedPaymentStatus = 'PENDING';
+        resolvedPaymentGateway = payment_method || 'VNPAY';
+        resolvedPaymentTxnId = payment_intent_id || `PI-${order.id}-${Date.now()}`;
+        resolvedOrderStatus = 'PENDING_PAYMENT';
+      }
+
+      // Order is in DB: execute atomic update and attendee inserts
+      await client.query(
+        `UPDATE orders
+         SET status = $1, first_name = $2, email = $3, payment_status = $4,
+             payment_gateway = $5, payment_transaction_id = $6, updated_at = NOW()
+         WHERE id = $7`,
+        [resolvedOrderStatus, buyer.name, buyer.email, resolvedPaymentStatus, resolvedPaymentGateway, resolvedPaymentTxnId, numId]
+      );
+
+      const resolvedEventId = checkRes.rows[0].event_id || order.event_id || 1;
+
+      for (let i = 0; i < attendeeSource.length; i++) {
+        const att = attendeeSource[i];
+        let attId = getNextAttendeeId();
+        const barcode = isFreeOrder
+          ? `TKT-${order.id}-${attId}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`
+          : null;
+        const initialAttendeeStatus = isFreeOrder ? 'ACTIVE' : 'PENDING';
+        const seat = order.seats && order.seats[i] ? order.seats[i] : null;
+
         const publicId = `att_pub_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
         const shortId = `att_${Date.now().toString().slice(-6)}`;
-        const attRes = await query(
-          `
-          INSERT INTO attendees (
-            short_id, public_id, order_id, ticket_tier_id, event_id,
-            first_name, last_name, email, status, barcode, created_at, updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, '', $7, $8, $9, NOW(), NOW())
-          RETURNING id, short_id, public_id, barcode
-        `,
+        const attRes = await client.query(
+          `INSERT INTO attendees (
+             short_id, public_id, order_id, ticket_tier_id, event_id,
+             first_name, last_name, email, status, barcode, created_at, updated_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, '', $7, $8, $9, NOW(), NOW())
+           RETURNING id, short_id, public_id, barcode`,
           [
             shortId,
             publicId,
             order.id,
-            att.ticket_tier_id || (order.items[0] && order.items[0].ticket_tier_id),
-            order.event_id,
+            att.ticket_tier_id || (order.items && order.items[0] && order.items[0].ticket_tier_id) || 1,
+            resolvedEventId,
             att.name || buyer.name,
             (att.email || buyer.email).toLowerCase().trim(),
             initialAttendeeStatus,
@@ -498,61 +791,42 @@ class OrdersService {
         if (attRes.rowCount > 0) {
           attId = Number(attRes.rows[0].id);
         }
-      } catch {}
 
-      const attendeeRecord = {
-        id: attId,
-        order_id: order.id,
-        event_id: order.event_id,
-        name: att.name || buyer.name,
-        email: (att.email || buyer.email).toLowerCase().trim(),
-        ticket_tier_id: att.ticket_tier_id || (order.items[0] && order.items[0].ticket_tier_id),
-        ticket_code: barcode,
-        qr_hash: barcode,
-        barcode,
-        seat,
-        status: initialAttendeeStatus,
-      };
-      memoryAttendees.set(attId, attendeeRecord);
-      createdAttendees.push(attendeeRecord);
+        createdAttendees.push({
+          id: attId,
+          order_id: order.id,
+          event_id: resolvedEventId,
+          name: att.name || buyer.name,
+          email: (att.email || buyer.email).toLowerCase().trim(),
+          ticket_tier_id: att.ticket_tier_id || (order.items && order.items[0] ? order.items[0].ticket_tier_id : 1),
+          ticket_code: barcode,
+          qr_hash: barcode,
+          barcode,
+          seat,
+          status: initialAttendeeStatus,
+        });
+      }
+    });
+
+    // Mutate in-memory state only after successful database commit (TF-V4-F07)
+    order.buyer = {
+      name: buyer.name,
+      email: buyer.email.toLowerCase().trim(),
+    };
+    order.payment_method = payment_method;
+    order.payment_intent_id = payment_intent_id;
+    order.payment_gateway = resolvedPaymentGateway;
+    order.payment_status = resolvedPaymentStatus;
+    order.payment_transaction_id = resolvedPaymentTxnId;
+    order.status = resolvedOrderStatus;
+    if (isFreeOrder) {
+      order.paid_at = new Date().toISOString();
     }
 
+    // Mutate in-memory state only after successful database commit
     order.attendees = createdAttendees;
-
-    try {
-      await query(
-        `
-        UPDATE orders
-        SET status = $1, first_name = $2, email = $3, payment_status = $4, payment_gateway = $5, payment_transaction_id = $6, updated_at = NOW()
-        WHERE id = $7
-      `,
-        [order.status, buyer.name, buyer.email, order.payment_status, order.payment_gateway, order.payment_transaction_id, numId]
-      );
-    } catch {}
-
-    if (hasPreauthorizedPayment && !isFreeOrder) {
-      try {
-        const totalAmount = Number(order.total_gross || order.total || 0);
-        if (totalAmount > 0) {
-          const commissionRate = 5.0;
-          const commission = Math.round(totalAmount * (commissionRate / 100));
-          const balance = totalAmount - commission;
-          await query(
-            `
-            INSERT INTO escrow_accounts (event_id, gross_revenue, refunded_amount, current_balance, commission_held, payout_status, updated_at)
-            VALUES ($1, $2, 0, $3, $4, 'HOLDING', NOW())
-            ON CONFLICT (event_id) DO UPDATE SET
-              gross_revenue = escrow_accounts.gross_revenue + $2,
-              current_balance = escrow_accounts.current_balance + $3,
-              commission_held = escrow_accounts.commission_held + $4,
-              updated_at = NOW()
-          `,
-            [order.event_id, totalAmount, balance, commission]
-          );
-        }
-      } catch (escrowErr) {
-        console.warn('[checkoutOrder] Escrow sync warning:', escrowErr.message);
-      }
+    for (const a of createdAttendees) {
+      memoryAttendees.set(a.id, a);
     }
 
     if (order.user_id && order.event_id) {
@@ -561,6 +835,10 @@ class OrdersService {
 
     return {
       order,
+      status: order.status,
+      payment_status: order.payment_status,
+      payment_url: !isFreeOrder ? `/api/orders/${order.id}/payment` : null,
+      payment_intent_id: order.payment_transaction_id,
       attendees: createdAttendees,
     };
   }
@@ -604,9 +882,12 @@ class OrdersService {
 
   async cancelOrder(orderId, user = null, sessionSecret = null) {
     const numId = Number(orderId);
+    const currentUser = user && user.user ? user.user : user;
+    const currentSecret = user && user.sessionSecret ? user.sessionSecret : sessionSecret;
+
     let order = memoryOrders.get(numId);
     if (!order) {
-      order = await this.getOrderById(numId, user, sessionSecret).catch(() => null);
+      order = await this.getOrderById(numId, currentUser, currentSecret).catch(() => null);
     }
     if (!order) {
       const err = new Error('Order not found');
@@ -614,16 +895,29 @@ class OrdersService {
       throw err;
     }
 
-    if (order.user_id) {
-      if (!user || (user.id !== order.user_id && user.role !== 'ADMIN')) {
-        const err = new Error('Forbidden: You do not own this order');
-        err.statusCode = 403;
-        throw err;
-      }
+    // Strictly enforce authorization on every cancel request, including memory hits (TF-V3-P0-03)
+    await this.authorizeOrderAccess(order, currentUser, currentSecret);
+
+    if (order.status === 'COMPLETED' || order.status === 'PAID') {
+      const err = new Error('Đơn hàng đã thanh toán thành công, không thể hủy. Vui lòng sử dụng quy trình hoàn vé / hoàn tiền.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (order.status === 'REFUNDED') {
+      const err = new Error('Đơn hàng đã hoàn tiền, không thể hủy');
+      err.statusCode = 400;
+      throw err;
     }
 
     if (order.status === 'CANCELLED') {
-      const err = new Error('Order already cancelled');
+      const err = new Error('Đơn hàng đã bị hủy trước đó');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (order.status !== 'RESERVED' && order.status !== 'PENDING_PAYMENT') {
+      const err = new Error(`Không thể hủy đơn hàng ở trạng thái ${order.status}`);
       err.statusCode = 400;
       throw err;
     }
@@ -648,14 +942,14 @@ class OrdersService {
     };
   }
 
-  async getDigitalReceipt(orderIdentifier, { user = null } = {}) {
+  async getDigitalReceipt(orderIdentifier, { user = null, sessionSecret = null } = {}) {
     let order = null;
     let isAuthorized = false;
     const isNumeric = /^\d+$/.test(String(orderIdentifier).trim());
 
     if (isNumeric) {
       const numId = Number(orderIdentifier);
-      if (!user) {
+      if (!user && !sessionSecret) {
         const err = new Error('Unauthorized: Vui lòng đăng nhập để xem biên nhận theo mã đơn hàng');
         err.statusCode = 401;
         throw err;
@@ -665,15 +959,16 @@ class OrdersService {
         try {
           const res = await query('SELECT * FROM orders WHERE id = $1 LIMIT 1', [numId]);
           if (res.rowCount > 0) {
-            order = await this.getOrderById(numId, user).catch(() => null);
+            order = await this.getOrderById(numId, user, sessionSecret).catch(() => null);
           }
         } catch {}
       }
       if (order) {
         const isOwner =
-          (order.user_id && Number(order.user_id) === Number(user.id)) ||
-          (order.buyer?.email && user.email && order.buyer.email.toLowerCase() === user.email.toLowerCase());
-        if (user.role === 'ADMIN' || isOwner) {
+          (user && order.user_id && Number(order.user_id) === Number(user.id)) ||
+          (user && order.buyer?.email && user.email && order.buyer.email.toLowerCase() === user.email.toLowerCase()) ||
+          (sessionSecret && this._verifyGuestSecret(sessionSecret, order));
+        if ((user && user.role === 'ADMIN') || isOwner) {
           isAuthorized = true;
         } else {
           const err = new Error('Forbidden: Bạn không có quyền xem biên nhận của đơn hàng này');
@@ -707,6 +1002,9 @@ class OrdersService {
           isAuthorized = true;
         }
       }
+      if (order && sessionSecret && this._verifyGuestSecret(sessionSecret, order)) {
+        isAuthorized = true;
+      }
     }
 
     if (!order) {
@@ -716,6 +1014,27 @@ class OrdersService {
     }
 
     const event = await eventsService.getEventById(order.event_id);
+
+    // PII masking for unauthorized public receipt viewing (TF-P1-02)
+    const maskEmail = (em) => {
+      if (!em || typeof em !== 'string') return '';
+      const [local, domain] = em.split('@');
+      if (!domain) return '***';
+      if (local.length <= 2) return `${local[0]}***@${domain}`;
+      return `${local[0]}***${local[local.length - 1]}@${domain}`;
+    };
+    const maskName = (nm) => {
+      if (!nm || typeof nm !== 'string') return '';
+      const parts = nm.trim().split(/\s+/);
+      return parts.map((p) => (p.length <= 1 ? p : `${p[0]}***`)).join(' ');
+    };
+
+    const buyerData = isAuthorized
+      ? (order.buyer || {})
+      : {
+          name: maskName(order.buyer?.name || order.first_name || 'Khách Mua Vé'),
+          email: maskEmail(order.buyer?.email || order.email || ''),
+        };
 
     return {
       receipt_id: `RCP-${order.orderShortId || order.short_id || order.id}`,
@@ -727,7 +1046,7 @@ class OrdersService {
         starts_at: event ? event.starts_at || event.start_date : null,
         location: event ? event.location : 'Online',
       },
-      buyer: order.buyer || {},
+      buyer: buyerData,
       items: order.items || [],
       subtotal: order.subtotal || 0,
       discount: order.discount || 0,
@@ -738,8 +1057,8 @@ class OrdersService {
       issued_at: order.paid_at || order.created_at || new Date().toISOString(),
       attendees: (order.attendees || []).map((a) => ({
         id: a.id,
-        name: a.name || a.first_name || 'Khách Mua Vé',
-        email: a.email,
+        name: isAuthorized ? (a.name || a.first_name || 'Khách Mua Vé') : maskName(a.name || a.first_name || 'Khách Mua Vé'),
+        email: isAuthorized ? a.email : maskEmail(a.email),
         ticket_tier_id: a.ticket_tier_id,
         tier_name: a.tier_name || 'Vé Phổ Thông',
         ticket_code: isAuthorized ? a.barcode || a.ticket_code : 'REDACTED_PUBLIC_VIEW',
@@ -752,8 +1071,8 @@ class OrdersService {
   }
 
   // Delegations to cohesive domain services (Composition over Inheritance)
-  async refundOrder(orderId, user = null) {
-    return refundService.refundOrder(orderId, user, this);
+  async refundOrder(orderId, user = null, reason = 'Customer requested refund', options = {}) {
+    return refundService.refundOrder(orderId, user, reason, options);
   }
 
   async massRefundEvent(eventId, user = null) {
@@ -766,10 +1085,6 @@ class OrdersService {
 
   async handlePaymentWebhook(payload) {
     return paymentService.handlePaymentWebhook(payload, this);
-  }
-
-  async transferTicket(attendeeId, options) {
-    return attendeeService.transferTicket(attendeeId, options);
   }
 
   async getAttendeesByEvent(eventId, user) {
@@ -959,6 +1274,8 @@ class OrdersService {
           subtotal: Number(row.subtotal),
           discount: Number(row.discount_amount),
           total: Number(row.total_gross),
+          payment_method: row.payment_gateway || 'VNPAY',
+          paymentMethod: row.payment_gateway || 'VNPAY',
           status: row.status,
           payment_status: row.payment_status,
           created_at: row.created_at,
@@ -973,8 +1290,6 @@ class OrdersService {
             barcode: a.barcode,
             status: a.status,
             checked_in_at: a.checked_in_at,
-            is_transferred: Boolean(a.is_transferred),
-            transferred_at: a.transferred_at,
           })),
         });
       }
@@ -1000,7 +1315,13 @@ class OrdersService {
           orderShortId: o.orderShortId || `ORD-${o.id}`,
           event_id: o.event_id,
           event_title: o.event_title || 'Sự kiện Ticketflow',
+          event_location: o.event_location || o.location || 'Địa điểm tổ chức',
+          event_date: o.event_date || o.starts_at || null,
+          subtotal: Number(o.subtotal || o.total || 0),
+          discount: Number(o.discount || o.discount_amount || 0),
           total: Number(o.total || 0),
+          payment_method: o.payment_method || o.paymentMethod || o.payment_gateway || 'VNPAY',
+          paymentMethod: o.payment_method || o.paymentMethod || o.payment_gateway || 'VNPAY',
           status: o.status,
           created_at: o.created_at || new Date().toISOString(),
           attendees: o.attendees && o.attendees.length > 0 ? o.attendees : orderAttendees,

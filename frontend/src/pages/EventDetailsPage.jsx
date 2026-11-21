@@ -4,14 +4,18 @@ import DOMPurify from 'dompurify';
 import { api } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
-import { formatRange, money, toneClass } from '../utils/display';
+import { useFavorites } from '../context/FavoritesContext';
+import { formatRange, money, toneClass, eventCoverImage } from '../utils/display';
 import { getDistanceInfo } from '../utils/location';
+import { Icon } from '../components/ui/Icon';
+import { VectorSpinner } from '../components/ui/VectorAnimation';
 
 export const EventDetailsPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { cartItems, updateQuantity, applyPromoCode, reserveTickets, promoCode, discountAmount, total } = useCart();
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   const [event, setEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +24,7 @@ export const EventDetailsPage = () => {
   const [promoStatus, setPromoStatus] = useState(null);
   const [reserving, setReserving] = useState(false);
 
-  const [isFavorited, setIsFavorited] = useState(false);
+  const isFavorited = isFavorite(id);
   const [restockNotice, setRestockNotice] = useState(false);
   const [seatMapImgError, setSeatMapImgError] = useState(false);
 
@@ -34,10 +38,6 @@ export const EventDetailsPage = () => {
         if (isMounted) {
           const ev = res.event || res;
           setEvent(ev);
-
-          // Check if favorited
-          const favs = JSON.parse(localStorage.getItem('tf_favorites') || '[]');
-          setIsFavorited(favs.includes(Number(id)) || favs.includes(String(id)));
         }
       } catch (err) {
         if (isMounted) setError(err.message);
@@ -49,22 +49,12 @@ export const EventDetailsPage = () => {
     return () => { isMounted = false; };
   }, [id]);
 
-  const handleToggleFavorite = () => {
-    const favs = JSON.parse(localStorage.getItem('tf_favorites') || '[]');
-    let next;
-    if (isFavorited) {
-      next = favs.filter((it) => String(it) !== String(id));
-      setIsFavorited(false);
-    } else {
-      next = [...favs, Number(id)];
-      setIsFavorited(true);
+  const handleToggleFavorite = async () => {
+    const isNowFav = await toggleFavorite(id);
+    if (isNowFav) {
       setRestockNotice(true);
       setTimeout(() => setRestockNotice(false), 5000);
     }
-    localStorage.setItem('tf_favorites', JSON.stringify(next));
-
-    // Persist favorite to backend for restock notifications (Phân hệ 2.6)
-    api.post(`/events/${id}/favorite`, {}).catch(() => {});
   };
 
   const handleApplyPromo = async (e) => {
@@ -101,35 +91,40 @@ export const EventDetailsPage = () => {
     return getDistanceInfo(userProvince, event.location);
   }, [event?.location, userProvince]);
 
+  // Dynamic content blocks from payload
+  const contentBlocks = useMemo(() => {
+    const raw = event?.blocks || event?.blog_blocks || event?.location_details?.blog_blocks;
+    if (Array.isArray(raw)) return raw;
+    return [];
+  }, [event]);
+
   // Schedule / timeline blocks from payload
   const scheduleTimeline = useMemo(() => {
     if (event?.blocks?.schedule) return event.blocks.schedule;
     if (event?.schedule && Array.isArray(event.schedule)) return event.schedule;
-    if (event?.location_details?.blog_blocks) {
-      const sch = event.location_details.blog_blocks.find((b) => b.type === 'schedule');
-      if (sch && sch.items) return sch.items.map((it) => ({ time: it.time, title: it.title, desc: it.title }));
+    const sch = contentBlocks.find((b) => b && (b.type === 'schedule' || b.type === 'timeline'));
+    if (sch && Array.isArray(sch.items)) {
+      return sch.items.map((it) => ({
+        time: it.time || '',
+        title: it.title || '',
+        desc: it.desc || it.description || '',
+      }));
     }
     return [];
-  }, [event]);
+  }, [event, contentBlocks]);
 
   // Media / image blocks from blog content
   const blogMediaBlocks = useMemo(() => {
-    const rawBlocks =
-      event?.blocks ||
-      event?.blog_blocks ||
-      event?.location_details?.blog_blocks ||
-      [];
-    if (!Array.isArray(rawBlocks)) return [];
-    return rawBlocks.filter(
-      (b) => b && (b.type === 'media' || b.media_url || b.url) && (b.media_url || b.url)
+    return contentBlocks.filter(
+      (b) => b && (b.type === 'media' || b.type === 'image' || b.media_url || b.url) && (b.media_url || b.url)
     );
-  }, [event]);
+  }, [contentBlocks]);
 
   if (loading) {
     return (
-      <div className="card loading-state">
-        <div className="spinner" />
-        <p className="muted">Đang tải thông tin chi tiết sự kiện và sơ đồ khán phòng...</p>
+      <div className="card loading-state flex flex-col items-center justify-center p-8 text-center">
+        <VectorSpinner size={36} />
+        <p className="muted mt-3">Đang tải thông tin chi tiết sự kiện và sơ đồ khán phòng...</p>
       </div>
     );
   }
@@ -151,17 +146,25 @@ export const EventDetailsPage = () => {
     <article className="event-details-layout">
       {/* Hero Header Banner */}
       <header className={`event-banner ${toneClass(event.category)}`}>
-        {(event.banner || event.cover) && (
-          <img
-            src={event.banner || event.cover}
-            alt={event.title}
-            className="event-banner-img"
-            onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
-          />
-        )}
+        <img
+          src={eventCoverImage(event)}
+          alt={event.title}
+          className="event-banner-img"
+          onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/images/events/summit.svg'; }}
+        />
         <div className="event-banner-copy">
           <div className="banner-badges-row">
-            <span className="badge badge-success">{event.status || 'Đang mở bán'}</span>
+            <span className={`badge ${
+              String(event.status).toUpperCase() === 'UPCOMING' || String(event.status).toUpperCase() === 'SCHEDULED'
+                ? 'badge-warning'
+                : 'badge-success'
+            }`}>
+              {String(event.status).toUpperCase() === 'UPCOMING' || String(event.status).toUpperCase() === 'SCHEDULED'
+                ? 'Sắp diễn ra'
+                : event.status === 'LIVE' || event.status === 'PUBLISHED'
+                ? 'Đang mở bán'
+                : event.status || 'Đang mở bán'}
+            </span>
             <span className="badge badge-category">{event.category || 'Sự kiện'}</span>
             {distInfo && (
               <span className={`badge badge-location ${distInfo.isSameProvince ? 'same' : ''}`}>
@@ -201,24 +204,65 @@ export const EventDetailsPage = () => {
         {/* Main Content Area (Dynamic Blog Style Presentation) */}
         <div className="event-main-prose">
           {/* About Event - Blog Style Article */}
-          <section className="card blog-article-card">
-            <h2 className="section-title">{t('event.about_title', 'Giới thiệu chi tiết sự kiện')}</h2>
-            <div className="prose blog-body" dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
-          </section>
+          {sanitizedDescription && (
+            <section className="card blog-article-card mb-md">
+              <h2 className="section-title">{t('event.about_title', 'Giới thiệu chi tiết sự kiện')}</h2>
+              <div className="prose blog-body" dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />
+            </section>
+          )}
 
-          {/* Blog Media Gallery */}
-          {blogMediaBlocks && blogMediaBlocks.length > 0 && (
-            <section className="card blog-media-section">
-              <h2 className="section-title">{t('event.gallery_title', 'Hình ảnh sự kiện')}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-sm my-2">
-                {blogMediaBlocks.map((b, idx) => {
-                  const mediaSrc = b.media_url || b.url;
-                  return (
-                    <figure key={idx} className="blog-media-item m-0 rounded overflow-hidden border">
+          {/* Dynamic Content Blocks (Đoạn văn bản, Đoạn lịch trình, Đoạn ảnh) */}
+          {contentBlocks.length > 0 ? (
+            contentBlocks.map((b, idx) => {
+              if (b.type === 'paragraph' || b.type === 'text') {
+                const textContent = b.content || b.text || '';
+                // Avoid duplicating if identical to main description
+                if (!textContent.trim() || textContent.trim() === event?.description?.trim()) return null;
+                return (
+                  <section key={b.id || idx} className="card blog-article-card mb-md">
+                    {b.title && <h2 className="section-title">{b.title}</h2>}
+                    <div className="prose blog-body whitespace-pre-line text-sm leading-relaxed">
+                      {textContent}
+                    </div>
+                  </section>
+                );
+              }
+
+              if (b.type === 'schedule' || b.type === 'timeline') {
+                const items = b.items || [];
+                if (items.length === 0) return null;
+                return (
+                  <section key={b.id || idx} className="card timeline-card mb-md">
+                    <h2 className="section-title">{b.title || t('event.agenda_title', 'Lịch trình chi tiết (Agenda)')}</h2>
+                    <div className="timeline-flow">
+                      {items.map((item, itemIdx) => (
+                        <div key={item.id || itemIdx} className="timeline-item">
+                          <div className="timeline-time-badge">{item.time}</div>
+                          <div className="timeline-body">
+                            <h4>{item.title}</h4>
+                            {(item.desc || item.description) && (
+                              <p>{item.desc || item.description}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                );
+              }
+
+              if (b.type === 'media' || b.type === 'image') {
+                const mediaSrc = b.url || b.media_url;
+                if (!mediaSrc) return null;
+                return (
+                  <section key={b.id || idx} className="card blog-media-section mb-md">
+                    {b.title && <h2 className="section-title">{b.title}</h2>}
+                    <figure className="blog-media-item m-0 rounded overflow-hidden border">
                       <img
                         src={mediaSrc}
-                        alt={b.caption || `${event.title} - ảnh ${idx + 1}`}
-                        className="w-full h-48 object-cover"
+                        alt={b.caption || b.title || `${event.title} - ảnh ${idx + 1}`}
+                        className="w-full object-cover rounded-lg"
+                        style={{ maxHeight: '480px', width: '100%', objectFit: 'cover' }}
                         loading="lazy"
                         onError={(e) => {
                           e.currentTarget.onerror = null;
@@ -231,35 +275,73 @@ export const EventDetailsPage = () => {
                         </figcaption>
                       )}
                     </figure>
-                  );
-                })}
-              </div>
-            </section>
-          )}
+                  </section>
+                );
+              }
 
-          {/* Schedule / Timeline Blocks */}
-          {scheduleTimeline && scheduleTimeline.length > 0 && (
-            <section className="card timeline-card">
-              <h2 className="section-title">{t('event.agenda_title', 'Lịch trình chi tiết (Agenda)')}</h2>
-              <div className="timeline-flow">
-                {scheduleTimeline.map((item, idx) => (
-                  <div key={idx} className="timeline-item">
-                    <div className="timeline-time-badge">{item.time}</div>
-                    <div className="timeline-body">
-                      <h3>{item.title}</h3>
-                      <p>{item.desc}</p>
-                    </div>
+              return null;
+            })
+          ) : (
+            <>
+              {/* Fallback Blog Media Gallery */}
+              {blogMediaBlocks && blogMediaBlocks.length > 0 && (
+                <section className="card blog-media-section mb-md">
+                  <h2 className="section-title">{t('event.gallery_title', 'Hình ảnh sự kiện')}</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-sm my-2">
+                    {blogMediaBlocks.map((b, idx) => {
+                      const mediaSrc = b.media_url || b.url;
+                      return (
+                        <figure key={idx} className="blog-media-item m-0 rounded overflow-hidden border">
+                          <img
+                            src={mediaSrc}
+                            alt={b.caption || `${event.title} - ảnh ${idx + 1}`}
+                            className="w-full h-48 object-cover"
+                            loading="lazy"
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = '/images/events/summit.svg';
+                            }}
+                          />
+                          {b.caption && (
+                            <figcaption className="p-xs text-xs text-center muted italic bg-slate-50 dark:bg-slate-900">
+                              {b.caption}
+                            </figcaption>
+                          )}
+                        </figure>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </section>
+                </section>
+              )}
+
+              {/* Fallback Schedule / Timeline Blocks */}
+              {scheduleTimeline && scheduleTimeline.length > 0 && (
+                <section className="card timeline-card mb-md">
+                  <h2 className="section-title">{t('event.agenda_title', 'Lịch trình chi tiết (Agenda)')}</h2>
+                  <div className="timeline-flow">
+                    {scheduleTimeline.map((item, idx) => (
+                      <div key={idx} className="timeline-item">
+                        <div className="timeline-time-badge">{item.time}</div>
+                        <div className="timeline-body">
+                          <h4>{item.title}</h4>
+                          <p>{item.desc || item.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </>
           )}
 
           {/* Open Seating & Venue Layout */}
           <section className="card seatmap-card">
             <h2 className="section-title">{t('event.seatmap_title', 'Sơ đồ phân khu & Không gian')}</h2>
-            <div className="open-seating-alert p-3 mb-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-900 dark:text-blue-200">
-              <span className="font-semibold">💡 Nguyên tắc Open Seating:</span> Sự kiện áp dụng quy chế ngồi/đứng tự do theo khu vực hạng vé đã mua. Vui lòng có mặt sớm trước giờ mở cửa để có vị trí quan sát tốt nhất trong phân khu của bạn.
+            <div className="open-seating-alert p-3 mb-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-900 dark:text-blue-200 flex items-start gap-2">
+              <Icon name="info" size="sm" ariaHidden className="text-primary mt-0.5" />
+              <div>
+                <span className="font-semibold">Nguyên tắc Open Seating:</span> Sự kiện áp dụng quy chế ngồi/đứng tự do theo khu vực hạng vé đã mua. Vui lòng có mặt sớm trước giờ mở cửa để có vị trí quan sát tốt nhất trong phân khu của bạn.
+              </div>
             </div>
             <div className="seat-map-preview-box">
               {event.seat_map_url && !seatMapImgError ? (
@@ -275,15 +357,17 @@ export const EventDetailsPage = () => {
                     {t('event.seatmap_stage', 'SÂN KHẤU CHÍNH')}
                   </div>
                   <div className="flex flex-col gap-3 max-w-md mx-auto my-4">
-                    <div className="p-3 bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 rounded text-amber-900 dark:text-amber-200 font-medium">
-                      👑 Khu vực Hạng Vé VIP (Gần sân khấu nhất)
+                    <div className="p-3 bg-amber-100 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 rounded text-amber-900 dark:text-amber-200 font-medium flex items-center justify-center gap-1.5">
+                      <Icon name="crown" size="sm" ariaHidden className="text-amber-600 dark:text-amber-400" />
+                      <span>Khu vực Hạng Vé VIP</span>
                     </div>
-                    <div className="p-3 bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 rounded text-indigo-900 dark:text-indigo-200 font-medium">
-                      🎫 Khu vực Hạng Vé Tiêu Chuẩn / Phổ Thông
+                    <div className="p-3 bg-indigo-100 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-700 rounded text-indigo-900 dark:text-indigo-200 font-medium flex items-center justify-center gap-1.5">
+                      <Icon name="ticket" size="sm" ariaHidden className="text-indigo-600 dark:text-indigo-400" />
+                      <span>Khu vực Hạng Vé Tiêu Chuẩn / Phổ Thông</span>
                     </div>
                   </div>
                   <p className="seat-map-legend-text text-xs text-slate-500">
-                    Phân khu mở · Ghế tự do theo hạng vé · Nhận chỗ theo thứ tự vào cửa
+                    * Sơ đồ mang tính chất minh họa phân khu không gian tham khảo; vị trí cụ thể do Ban tổ chức bố trí tại địa điểm sự kiện. Phân khu mở · Ghế tự do theo hạng vé · Nhận chỗ theo thứ tự vào cửa.
                   </p>
                 </div>
               )}
@@ -309,7 +393,6 @@ export const EventDetailsPage = () => {
           <div className="card ticket-panel sticky-panel">
             <div className="panel-header">
               <h2 className="panel-title">{t('event.sidebar_title', 'Chọn hạng vé & Số lượng')}</h2>
-              <span className="badge badge-live">{t('event.hold_15m_badge', 'Giữ chỗ 15 phút')}</span>
             </div>
 
             <div className="tier-selection-stack">

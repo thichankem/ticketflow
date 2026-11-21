@@ -76,6 +76,40 @@ class RecommendationService {
   }
 
   /**
+   * Set event favorite state explicitly (idempotent for subscription / restock alerts)
+   */
+  setFavorite(userId, eventId, shouldFavorite = true) {
+    if (!userId || !eventId) return { favorited: false, count: 0 };
+    const userKey = String(userId);
+    const numEventId = Number(eventId);
+    const numUserId = Number(userId);
+
+    if (!this.userFavorites.has(userKey)) {
+      this.userFavorites.set(userKey, new Set());
+    }
+    const favSet = this.userFavorites.get(userKey);
+
+    if (shouldFavorite) {
+      favSet.add(numEventId);
+      if (!isNaN(numUserId)) {
+        query('INSERT INTO event_favorites (user_id, event_id) VALUES ($1, $2) ON CONFLICT (user_id, event_id) DO NOTHING', [numUserId, numEventId]).catch(() => {});
+      }
+    } else {
+      favSet.delete(numEventId);
+      if (!isNaN(numUserId)) {
+        query('DELETE FROM event_favorites WHERE user_id = $1 AND event_id = $2', [numUserId, numEventId]).catch(() => {});
+      }
+    }
+
+    let totalCount = 0;
+    for (const set of this.userFavorites.values()) {
+      if (set.has(numEventId)) totalCount++;
+    }
+
+    return { favorited: Boolean(shouldFavorite), count: totalCount };
+  }
+
+  /**
    * Get user favorites
    */
   async getUserFavorites(userId) {

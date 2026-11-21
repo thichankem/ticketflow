@@ -3,6 +3,7 @@ import { api } from '../../services/api';
 import { formatDate } from '../../utils/display';
 import { Modal } from '../Modal';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { Icon } from '../ui/Icon';
 
 export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) => {
   const [search, setSearch] = useState('');
@@ -11,6 +12,7 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     title: '',
@@ -37,7 +39,9 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    if (submitting) return;
     try {
+      setSubmitting(true);
       await api.admin.createAnnouncement(formData);
       notify(`Đã phát thông báo "${formData.title}" thành công!`);
       setShowCreateModal(false);
@@ -51,6 +55,8 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
       onReload();
     } catch (err) {
       notify(`Lỗi phát thông báo: ${err.message}`, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -88,7 +94,9 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
       {/* Search and Filters */}
       <div className="toolbar flex flex-wrap justify-between items-center gap-2 mb-md">
         <div className="search-input-wrapper flex-1">
+          <label htmlFor="admin-announcements-search" className="sr-only">Tìm theo tiêu đề hoặc nội dung thông báo</label>
           <input
+            id="admin-announcements-search"
             type="text"
             className="input input-sm"
             placeholder="Tìm theo tiêu đề hoặc nội dung thông báo..."
@@ -97,7 +105,9 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
           />
         </div>
         <div className="flex gap-2 flex-wrap items-center">
+          <label htmlFor="admin-announcements-type-filter" className="sr-only">Lọc theo loại thông báo</label>
           <select
+            id="admin-announcements-type-filter"
             className="select select-sm"
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -108,7 +118,9 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
             <option value="POLICY">Cập nhật chính sách</option>
             <option value="PROMO">Sự kiện & Ưu đãi</option>
           </select>
+          <label htmlFor="admin-announcements-role-filter" className="sr-only">Lọc theo đối tượng nhận</label>
           <select
+            id="admin-announcements-role-filter"
             className="select select-sm"
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -180,41 +192,47 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
       {/* Create Announcement Modal */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
+        onClose={() => { if (!submitting) setShowCreateModal(false); }}
         title="Tạo Thông Báo Phát Sóng Toàn Sàn"
       >
         <form onSubmit={handleCreate} className="stack gap-sm">
           <div className="form-group mb-0">
-            <label className="text-sm font-semibold required">Tiêu đề thông báo</label>
+            <label htmlFor="announcement-title" className="text-sm font-semibold required">Tiêu đề thông báo</label>
             <input
+              id="announcement-title"
               type="text"
               className="input"
               required
               placeholder="VD: Thông báo bảo trì nâng cấp hệ thống định kỳ"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              disabled={submitting}
             />
           </div>
 
           <div className="form-group mb-0">
-            <label className="text-sm font-semibold required">Nội dung chi tiết</label>
+            <label htmlFor="announcement-message" className="text-sm font-semibold required">Nội dung chi tiết</label>
             <textarea
+              id="announcement-message"
               className="input textarea"
               rows="4"
               required
               placeholder="Nhập nội dung đầy đủ thông điệp muốn truyền đạt đến người dùng..."
               value={formData.message}
               onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+              disabled={submitting}
             />
           </div>
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group mb-0">
-              <label className="text-sm font-semibold">Phân loại</label>
+              <label htmlFor="announcement-type" className="text-sm font-semibold">Phân loại</label>
               <select
+                id="announcement-type"
                 className="select"
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                disabled={submitting}
               >
                 <option value="GENERAL">Thông báo chung</option>
                 <option value="MAINTENANCE">Bảo trì hệ thống</option>
@@ -224,11 +242,13 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
             </div>
 
             <div className="form-group mb-0">
-              <label className="text-sm font-semibold">Đối tượng tiếp nhận</label>
+              <label htmlFor="announcement-target-role" className="text-sm font-semibold">Đối tượng tiếp nhận</label>
               <select
+                id="announcement-target-role"
                 className="select"
                 value={formData.target_role}
                 onChange={(e) => setFormData({ ...formData, target_role: e.target.value })}
+                disabled={submitting}
               >
                 <option value="ALL">Toàn bộ người dùng</option>
                 <option value="ORGANIZER">Chỉ Ban Tổ Chức</option>
@@ -238,11 +258,27 @@ export const AdminAnnouncementsTab = ({ announcements = [], onReload, notify }) 
           </div>
 
           <div className="flex justify-end gap-sm mt-md">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowCreateModal(false)}
+              disabled={submitting}
+            >
               Hủy
             </button>
-            <button type="submit" className="btn btn-primary">
-              Phát Sóng Thông Báo
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting}
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="spinner-sm" aria-hidden="true" style={{ display: 'inline-block', width: '0.85rem', height: '0.85rem', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+                  <span>Đang phát sóng thông báo...</span>
+                </span>
+              ) : (
+                'Phát Sóng Thông Báo'
+              )}
             </button>
           </div>
         </form>

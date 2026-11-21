@@ -19,7 +19,12 @@ export const ConfirmModal = ({
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={loading ? undefined : onClose} title={title}>
+    <Modal
+      isOpen={isOpen}
+      onClose={loading ? undefined : onClose}
+      title={title}
+      showCloseButton={!loading}
+    >
       <div style={{ padding: '0.5rem 0' }}>
         {message && (
           <p style={{ margin: '0 0 1rem 0', lineHeight: 1.5, color: 'var(--text-main, #1e293b)' }}>

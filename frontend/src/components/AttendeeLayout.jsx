@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useLanguage } from '../context/LanguageContext';
 import NotificationBell from './NotificationBell';
+import { Icon } from './ui/Icon';
+import { BrandMark } from './ui/BrandLogo';
 
 export const AttendeeLayout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
@@ -39,11 +41,14 @@ export const AttendeeLayout = ({ children }) => {
 
   return (
     <div className="portal-wrapper portal-attendee">
+      <a href="#main-content" className="skip-link">
+        {t('common.skip_to_content', 'Chuyển đến nội dung chính')}
+      </a>
       <header className="site-header attendee-header">
         <div className="header-container">
           <div className="header-left">
             <Link to="/" className="logo" aria-label="Ticketflow Trang chủ">
-              <img src="/ticketflow-mark.svg" alt="Ticketflow Logo" width="34" height="34" />
+              <BrandMark size={34} />
               <div className="logo-text">
                 <span className="brand-name">Ticketflow</span>
                 <span className="portal-subtag attendee-subtag">{t('role.attendee_sub', 'Vé Sự Kiện Trực Tuyến')}</span>
@@ -54,36 +59,22 @@ export const AttendeeLayout = ({ children }) => {
           {/* Desktop Navigation */}
           <nav className="portal-nav attendee-nav desktop-nav" aria-label="Chính">
             <NavLink to="/" end className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
+              <Icon name="home" size="sm" ariaHidden />
               <span>{t('nav.explore', 'Khám Phá')}</span>
             </NavLink>
 
             <NavLink to="/events" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-                <line x1="16" x2="16" y1="2" y2="6" />
-                <line x1="8" x2="8" y1="2" y2="6" />
-                <line x1="3" x2="21" y1="10" y2="10" />
-              </svg>
+              <Icon name="calendar" size="sm" ariaHidden />
               <span>{t('home.all_heading', 'Tất Cả Sự Kiện')}</span>
             </NavLink>
 
             <NavLink to="/my-tickets" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
-                <path d="M13 5v2" /><path d="M13 17v2" /><path d="M13 11v2" />
-              </svg>
+              <Icon name="ticket" size="sm" ariaHidden />
               <span>{t('nav.my_tickets', 'Vé Của Tôi')}</span>
             </NavLink>
 
             <NavLink to="/checkout" className={({ isActive }) => `cart-nav-link nav-link ${isActive ? 'active' : ''}`}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="8" cy="21" r="1" /><circle cx="19" cy="21" r="1" />
-                <path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" />
-              </svg>
+              <Icon name="cart" size="sm" ariaHidden />
               <span>{t('nav.cart', 'Giỏ Vé')}</span>
               {totalCartCount > 0 && (
                 <span className="badge badge-primary cart-badge animate-pulse" aria-label={`${totalCartCount} vé`}>
@@ -92,15 +83,26 @@ export const AttendeeLayout = ({ children }) => {
               )}
             </NavLink>
 
+            {isAuthenticated && user?.role === 'ORGANIZER' && (
+              <NavLink to="/organizer" className={({ isActive }) => `nav-link nav-link-role ${isActive ? 'active' : ''}`} title="Studio Ban Tổ Chức">
+                <Icon name="studio" size="sm" ariaHidden />
+                <span>{t('nav.organizer_studio_short', 'Studio')}</span>
+              </NavLink>
+            )}
+
+            {isAuthenticated && user?.role === 'ADMIN' && (
+              <NavLink to="/admin" className={({ isActive }) => `nav-link nav-link-role ${isActive ? 'active' : ''}`} title="Quản Trị Hệ Thống">
+                <Icon name="shield" size="sm" ariaHidden />
+                <span>{t('nav.admin_console_short', 'Quản Trị')}</span>
+              </NavLink>
+            )}
+
             {isAuthenticated ? (
               <div className="nav-actions">
                 <NotificationBell />
 
                 <NavLink to="/profile" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} title="Hồ sơ tài khoản">
-                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
+                  <Icon name="user" size="sm" ariaHidden />
                   <span>{t('nav.profile', 'Hồ Sơ')}</span>
                 </NavLink>
                 <button type="button" onClick={handleLogout} className="btn btn-secondary btn-sm">
@@ -147,29 +149,47 @@ export const AttendeeLayout = ({ children }) => {
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Đóng menu"
               >
-                ✕
+                <Icon name="x" size="md" ariaHidden />
               </button>
             </div>
 
             <div className="mobile-drawer-links">
               <NavLink to="/" end className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="home" size="sm" ariaHidden className="mr-2" />
                 {t('nav.explore', 'Khám Phá')}
               </NavLink>
               <NavLink to="/events" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="calendar" size="sm" ariaHidden className="mr-2" />
                 {t('home.all_heading', 'Tất Cả Sự Kiện')}
               </NavLink>
               <NavLink to="/my-tickets" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="ticket" size="sm" ariaHidden className="mr-2" />
                 {t('nav.my_tickets', 'Vé Của Tôi')}
               </NavLink>
               <NavLink to="/checkout" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                <Icon name="cart" size="sm" ariaHidden className="mr-2" />
                 {t('nav.cart', 'Giỏ Vé')} {totalCartCount > 0 && `(${totalCartCount})`}
               </NavLink>
               {isAuthenticated && (
                 <>
+                  {user?.role === 'ORGANIZER' && (
+                    <NavLink to="/organizer" className={({ isActive }) => `drawer-link drawer-link-role ${isActive ? 'active' : ''}`}>
+                      <Icon name="studio" size="sm" ariaHidden className="mr-2" />
+                      {t('nav.organizer_studio', 'Studio Ban Tổ Chức')}
+                    </NavLink>
+                  )}
+                  {user?.role === 'ADMIN' && (
+                    <NavLink to="/admin" className={({ isActive }) => `drawer-link drawer-link-role ${isActive ? 'active' : ''}`}>
+                      <Icon name="shield" size="sm" ariaHidden className="mr-2" />
+                      {t('nav.admin_console', 'Quản Trị Hệ Thống')}
+                    </NavLink>
+                  )}
                   <NavLink to="/notifications" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
-                    🔔 {t('nav.notifications', 'Thông Báo Hộp Thư')}
+                    <Icon name="bell" size="sm" ariaHidden className="mr-2" />
+                    {t('nav.notifications', 'Thông Báo Hộp Thư')}
                   </NavLink>
                   <NavLink to="/profile" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    <Icon name="user" size="sm" ariaHidden className="mr-2" />
                     {t('nav.profile', 'Hồ Sơ Cá Nhân')}
                   </NavLink>
                 </>
@@ -201,7 +221,7 @@ export const AttendeeLayout = ({ children }) => {
         </div>
       )}
 
-      <main className="portal-main attendee-main">
+      <main id="main-content" tabIndex={-1} className="portal-main attendee-main">
         {children}
       </main>
 

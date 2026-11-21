@@ -9,7 +9,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 if (process.env.NODE_ENV === 'production' && !process.env.JWT_ACCESS_SECRET && !process.env.JWT_SECRET) {
-  console.warn('[SECURITY WARNING] Running in production mode without explicit JWT_SECRET or JWT_ACCESS_SECRET configured.');
+  throw new Error('[FATAL SECURITY ERROR] Running in production mode without explicit JWT_SECRET or JWT_ACCESS_SECRET configured.');
 }
 
 export const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET || 'ticketflow-access-secret-key-2026';

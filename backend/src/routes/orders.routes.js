@@ -11,6 +11,8 @@ router.get('/my', authenticateToken, ordersController.getMyOrders);
 
 // Payment Webhook Callback (Must be before /:id)
 router.post('/webhook/payment-callback', ordersController.paymentWebhook);
+router.get('/vnpay/callback', ordersController.vnpayCallback);
+router.get('/vnpay-callback', ordersController.vnpayCallback);
 
 // Reservation
 router.post('/reserve', orderReservationRateLimiter, optionalAuthenticateToken, ordersController.reserve);
@@ -26,13 +28,13 @@ router.post('/:id/finalize', optionalAuthenticateToken, ordersController.checkou
 router.post('/:id/cancel', optionalAuthenticateToken, ordersController.cancel);
 router.post('/:id/refund', optionalAuthenticateToken, ordersController.refund);
 
-// Online-only Payment Simulation
+// Online Payment Gateway & Intent Endpoints (POST initiates mutation, GET reads status)
 router.post('/:id/payment', optionalAuthenticateToken, ordersController.processPayment);
+router.get('/:id/payment', optionalAuthenticateToken, ordersController.getPaymentStatus);
+router.post('/:id/pay', optionalAuthenticateToken, ordersController.processPayment);
+router.get('/:id/pay', optionalAuthenticateToken, ordersController.getPaymentStatus);
 
 // Digital Receipt
 router.get('/:id/receipt', optionalAuthenticateToken, ordersController.getReceipt);
-
-// Ticket Transfer
-router.post('/attendees/:attendeeId/transfer', authenticateToken, ordersController.transferTicket);
 
 export default router;

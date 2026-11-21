@@ -5,13 +5,14 @@ import { money } from '../../utils/display';
 import { Modal } from '../Modal';
 import { ConfirmModal } from '../common/ConfirmModal';
 
-export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent, notify }) => {
+export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent, notify, hideEventSelector = false }) => {
   const { t } = useLanguage();
   const [tiers, setTiers] = useState([]);
   const [loadingTiers, setLoadingTiers] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [tierEditId, setTierEditId] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -68,8 +69,9 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
 
   const handleSaveTier = async (e) => {
     e.preventDefault();
-    if (!selectedEventId) return;
+    if (!selectedEventId || submitting) return;
     try {
+      setSubmitting(true);
       const payload = {
         name: formData.name,
         title: formData.name,
@@ -96,6 +98,8 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
       setShowModal(false);
     } catch (err) {
       notify(`Lỗi lưu hạng vé: ${err.message}`, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -113,9 +117,9 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
 
   return (
     <div className="stack">
-      {/* Event Selector Toolbar */}
-      {events.length > 0 && (
-        <div className="card toolbar flex items-center justify-between">
+      {/* Event Selector / Action Toolbar */}
+      <div className="card toolbar flex items-center justify-between flex-wrap gap-sm">
+        {!hideEventSelector && events.length > 0 ? (
           <div className="flex items-center gap-sm flex-1">
             <label htmlFor="tierEvSelect" className="font-bold whitespace-nowrap">
               Chọn sự kiện:
@@ -124,7 +128,7 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
               id="tierEvSelect"
               className="select max-w-400"
               value={selectedEventId || ''}
-              onChange={(e) => onSelectEvent(e.target.value)}
+              onChange={(e) => onSelectEvent && onSelectEvent(e.target.value)}
             >
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>
@@ -133,11 +137,16 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
               ))}
             </select>
           </div>
-          <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenCreate}>
-            + Thêm Hạng Vé Mới
-          </button>
-        </div>
-      )}
+        ) : (
+          <div>
+            <h3 className="text-base font-semibold m-0">Quản lý hạng vé</h3>
+            <p className="muted text-xs m-0">Thiết lập các loại vé, mức giá và số lượng mở bán</p>
+          </div>
+        )}
+        <button type="button" className="btn btn-primary btn-sm" onClick={handleOpenCreate}>
+          + Thêm Hạng Vé Mới
+        </button>
+      </div>
 
       {/* Tiers List */}
       <section className="card">
@@ -221,28 +230,32 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
       {/* Tier Create/Edit Modal */}
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => { if (!submitting) setShowModal(false); }}
         title={tierEditId ? 'Chỉnh Sửa Hạng Vé' : 'Thêm Hạng Vé Mới'}
       >
         <form onSubmit={handleSaveTier} className="stack">
           <div className="form-group">
-            <label className="form-label required">Tên hạng vé</label>
+            <label htmlFor="tier-name-input" className="form-label required">Tên hạng vé</label>
             <input
+              id="tier-name-input"
               type="text"
               className="input"
               value={formData.name}
               onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
               placeholder="VD: VIP Admission, Vé Tiêu Chuẩn"
               required
+              disabled={submitting}
             />
           </div>
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group">
-              <label className="form-label">Phân loại vé</label>
+              <label htmlFor="tier-type-select" className="form-label">Phân loại vé</label>
               <select
+                id="tier-type-select"
                 className="select"
                 value={formData.type}
+                disabled={submitting}
                 onChange={(e) => {
                   const newType = e.target.value;
                   setFormData((p) => ({
@@ -259,15 +272,16 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
             </div>
 
             <div className="form-group">
-              <label className="form-label required">Giá vé (VNĐ)</label>
+              <label htmlFor="tier-price-input" className="form-label required">Giá vé (VNĐ)</label>
               <input
+                id="tier-price-input"
                 type="number"
                 className="input"
                 value={formData.price}
                 onChange={(e) => setFormData((p) => ({ ...p, price: e.target.value }))}
                 min="0"
                 step="1000"
-                disabled={formData.type === 'FREE'}
+                disabled={submitting || formData.type === 'FREE'}
                 required
               />
             </div>
@@ -275,35 +289,57 @@ export const OrganizerTiersTab = ({ selectedEventId, events = [], onSelectEvent,
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group">
-              <label className="form-label required">Số lượng phát hành</label>
+              <label htmlFor="tier-qty-input" className="form-label required">Số lượng phát hành</label>
               <input
+                id="tier-qty-input"
                 type="number"
                 className="input"
                 value={formData.total_quantity}
                 onChange={(e) => setFormData((p) => ({ ...p, total_quantity: e.target.value }))}
                 min="1"
                 required
+                disabled={submitting}
               />
             </div>
 
             <div className="form-group flex items-center gap-xs" style={{ paddingTop: '1.75rem' }}>
-              <label className="flex items-center gap-xs cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_hidden}
-                  onChange={(e) => setFormData((p) => ({ ...p, is_hidden: e.target.checked }))}
-                />
+              <input
+                id="tier-is-hidden"
+                type="checkbox"
+                checked={formData.is_hidden}
+                disabled={submitting}
+                onChange={(e) => setFormData((p) => ({ ...p, is_hidden: e.target.checked }))}
+              />
+              <label htmlFor="tier-is-hidden" className="flex items-center gap-xs cursor-pointer">
                 <span className="font-semibold text-sm">Ẩn khỏi trang mua công khai</span>
               </label>
             </div>
           </div>
 
           <div className="flex justify-end gap-sm mt-md">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowModal(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowModal(false)}
+              disabled={submitting}
+            >
               Hủy
             </button>
-            <button type="submit" className="btn btn-primary">
-              {tierEditId ? 'Cập Nhật Hạng Vé' : 'Tạo Hạng Vé'}
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={submitting || loadingTiers}
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="spinner-sm" aria-hidden="true" style={{ display: 'inline-block', width: '0.85rem', height: '0.85rem', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+                  <span>Đang lưu...</span>
+                </span>
+              ) : tierEditId ? (
+                'Cập Nhật Hạng Vé'
+              ) : (
+                'Tạo Hạng Vé'
+              )}
             </button>
           </div>
         </form>

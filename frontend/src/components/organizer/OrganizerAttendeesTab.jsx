@@ -4,8 +4,9 @@ import { useLanguage } from '../../context/LanguageContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../Modal';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { Icon } from '../ui/Icon';
 
-export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEvent, notify }) => {
+export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEvent, notify, hideEventSelector = false }) => {
   const { t } = useLanguage();
   const [attendees, setAttendees] = useState([]);
   const [tiers, setTiers] = useState([]);
@@ -17,6 +18,8 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [editingAttendee, setEditingAttendee] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   const [guestFormData, setGuestFormData] = useState({
     name: '',
@@ -67,8 +70,9 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
 
   const handleCreateGuest = async (e) => {
     e.preventDefault();
-    if (!selectedEventId) return;
+    if (!selectedEventId || guestSubmitting) return;
     try {
+      setGuestSubmitting(true);
       await api.events.createAttendee(selectedEventId, guestFormData);
       notify(`Đã cấp vé mời cho ${guestFormData.name || guestFormData.email} thành công!`);
       setShowGuestModal(false);
@@ -76,19 +80,24 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
       loadData(selectedEventId);
     } catch (err) {
       notify(`Lỗi tạo vé mời: ${err.message}`, 'error');
+    } finally {
+      setGuestSubmitting(false);
     }
   };
 
   const handleUpdateAttendee = async (e) => {
     e.preventDefault();
-    if (!selectedEventId || !editingAttendee) return;
+    if (!selectedEventId || !editingAttendee || editSubmitting) return;
     try {
+      setEditSubmitting(true);
       await api.events.updateAttendee(selectedEventId, editingAttendee.id, editingAttendee);
       notify(`Đã cập nhật thông tin người tham dự #${editingAttendee.id}!`);
       setEditingAttendee(null);
       loadData(selectedEventId);
     } catch (err) {
       notify(`Lỗi cập nhật: ${err.message}`, 'error');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -120,39 +129,48 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
     <div className="stack">
       {/* Event Selector & Actions Toolbar */}
       <div className="card toolbar flex items-center justify-between flex-wrap gap-sm">
-        <div className="flex items-center gap-sm flex-1" style={{ minWidth: '280px' }}>
-          <label htmlFor="attEvSelect" className="font-bold whitespace-nowrap">
-            Chọn sự kiện:
-          </label>
-          <select
-            id="attEvSelect"
-            className="select max-w-400"
-            value={selectedEventId || ''}
-            onChange={(e) => onSelectEvent(e.target.value)}
-          >
-            {events.map((ev) => (
-              <option key={ev.id} value={ev.id}>
-                #{ev.id} - {ev.title} ({ev.status})
-              </option>
-            ))}
-          </select>
-        </div>
+        {!hideEventSelector && events.length > 0 ? (
+          <div className="flex items-center gap-sm flex-1" style={{ minWidth: '280px' }}>
+            <label htmlFor="attEvSelect" className="font-bold whitespace-nowrap">
+              Chọn sự kiện:
+            </label>
+            <select
+              id="attEvSelect"
+              className="select max-w-400"
+              value={selectedEventId || ''}
+              onChange={(e) => onSelectEvent && onSelectEvent(e.target.value)}
+            >
+              {events.map((ev) => (
+                <option key={ev.id} value={ev.id}>
+                  #{ev.id} - {ev.title} ({ev.status})
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <h3 className="text-base font-semibold m-0">Danh sách người tham dự & Khách mời</h3>
+            <p className="muted text-xs m-0">Tra cứu người tham dự, trạng thái vé và cấp vé mời VIP</p>
+          </div>
+        )}
 
         <div className="flex items-center gap-sm">
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm flex items-center gap-1.5"
             onClick={handleExportCsv}
             disabled={attendees.length === 0}
           >
-            📥 Xuất CSV
+            <Icon name="download" size="xs" ariaHidden />
+            <span>Xuất CSV</span>
           </button>
           <button
             type="button"
-            className="btn btn-primary btn-sm"
+            className="btn btn-primary btn-sm flex items-center gap-1.5"
             onClick={() => setShowGuestModal(true)}
           >
-            + Cấp Vé Mời (Guest Pass)
+            <Icon name="plus" size="xs" ariaHidden />
+            <span>Cấp Vé Mời (Guest Pass)</span>
           </button>
         </div>
       </div>
@@ -162,11 +180,13 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
         <div className="flex justify-between items-center mb-md flex-wrap gap-sm">
           <div>
             <h2 className="panel-title mb-0">Danh Sách Người Tham Dự ({attendees.length})</h2>
-            <p className="muted text-xs m-0">Tra cứu người tham dự, mã vé check-in và trạng thái vé</p>
+            <p className="muted text-xs m-0">Tra cứu người tham dự, mã vé và trạng thái vé</p>
           </div>
 
           <div className="flex items-center gap-sm">
+            <label htmlFor="att-search-input" className="sr-only">Tìm theo tên, email, barcode</label>
             <input
+              id="att-search-input"
               type="text"
               className="input input-sm"
               style={{ width: '220px' }}
@@ -174,15 +194,15 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            <label htmlFor="att-status-filter" className="sr-only">Lọc theo trạng thái</label>
             <select
+              id="att-status-filter"
               className="select select-sm"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
             >
               <option value="ALL">Tất cả trạng thái</option>
               <option value="ACTIVE">Hợp lệ (ACTIVE)</option>
-              <option value="CHECKED_IN">Đã check-in</option>
-              <option value="TRANSFERRED">Đã chuyển nhượng</option>
               <option value="CANCELLED">Đã hủy</option>
             </select>
           </div>
@@ -271,52 +291,60 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
       {/* Create Guest Pass Modal */}
       <Modal
         isOpen={showGuestModal}
-        onClose={() => setShowGuestModal(false)}
+        onClose={() => { if (!guestSubmitting) setShowGuestModal(false); }}
         title="Cấp Vé Mời Khách VIP (Guest Pass)"
       >
         <form onSubmit={handleCreateGuest} className="stack">
           <div className="form-group">
-            <label className="form-label required">Họ và tên khách mời</label>
+            <label htmlFor="guest-name-input" className="form-label required">Họ và tên khách mời</label>
             <input
+              id="guest-name-input"
               type="text"
               className="input"
               value={guestFormData.name}
               onChange={(e) => setGuestFormData((p) => ({ ...p, name: e.target.value }))}
               placeholder="VD: Nguyễn Văn A"
               required
+              disabled={guestSubmitting}
             />
           </div>
 
           <div className="grid grid-2 gap-sm">
             <div className="form-group">
-              <label className="form-label required">Email</label>
+              <label htmlFor="guest-email-input" className="form-label required">Email</label>
               <input
+                id="guest-email-input"
                 type="email"
                 className="input"
                 value={guestFormData.email}
                 onChange={(e) => setGuestFormData((p) => ({ ...p, email: e.target.value }))}
                 placeholder="email@example.com"
                 required
+                disabled={guestSubmitting}
               />
             </div>
             <div className="form-group">
-              <label className="form-label">Số điện thoại</label>
+              <label htmlFor="guest-phone-input" className="form-label">Số điện thoại</label>
               <input
+                id="guest-phone-input"
                 type="tel"
                 className="input"
                 value={guestFormData.phone}
                 onChange={(e) => setGuestFormData((p) => ({ ...p, phone: e.target.value }))}
                 placeholder="0912345678"
+                disabled={guestSubmitting}
               />
             </div>
           </div>
 
           <div className="form-group">
-            <label className="form-label">Hạng vé cấp</label>
+            <label htmlFor="guest-tier-select" className="form-label">Hạng vé cấp</label>
             <select
+              id="guest-tier-select"
               className="select"
               value={guestFormData.ticket_tier_id}
               onChange={(e) => setGuestFormData((p) => ({ ...p, ticket_tier_id: e.target.value }))}
+              disabled={guestSubmitting}
             >
               <option value="">-- Mặc định (Hạng vé đầu tiên) --</option>
               {tiers.map((t) => (
@@ -328,11 +356,27 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
           </div>
 
           <div className="flex justify-end gap-sm mt-md">
-            <button type="button" className="btn btn-secondary" onClick={() => setShowGuestModal(false)}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowGuestModal(false)}
+              disabled={guestSubmitting}
+            >
               Hủy
             </button>
-            <button type="submit" className="btn btn-primary">
-              Phát Hành Vé Mời
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={guestSubmitting || loading}
+            >
+              {guestSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="spinner-sm" aria-hidden="true" style={{ display: 'inline-block', width: '0.85rem', height: '0.85rem', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+                  <span>Đang phát hành vé mời...</span>
+                </span>
+              ) : (
+                'Phát Hành Vé Mời'
+              )}
             </button>
           </div>
         </form>
@@ -341,63 +385,86 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
       {/* Edit Attendee Modal */}
       <Modal
         isOpen={Boolean(editingAttendee)}
-        onClose={() => setEditingAttendee(null)}
+        onClose={() => { if (!editSubmitting) setEditingAttendee(null); }}
         title="Chỉnh Sửa Thông Tin Người Tham Dự"
       >
         {editingAttendee && (
           <form onSubmit={handleUpdateAttendee} className="stack">
             <div className="form-group">
-              <label className="form-label required">Họ và tên</label>
+              <label htmlFor="edit-att-name" className="form-label required">Họ và tên</label>
               <input
+                id="edit-att-name"
                 type="text"
                 className="input"
                 value={editingAttendee.name || `${editingAttendee.first_name || ''} ${editingAttendee.last_name || ''}`.trim()}
                 onChange={(e) => setEditingAttendee((p) => ({ ...p, name: e.target.value }))}
                 required
+                disabled={editSubmitting}
               />
             </div>
 
             <div className="grid grid-2 gap-sm">
               <div className="form-group">
-                <label className="form-label required">Email</label>
+                <label htmlFor="edit-att-email" className="form-label required">Email</label>
                 <input
+                  id="edit-att-email"
                   type="email"
                   className="input"
                   value={editingAttendee.email || ''}
                   onChange={(e) => setEditingAttendee((p) => ({ ...p, email: e.target.value }))}
                   required
+                  disabled={editSubmitting}
                 />
               </div>
               <div className="form-group">
-                <label className="form-label">Số điện thoại</label>
+                <label htmlFor="edit-att-phone" className="form-label">Số điện thoại</label>
                 <input
+                  id="edit-att-phone"
                   type="tel"
                   className="input"
                   value={editingAttendee.phone || ''}
                   onChange={(e) => setEditingAttendee((p) => ({ ...p, phone: e.target.value }))}
+                  disabled={editSubmitting}
                 />
               </div>
             </div>
 
             <div className="form-group">
-              <label className="form-label">Trạng thái vé</label>
+              <label htmlFor="edit-att-status" className="form-label">Trạng thái vé</label>
               <select
+                id="edit-att-status"
                 className="select"
                 value={editingAttendee.status || 'ACTIVE'}
                 onChange={(e) => setEditingAttendee((p) => ({ ...p, status: e.target.value }))}
+                disabled={editSubmitting}
               >
                 <option value="ACTIVE">Hợp lệ (ACTIVE)</option>
-                <option value="CHECKED_IN">Đã Check-in</option>
                 <option value="CANCELLED">Hủy hiệu lực</option>
               </select>
             </div>
 
             <div className="flex justify-end gap-sm mt-md">
-              <button type="button" className="btn btn-secondary" onClick={() => setEditingAttendee(null)}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setEditingAttendee(null)}
+                disabled={editSubmitting}
+              >
                 Hủy
               </button>
-              <button type="submit" className="btn btn-primary">
-                Lưu Thay Đổi
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={editSubmitting || loading}
+              >
+                {editSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <span className="spinner-sm" aria-hidden="true" style={{ display: 'inline-block', width: '0.85rem', height: '0.85rem', border: '2px solid currentColor', borderRightColor: 'transparent', borderRadius: '50%', animation: 'spin 0.75s linear infinite' }} />
+                    <span>Đang lưu...</span>
+                  </span>
+                ) : (
+                  'Lưu Thay Đổi'
+                )}
               </button>
             </div>
           </form>
@@ -410,7 +477,7 @@ export const OrganizerAttendeesTab = ({ selectedEventId, events = [], onSelectEv
         onClose={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
         title="Xác nhận hủy vé người tham dự"
-        message={`Bạn có chắc chắn muốn hủy vé của "${deleteTarget?.name || deleteTarget?.email}"? Mã vé này sẽ bị vô hiệu hóa và không thể check-in tại sự kiện.`}
+        message={`Bạn có chắc chắn muốn hủy vé của "${deleteTarget?.name || deleteTarget?.email}"? Mã vé này sẽ bị vô hiệu hóa.`}
         isDanger={true}
       />
     </div>

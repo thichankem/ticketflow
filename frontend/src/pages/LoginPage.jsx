@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import { Icon } from '../components/ui/Icon';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
@@ -98,12 +99,12 @@ export const LoginPage = () => {
               />
               <button
                 type="button"
-                className="password-toggle-btn"
+                className="password-toggle-btn flex items-center justify-center"
                 onClick={() => setShowPassword(!showPassword)}
                 aria-pressed={showPassword}
                 aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
               >
-                {showPassword ? '👁️' : '👁️‍🗨️'}
+                <Icon name={showPassword ? 'eye-off' : 'eye'} size="sm" ariaHidden />
               </button>
             </div>
           </div>
